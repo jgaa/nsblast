@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package nsblast;
+
+message Soa {
+    string name = 1;
+    uint64 serial = 2;
+    uint32 ttl = 3;
+    uint32 refresh = 4;
+    uint32 retry = 5;
+    uint32 expire = 6;
+    uint32 minimum = 7;
+    string mname = 8; // Primary ns
+    string rname = 9; // email (without '@'), zone admin
+}
+
+message Mx {
+    uint32 ttl = 1;
+    uint32 priority = 2;
+    string host = 3;
+}
+
+message Ns {
+    string fqdn = 1;
+}
+
+message Rr {
+    repeated bytes a = 1; // always 4 bytes for each entry
+    repeated bytes aa = 2; // always 16 bytes for each entry
+    string cname = 3;
+    string txt = 4;
+    Mx mx = 5;
+}
+
+message Zone {
+    Soa soa = 1;
+    Ns ns = 2;
+}
+
+message Entry {
+    string path = 1; // fqdn of the zone this entry belong to
+    Rr rr = 3;
+}
+

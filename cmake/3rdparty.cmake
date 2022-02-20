@@ -1,0 +1,57 @@
+set(EXTERNAL_PROJECTS_PREFIX ${CMAKE_BINARY_DIR}/external-projects)
+set(EXTERNAL_PROJECTS_INSTALL_PREFIX ${EXTERNAL_PROJECTS_PREFIX}/installed)
+
+include(GNUInstallDirs)
+include(ExternalProject)
+
+# MUST be called before any add_executable() # https://stackoverflow.com/a/40554704/8766845
+link_directories(${EXTERNAL_PROJECTS_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+include_directories($<BUILD_INTERFACE:${EXTERNAL_PROJECTS_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}>)
+
+ExternalProject_Add(logfault
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY "https://github.com/jgaa/logfault.git"
+    GIT_TAG "master"
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+)
+
+ExternalProject_Add(googletest
+    GIT_TAG "main"
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+)
+
+ExternalProject_Add(rocksdb
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
+    GIT_TAG "v6.29.3"
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DUSE_RTTI=1
+        -DPORTABLE=${PORTABLE}
+        -DCMAKE_CXX_STANDARD=17
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DWITH_TESTS=OFF
+        -DWITH_TOOLS=OFF
+        -DWITH_BENCHMARK_TOOLS=OFF
+        -DWITH_CORE_TOOLS=OFF
+#        -DWITH_BZ2=ON
+#        -DWITH_LZ4=ON
+        -DWITH_SNAPPY=ON
+        -DWITH_ZLIB=ON
+        -DCMAKE_POSITION_INDEPENDENT_CODE=True
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+)
+
+ExternalProject_Get_Property(rocksdb BINARY_DIR)
+set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
+set(ROCKSDB_FOUND TRUE)
+
