@@ -25,6 +25,11 @@ public:
     void writeZone(std::string_view fqdn, const Zone& Zone);
     void writeEntry(std::string_view fqdn, const Entry& Entry);
 
+    auto getDb() noexcept {
+        assert(db_);
+        return db_;
+    }
+
 private:
     void prepareDirs();
     void open();

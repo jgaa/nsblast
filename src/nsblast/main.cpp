@@ -31,15 +31,34 @@ int main(int argc, char* argv[]) {
         ("help,h", "Print help and exit")
         ("version", "print version string and exit")
         ("db-path,d",
-            po::value<string>(&config.db_path_)->default_value(config.db_path_),
+            po::value<string>(&config.db_path)->default_value(config.db_path),
             "Definition file to deploy")
         ("log-level,l",
              po::value<string>(&log_level)->default_value(log_level),
              "Log-level to use; one of 'info', 'debug', 'trace'")
     ;
+    po::options_description http("HTTP/API server");
+    http.add_options()
+        ("http-endpoint,H",
+            po::value<string>(&config.http_endpoint)->default_value(config.http_endpoint),
+            "HTTP endpoint. For example [::] to listen to all interfaces")
+        ("http-port",
+            po::value<string>(&config.http_port)->default_value(config.http_port),
+            "HTTP port to listen to. Not required when using port 80 or 443")
+        ("http-tls-key",
+            po::value<string>(&config.http_tls_key)->default_value(config.http_tls_key),
+            "TLS key for the embedded HTTP server")
+        ("http-tls-cert",
+            po::value<string>(&config.http_tls_cert)->default_value(config.http_tls_cert),
+            "TLS cert for the embedded HTTP server")
+        ("http-num-threads",
+            po::value<size_t>(&config.num_http_threads)->default_value(config.num_http_threads),
+            "Threads for the embedded HTTP server")
+
+        ;
 
     po::options_description cmdline_options;
-    cmdline_options.add(general);
+    cmdline_options.add(general).add(http);
     po::positional_options_description kfo;
     kfo.add("kubeconfig", -1);
     po::variables_map vm;

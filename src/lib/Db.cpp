@@ -44,9 +44,9 @@ void Db::init()
 
 void Db::prepareDirs()
 {
-    if (!filesystem::is_directory(config_.db_path_)) {
-        LOG_INFO << "Creating directory: " << config_.db_path_;
-        filesystem::create_directories(config_.db_path_);
+    if (!filesystem::is_directory(config_.db_path)) {
+        LOG_INFO << "Creating directory: " << config_.db_path;
+        filesystem::create_directories(config_.db_path);
     }
 }
 
@@ -60,7 +60,7 @@ void Db::open()
     const auto status = rocksdb::DB::Open(options, getDbPath(),
                                           cfd_, &cfh_, &db_);
     if (!status.ok()) {
-        LOG_ERROR << "Failed to open database " << config_.db_path_
+        LOG_ERROR << "Failed to open database " << config_.db_path
                   << status.ToString();
         throw runtime_error{"Failed to open database"};
     }
@@ -109,7 +109,7 @@ bool Db::needBootstrap() const
 
 string Db::getDbPath() const
 {
-    filesystem::path p = config_.db_path_;
+    filesystem::path p = config_.db_path;
     p /= "rocksdb";
     return p.string();
 }

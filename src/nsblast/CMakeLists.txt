@@ -27,7 +27,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${Boost_LIBRARIES}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
-#    ${OPENSSL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
     stdc++fs
     # TODO: Add macros and check for these libraries
     lz4

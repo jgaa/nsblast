@@ -10,9 +10,12 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
+    ${NSBLAST_ROOT}/include/nsblast/Admin.h
     Db.h
     Db.cpp
     DnsEngine.cpp
+    HttpServer.h
+    HttpServer.cpp
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
