@@ -331,6 +331,15 @@ void HttpServer::stop()
     }
 }
 
+void HttpServer::addRoute(std::string_view target, handler_t handler)
+{
+    if (target.size() == 0) {
+        throw runtime_error{"A target's route cannot be empty"};
+    }
+    string key{target};
+    routes_[move(key)] = handler;
+}
+
 std::pair<bool, string_view> HttpServer::Authenticate(const std::string_view &authHeader)
 {
     static const string_view teste{"teste"};
@@ -339,7 +348,43 @@ std::pair<bool, string_view> HttpServer::Authenticate(const std::string_view &au
 
 Response HttpServer::onRequest(const Request &req) noexcept
 {
-    // TODO: Find the route
+    // Find the route!
+    string_view tw{req.target.data(), req.target.size()};
+
+    RequestHandler *best_handler = {};
+    string_view best_route;
+
+    for(const auto& [route, handler] : routes_) {
+        const auto len = route.size();
+
+        // Target must be at least the lenght of the route
+        if (tw.size() < len) {
+            continue;
+        }
+
+        // Target is only relevant if it's the same size as the route
+        // or if it has a slash at the location where target ends
+        if (tw.size() == len || tw.at(len) == '/') {
+            auto relevant = tw.substr(0, len);
+            if (relevant == route) {
+                // We need the longest possible match
+                if (!best_handler || (best_route.size() < route.size())) {
+                    best_handler = handler.get();
+                    best_route = route;
+                }
+            }
+        }
+    }
+
+    if (best_handler) {
+        try {
+            LOG_TRACE << "Found route '" << best_route << "' for target '" << tw << "'";
+            return best_handler->onReqest(req);
+        } catch (const exception& ex) {
+            LOG_ERROR << "Caught unexpectex exception from request: " << ex.what();
+            return {500, "Internal server error"};
+        }
+    }
 
     return {404, "Document not found"};
 }
@@ -359,6 +404,108 @@ void HttpServer::startWorkers()
                 LOG_DEBUG << "HTTP worker thread #" << i << " done.";
         });
     }
+}
+
+HttpServer::FileHandler::FileHandler(std::filesystem::path root)
+    : root_{root}
+{
+    LOG_DEBUG << "Ready to serve path: " << root;
+}
+
+Response HttpServer::FileHandler::onReqest(const Request &req)
+{
+    static const Response not_found{404, "Document not found"};
+    auto path = resolve(req.target);
+
+    std::error_code ec;
+    auto what = filesystem::status(path, ec);
+    if (ec) {
+        LOG_DEBUG << "Path " << path << ": " << ec.message();
+        return not_found;
+    }
+
+    if (what.type() == filesystem::file_type::regular) {
+        return readFile(path);
+    }
+
+    if (what.type() == filesystem::file_type::directory) {
+        return handleDir(path);
+    }
+
+
+    return not_found;
+}
+
+std::filesystem::path HttpServer::FileHandler::resolve(std::string_view target)
+{
+
+    while(!target.empty() && target[0] == '/') {
+        target = target.substr(1);
+    }
+
+    auto t = filesystem::path{target}.lexically_normal();
+    if (!t.empty() &&  t.native().front() == '/') {
+        throw runtime_error{"Invalid target. Normalized target cannot start with slash!"};
+    }
+
+    auto raw = root_;
+
+    if (!target.empty()) {
+        raw /= t;
+    }
+
+    auto r = raw.lexically_normal();
+
+    // Remove trailing slash. It sometimes occur...
+    if (auto& n = r.native() ; !n.empty()) {
+        if (n.back() == '/') {
+            r = {r.native().substr(0, r.native().size() -1)};
+        }
+    }
+
+    // validate
+    auto a = root_.begin();
+    auto b = r.begin();
+    for(; a != root_.end(); ++a, ++b) {
+        if (b == r.end()) {
+            throw runtime_error{"Invalid target. Tries to access filesystem above root level"};
+        }
+        if (*b != *a) {
+            throw runtime_error{"Invalid target. Tries to access filesystem outside root path"};
+        }
+    }
+
+    return r;
+}
+
+Response HttpServer::FileHandler::readFile(const std::filesystem::path &path)
+{
+    ifstream file{path};
+    if (file.is_open()) {
+        Response r;
+        const auto len = filesystem::file_size(path);
+        r.body.resize(len);
+        file.read(r.body.data(), len);
+        return r;
+    }
+
+    return {500, "Failed to open file for read"};
+}
+
+Response HttpServer::FileHandler::handleDir(const std::filesystem::path &path)
+{
+    auto index = path;
+    index /= "index.html";
+    if (filesystem::is_regular_file(index)) {
+        return readFile(index);
+    }
+
+    return listDir(path);
+}
+
+Response HttpServer::FileHandler::listDir(const std::filesystem::__cxx11::path &path)
+{
+    return {404, "Directoty listings are not supported"};
 }
 
 

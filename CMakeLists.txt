@@ -52,3 +52,4 @@ include(cmake/3rdparty.cmake)
 
 add_subdirectory(src/lib)
 add_subdirectory(src/nsblast)
+add_subdirectory(tests)
