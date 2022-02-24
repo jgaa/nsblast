@@ -1,7 +1,15 @@
 project(unittests LANGUAGES CXX)
 
+add_custom_command(
+    COMMAND mkres nsblast::test::embedded test_files_ test_res.cpp test_res.h ${NSBLAST_ROOT}/tests/embedded/*
+    DEPENDS ${NSBLAST_ROOT}/tests/embedded/test.txt mkres
+    OUTPUT test_res.cpp test_res.h
+    COMMENT "Embedding test files..."
+    )
+
 add_executable(http_tests
     http_tests.cpp
+    test_res.cpp test_res.h
     )
 
 set_property(TARGET http_tests PROPERTY CXX_STANDARD 17)
@@ -13,9 +21,10 @@ add_dependencies(http_tests
 
 target_include_directories(http_tests
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${NSBLAST_ROOT}/include
-    ${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/include
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     )
 
 target_link_libraries(http_tests

@@ -95,8 +95,8 @@ int main(int argc, char* argv[]) {
     try {
         auto engine = DnsEngine::create(config);
         engine->init();
-        //engine.run();
+        engine->run();
     } catch (const exception& ex) {
-        LOG_ERROR << "Caught exception from run: " << ex.what();
+        LOG_ERROR << "Caught exception from engine: " << ex.what();
     }
 } // mail

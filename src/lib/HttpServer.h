@@ -4,6 +4,7 @@
 #include <functional>
 #include <filesystem>
 #include <string_view>
+#include <future>
 
 #include <boost/asio.hpp>
 
@@ -40,15 +41,50 @@ public:
     virtual Response onReqest(const Request& req) = 0;
 };
 
+template <typename T>
+class EmbeddedHandler : public RequestHandler {
+public:
+    EmbeddedHandler(const T& content, std::string prefix)
+        : content_{content}, prefix_{std::move(prefix)} {}
+
+    Response onReqest(const Request& req) override {
+        // Remove prefix
+        auto t = std::string_view{req.target};
+        if (t.size() < prefix_.size()) {
+            throw std::runtime_error{"Invalid targert. Cannot be shorted than prefix!"};
+        }
+
+        t = t.substr(prefix_.size());
+
+        while(!t.empty() && t.front() == '/') {
+            t = t.substr(1);
+        }
+
+        if (t.empty()) {
+            t = {"index.html"};
+        }
+
+        if (auto it = content_.find(std::string{t}) ; it != content_.end()) {
+            return {200, "OK", std::string{it->second}};
+        }
+        return {404, "Document not found"};
+    }
+
+private:
+    const T& content_;
+    const std::string prefix_;
+};
+
 // Very general HTTP server so we can easily swap it out with something better later...
 class HttpServer
 {
 public:
     using handler_t = std::shared_ptr<RequestHandler>;//std::function<Response (const Request& req)>;
 
+
     HttpServer(const Config& config);
 
-    void start();
+    std::future<void> start();
     void stop();
 
     void addRoute(std::string_view target, handler_t handler);
@@ -83,6 +119,7 @@ private:
     std::map<std::string, handler_t> routes_;
     boost::asio::io_context ctx_;
     std::vector<std::thread> workers_;
+    std::promise<void> promise_;
 };
 
 }

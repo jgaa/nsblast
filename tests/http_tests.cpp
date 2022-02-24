@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
 #include "HttpServer.h"
 
+#include "test_res.h"
+
 using namespace std;
 using namespace nsblast;
 using namespace nsblast::lib;
@@ -247,7 +249,37 @@ TEST(testFileHandler_resolve, relativeEscapeFs3) {
     EXPECT_ANY_THROW(fh.resolve("/test/../test/../foo/../../bar"));
 }
 
+TEST(testEmbeddedHandler, fetchFile) {
+    auto eh = EmbeddedHandler{nsblast::test::embedded::test_files_, "/teste"};
+    auto res = eh.onReqest({getRequest("/teste/test.txt")});
+    EXPECT_EQ(res.body, "this is a test");
+    EXPECT_EQ(res.code, 200);
+}
 
+TEST(testEmbeddedHandler, fetchDefault) {
+    auto eh = EmbeddedHandler{nsblast::test::embedded::test_files_, "/teste"};
+    auto res = eh.onReqest({getRequest("/teste")});
+    EXPECT_EQ(res.body, "<html><body>Testing</body></html>");
+    EXPECT_EQ(res.code, 200);
+}
+
+TEST(testEmbeddedHandler, fetchDefault2) {
+    auto eh = EmbeddedHandler{nsblast::test::embedded::test_files_, "/teste"};
+    auto res = eh.onReqest({getRequest("/teste/")});
+    EXPECT_EQ(res.body, "<html><body>Testing</body></html>");
+    EXPECT_EQ(res.code, 200);
+}
+
+TEST(testEmbeddedHandler, fetchFail) {
+    auto eh = EmbeddedHandler{nsblast::test::embedded::test_files_, "/teste"};
+    auto res = eh.onReqest({getRequest("/teste/nodoc.txt")});
+    EXPECT_EQ(res.code, 404);
+}
+
+TEST(testEmbeddedHandler, fetchInvalid) {
+    auto eh = EmbeddedHandler{nsblast::test::embedded::test_files_, "/teste"};
+    EXPECT_ANY_THROW(eh.onReqest({getRequest("/")}));
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

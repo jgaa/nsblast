@@ -4,6 +4,14 @@ message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS data.proto)
 
+# See https://lastviking.eu/code_generator.html
+add_custom_command(
+    COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
+    DEPENDS ${NSBLAST_ROOT}/swagger/index.html mkres
+    OUTPUT swagger_res.cpp swagger_res.h
+    COMMENT "Embedding swagger..."
+    )
+
 add_library(${PROJECT_NAME}
     ${PROTO_SRCS} ${PROTO_HDRS}
     data.proto
@@ -16,6 +24,8 @@ add_library(${PROJECT_NAME}
     DnsEngine.cpp
     HttpServer.h
     HttpServer.cpp
+    swagger_res.cpp
+    swagger_res.h
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -30,7 +40,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
-add_dependencies(${PROJECT_NAME} rocksdb logfault)
+add_dependencies(${PROJECT_NAME} rocksdb logfault mkres)
 
 install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Config
     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -11,6 +11,7 @@ public:
     static std::unique_ptr<DnsEngine> create(const Config& config);
 
     virtual void init() = 0;
+    virtual void run() = 0;
 };
 
 } // ns

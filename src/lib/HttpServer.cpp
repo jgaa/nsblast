@@ -10,6 +10,7 @@
 
 #include "nsblast/logging.h"
 #include "HttpServer.h"
+#include "swagger_res.h"
 
 using namespace std;
 using namespace std;
@@ -139,7 +140,7 @@ void DoSession(streamT& stream,
             http::response<http::string_body> res;
             res.body() = "Access denied";
             res.result(403);
-            res.base().set(http::field::server, "vUberdns "s + NSBLAST_VERSION);
+            res.base().set(http::field::server, "nsblast "s + NSBLAST_VERSION);
             res.base().set(http::field::content_type, "application/json; charset=utf-8");
             res.base().set(http::field::connection, close ? "close" : "keep-alive");
             res.prepare_payload();
@@ -175,7 +176,7 @@ void DoSession(streamT& stream,
         http::response<http::string_body> res;
         res.body() = reply.body;
         res.result(reply.code);
-        res.base().set(http::field::server, "vUberdns "s + NSBLAST_VERSION);
+        res.base().set(http::field::server, "nsblast "s + NSBLAST_VERSION);
         res.base().set(http::field::content_type, "application/json; charset=utf-8");
         res.base().set(http::field::connection, close ? "close" : "keep-alive");
         res.prepare_payload();
@@ -210,7 +211,7 @@ HttpServer::HttpServer(const Config &config)
 
 }
 
-void HttpServer::start()
+std::future<void> HttpServer::start()
 {
 
     // Start listening
@@ -321,6 +322,7 @@ void HttpServer::start()
 
 
     startWorkers();
+    return promise_.get_future();
 }
 
 void HttpServer::stop()
@@ -329,6 +331,7 @@ void HttpServer::stop()
     for(auto& worker : workers_) {
         worker.join();
     }
+    promise_.set_value();
 }
 
 void HttpServer::addRoute(std::string_view target, handler_t handler)
@@ -507,6 +510,7 @@ Response HttpServer::FileHandler::listDir(const std::filesystem::__cxx11::path &
 {
     return {404, "Directoty listings are not supported"};
 }
+
 
 
 } // ns
