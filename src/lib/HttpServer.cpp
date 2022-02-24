@@ -134,31 +134,30 @@ void DoSession(streamT& stream,
             authorized = a;
         }
 
-        if (!authorized) {
-            LOG_TRACE << "Request was unauthorized!";
+//        if (!authorized) {
+//            LOG_TRACE << "Request was unauthorized!";
 
-            http::response<http::string_body> res;
-            res.body() = "Access denied";
-            res.result(403);
-            res.base().set(http::field::server, "nsblast "s + NSBLAST_VERSION);
-            res.base().set(http::field::content_type, "application/json; charset=utf-8");
-            res.base().set(http::field::connection, close ? "close" : "keep-alive");
-            res.prepare_payload();
-            lr.set(res);
+//            http::response<http::string_body> res;
+//            res.body() = "Access denied";
+//            res.result(401);
+//            res.base().set(http::field::server, "nsblast "s + NSBLAST_VERSION);
+//            res.base().set(http::field::connection, close ? "close" : "keep-alive");
+//            res.prepare_payload();
+//            lr.set(res);
 
-            http::async_write(stream, res, yield[ec]);
-            if(ec) {
-                LOG_ERROR << "write failed: " << ec.message();
-                break;
-            }
-        }
+//            http::async_write(stream, res, yield[ec]);
+//            if(ec) {
+//                LOG_ERROR << "write failed: " << ec.message();
+//                break;
+//            }
+//        }
 
-        if (!req.body().empty()) {
-            if (auto it = req.base().find(http::field::content_type) ; it != req.base().end()) {
-                // TODO: Check that the type is json
-                LOG_TRACE << "Request has content type: " << it->value();
-            }
-        }
+//        if (!req.body().empty()) {
+//            if (auto it = req.base().find(http::field::content_type) ; it != req.base().end()) {
+//                // TODO: Check that the type is json
+//                LOG_TRACE << "Request has content type: " << it->value();
+//            }
+//        }
 
         // TODO: Check that the client accepts our json reply
         Request request {
@@ -177,7 +176,10 @@ void DoSession(streamT& stream,
         res.body() = reply.body;
         res.result(reply.code);
         res.base().set(http::field::server, "nsblast "s + NSBLAST_VERSION);
-        res.base().set(http::field::content_type, "application/json; charset=utf-8");
+
+        if (auto mime = reply.mimeType(); !mime.empty()) {
+            res.base().set(http::field::content_type, {mime.data(), mime.size()});
+        }
         res.base().set(http::field::connection, close ? "close" : "keep-alive");
         res.prepare_payload();
 
@@ -489,6 +491,7 @@ Response HttpServer::FileHandler::readFile(const std::filesystem::path &path)
         const auto len = filesystem::file_size(path);
         r.body.resize(len);
         file.read(r.body.data(), len);
+        r.target = path.string();
         return r;
     }
 
@@ -509,6 +512,57 @@ Response HttpServer::FileHandler::handleDir(const std::filesystem::path &path)
 Response HttpServer::FileHandler::listDir(const std::filesystem::__cxx11::path &path)
 {
     return {404, "Directoty listings are not supported"};
+}
+
+string_view Response::mimeType() const
+{
+    static const std::unordered_map<string_view, string_view> mime_types = {
+        {"json", "application/json; charset=utf-8"},
+        {"bin", "application/octet-stream"},
+        {"bz", "application/x-bzip"},
+        {"bz2", "application/x-bzip2"},
+        {"css", "text/css"},
+        {"csv", "text/csv"},
+        {"gz", "application/gzip"},
+        {"gif", "image/gif"},
+        {"htm", "text/html"},
+        {"html", "text/html"},
+        {"ico", "image/vnd.microsoft.icon"},
+        {"jar", "application/java-archive"},
+        {"jpeg", "image/jpeg"},
+        {"jpg", "image/jpeg"},
+        {"js", "text/javascript"},
+        {"mjs", "text/javascript"},
+        {"otf", "font/otf"},
+        {"png", "image/png"},
+        {"svg", "image/svg+xml"},
+        {"tar", "application/x-tar"},
+        {"tiff", "image/tiff"},
+        {"ttf", "font/ttf"},
+        {"txt", "text/plain; charset=utf-8"},
+        {"xhtml", "application/xhtml+xml"},
+        {"xml", "application/xml"},
+        {"zip", "application/zip"},
+        {"7z", "application/x-7z-compressed"},
+        {"jsonld", "application/ld+json"}
+    };
+
+    if (!mime_type.empty()) {
+        return mime_type;
+    }
+
+    if (!target.empty()) {
+        if (const auto pos = target.find_last_of('.'); pos != string::npos) {
+            if (target.size() > (pos + 1)) {
+                auto type = target.substr(pos + 1);
+                if (auto mt = mime_types.find(type); mt != mime_types.end()) {
+                    return mt->second;
+                }
+            }
+        }
+    }
+
+    return {};
 }
 
 

@@ -31,6 +31,9 @@ struct Response {
     int code = 200;
     std::string reason = "OK";
     std::string body;
+    std::string target; // The actual target
+    std::string_view mime_type;
+    std::string_view mimeType() const;
     bool close = false;
 };
 
@@ -65,7 +68,10 @@ public:
         }
 
         if (auto it = content_.find(std::string{t}) ; it != content_.end()) {
-            return {200, "OK", std::string{it->second}};
+            std::filesystem::path served = prefix_;
+            served /= t;
+
+            return {200, "OK", std::string{it->second}, served.string()};
         }
         return {404, "Document not found"};
     }

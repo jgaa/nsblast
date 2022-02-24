@@ -281,6 +281,42 @@ TEST(testEmbeddedHandler, fetchInvalid) {
     EXPECT_ANY_THROW(eh.onReqest({getRequest("/")}));
 }
 
+TEST(testMimeTypes, json) {
+    Response r{200, {}, {}, "test.json"};
+    EXPECT_EQ(r.mimeType(), "application/json; charset=utf-8");
+}
+
+TEST(testMimeTypes, htm) {
+    Response r{200, {}, {}, "test.htm"};
+    EXPECT_EQ(r.mimeType(), "text/html");
+}
+
+TEST(testMimeTypes, html) {
+    Response r{200, {}, {}, "test.html"};
+    EXPECT_EQ(r.mimeType(), "text/html");
+}
+
+TEST(testMimeTypes, invalid) {
+    Response r{200, {}, {}, "test"};
+    EXPECT_EQ(r.mimeType(), "");
+}
+
+TEST(testMimeTypes, preset) {
+    Response r{200, {}, {}, "foo/bar", "test/me"};
+    EXPECT_EQ(r.mimeType(), "test/me");
+}
+
+TEST(testMimeTypes, slashes) {
+    Response r{200, {}, {}, "/a/b/c/test.html"};
+    EXPECT_EQ(r.mimeType(), "text/html");
+}
+
+TEST(testMimeTypes, points) {
+    Response r{200, {}, {}, "a.b.c.test.html"};
+    EXPECT_EQ(r.mimeType(), "text/html");
+}
+
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
