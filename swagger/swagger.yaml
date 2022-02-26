@@ -679,6 +679,13 @@ definitions:
   #       type: "string"
   #   xml:
   #     name: "Tag"
+  
+  Uuid:
+    type: object
+    properties:
+      id:
+        type: string
+      
       
   Soa:
     type: object
@@ -718,8 +725,8 @@ definitions:
       ns:
         $ref: "#/definitions/Ns"
       namespace:
-        type: string
-        description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
+        $ref: "#/definitions/Uuid"
+        #description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
     
   # Pet:
   #   type: "object"
