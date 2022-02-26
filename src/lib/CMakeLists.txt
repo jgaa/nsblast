@@ -7,7 +7,7 @@ protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS data.proto)
 # See https://lastviking.eu/code_generator.html
 add_custom_command(
     COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
-    DEPENDS ${NSBLAST_ROOT}/swagger/index.html mkres
+    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
     OUTPUT swagger_res.cpp swagger_res.h
     COMMENT "Embedding swagger..."
     )

@@ -43,7 +43,7 @@ message Rr {
 
 message Zone {
     Soa soa = 1;
-    Ns ns = 2;
+    repeated Ns ns = 2;
     Uuid namespace = 3; // Reference to a tenants namespace
 }
 
