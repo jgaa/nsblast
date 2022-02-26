@@ -61,6 +61,12 @@ public:
         });
     }
 
+    void cancel() {
+        call_once(done_, [&] {
+            LOG_TRACE << "Log event cancelled";
+        });
+    }
+
     ~LogRequest() {
         flush();
     }
@@ -116,6 +122,7 @@ void DoSession(streamT& stream,
             break;
         if(ec) {
             LOG_ERROR << "read failed: " << ec.message();
+            lr.cancel();
             return;
         }
 
@@ -162,6 +169,7 @@ void DoSession(streamT& stream,
         // TODO: Check that the client accepts our json reply
         Request request {
                 req.base().target().to_string(),
+                {},
                 "auth",
                 req.body(),
                 to_type(req.base().method())
@@ -351,7 +359,7 @@ std::pair<bool, string_view> HttpServer::Authenticate(const std::string_view &au
     return {true, teste};
 }
 
-Response HttpServer::onRequest(const Request &req) noexcept
+Response HttpServer::onRequest(Request &req) noexcept
 {
     // Find the route!
     string_view tw{req.target.data(), req.target.size()};
@@ -384,6 +392,7 @@ Response HttpServer::onRequest(const Request &req) noexcept
     if (best_handler) {
         try {
             LOG_TRACE << "Found route '" << best_route << "' for target '" << tw << "'";
+            req.route = best_route;
             return best_handler->onReqest(req);
         } catch (const exception& ex) {
             LOG_ERROR << "Caught unexpectex exception from request: " << ex.what();

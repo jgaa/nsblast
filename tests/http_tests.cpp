@@ -35,8 +35,10 @@ void add_some_routes(T& h) {
     h.addRoute("/test/me/index.html", make_shared<TestHandler>(true));
 }
 
-auto getRequest(string_view target) {
-    return Request{string{target}, {}, {}, Request::Type::GET};
+Request& getRequest(string_view target) {
+    static Request instance;
+    instance = Request{string{target}};
+    return instance;
 }
 
 } // ns

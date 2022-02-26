@@ -44,3 +44,44 @@ target_link_libraries(http_tests
 )
 
 add_test(NAME http_tests COMMAND http_tests)
+
+
+####### api_tests
+
+add_executable(api_tests
+    api_tests.cpp
+    test_res.cpp test_res.h
+    )
+
+set_property(TARGET api_tests PROPERTY CXX_STANDARD 17)
+
+add_dependencies(api_tests
+    nsblastlib
+    googletest
+    )
+
+target_include_directories(api_tests
+    PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/include
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+target_link_libraries(api_tests
+    gtest
+    nsblastlib
+    ${Protobuf_LIBRARIES}
+    ${SNAPPY_LIBRARIES} # Not working
+    ${ROCKSDB_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    stdc++fs
+    lz4
+    snappy
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
+add_test(NAME api_tests COMMAND api_tests)

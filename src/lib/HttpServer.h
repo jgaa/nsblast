@@ -22,9 +22,10 @@ struct Request {
     };
 
     std::string target;
+    std::string_view route; // The part of the target that was matched by the chosen route.
     std::string auth; // from Authorization header
     std::string body;
-    Type type;
+    Type type = Type::GET;
 };
 
 struct Response {
@@ -98,7 +99,7 @@ public:
     std::pair<bool, std::string_view /* user name */> Authenticate(const std::string_view& authHeader);
 
     // Called by the HTTP server implementation template
-    Response onRequest(const Request& req) noexcept;
+    Response onRequest(Request& req) noexcept;
 
     // Serve a directory.
     // handles `index.html` by default. Lists the directory if there is no index.html.

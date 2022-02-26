@@ -21,8 +21,10 @@ public:
     std::optional<Zone> lookup(std::string_view fqdn);
 
     void deleteZone(std::string_view fqdn);
+    void writeZone(std::string_view fqdn, const Zone& Zone,
+                   std::optional<bool> isNew = {});
+
     void deleteEntry(std::string_view fqdn);
-    void writeZone(std::string_view fqdn, const Zone& Zone);
     void writeEntry(std::string_view fqdn, const Entry& Entry);
 
     auto getDb() noexcept {

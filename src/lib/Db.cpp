@@ -42,6 +42,11 @@ void Db::init()
     }
 }
 
+void Db::writeZone(std::string_view fqdn, const Zone &Zone, std::optional<bool> isNew)
+{
+
+}
+
 void Db::prepareDirs()
 {
     if (!filesystem::is_directory(config_.db_path)) {

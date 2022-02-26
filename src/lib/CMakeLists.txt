@@ -24,6 +24,8 @@ add_library(${PROJECT_NAME}
     DnsEngine.cpp
     HttpServer.h
     HttpServer.cpp
+    RestApi.h
+    RestApi.cpp
     swagger_res.cpp
     swagger_res.h
     )
