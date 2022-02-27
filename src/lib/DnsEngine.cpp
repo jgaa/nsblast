@@ -2,6 +2,7 @@
 #include "nsblast/DnsEngine.h"
 #include "HttpServer.h"
 #include "Db.h"
+#include "RestApi.h"
 #include "swagger_res.h"
 
 using namespace std;
@@ -20,6 +21,9 @@ public:
                        make_shared<EmbeddedHandler<embedded::resource_t>>(
                            embedded::swagger_files_,
                            "/api/swagger"));
+
+        http_.addRoute("/api/v1",
+                       make_shared<RestApi>(db_, config_));
     }
 
     void run() override {

@@ -15,7 +15,7 @@ namespace nsblast::lib {
 //}
 
 
-RestApi::RestApi(Db &db, Config &config)
+RestApi::RestApi(Db &db, const Config &config)
     : config_{config}, db_{db}
 {
 
@@ -26,7 +26,7 @@ Response RestApi::onReqest(const Request &req)
     const auto p = parse(req);
 
     if (p.what == "zone") {
-        onZone(req, p);
+        return onZone(req, p);
     }
 
     LOG_INFO << "Unknown subpath: " << p.what;
@@ -69,19 +69,32 @@ RestApi::Parsed RestApi::parse(const Request &req)
 
 Response RestApi::onZone(const Request &req, const Parsed &parsed)
 {
+    try {
     switch(req.type) {
-    case Request::Type::POST:
-        return updateZone(req, parsed, true, false);
-    case Request::Type::PUT:
-        return updateZone(req, parsed, false, false);
-    case Request::Type::PATCH:
-        return updateZone(req, parsed, {}, true);
-    case Request::Type::DELETE:
-        return deleteZone(req, parsed);
+        case Request::Type::POST:
+            return updateZone(req, parsed, true, false);
+        case Request::Type::PUT:
+            return updateZone(req, parsed, false, false);
+        case Request::Type::PATCH:
+            return updateZone(req, parsed, {}, true);
+        case Request::Type::DELETE:
+            return deleteZone(req, parsed);
 
-    default:
-        return {405, "Method not allowed"};
+        default:
+            return {405, "Method not allowed"};
+        }
+    } catch (const Db::AlreadyExistException& ex) {
+        LOG_INFO << "Operation failed: Already exists " << ex.what();
+        return {409, "The object already exists"};
+    } catch (const Db::NotFoundException& ex) {
+        LOG_INFO << "Object not found: " << ex.what();
+        return {404, "Object not found: "s + ex.what()};
+    } catch (const exception& ex) {
+        LOG_INFO << "Operation failed: " << ex.what();
+        return {400, "Operation failed: "s + ex.what()};
     }
+
+    return {500, "Not here"};
 }
 
 Response RestApi::updateZone(const Request &req, const Parsed &parsed,

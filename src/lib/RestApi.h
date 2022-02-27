@@ -18,7 +18,7 @@ public:
         std::string_view operation;
     };
 
-    RestApi(Db& db, Config& config);
+    RestApi(Db& db, const Config& config);
 
     Response onReqest(const Request &req) override;
 

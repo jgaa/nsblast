@@ -395,7 +395,8 @@ Response HttpServer::onRequest(Request &req) noexcept
             req.route = best_route;
             return best_handler->onReqest(req);
         } catch (const exception& ex) {
-            LOG_ERROR << "Caught unexpectex exception from request: " << ex.what();
+            LOG_ERROR << "Caught unexpected exception "
+                      << typeid(ex).name() << " from request: " << ex.what();
             return {500, "Internal server error"};
         }
     }
