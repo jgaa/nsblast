@@ -71,14 +71,21 @@ Response RestApi::onZone(const Request &req, const Parsed &parsed)
 {
     switch(req.type) {
     case Request::Type::POST:
-        return updateZone(req, parsed, true);
+        return updateZone(req, parsed, true, false);
+    case Request::Type::PUT:
+        return updateZone(req, parsed, false, false);
+    case Request::Type::PATCH:
+        return updateZone(req, parsed, {}, true);
+    case Request::Type::DELETE:
+        return deleteZone(req, parsed);
+
     default:
         return {405, "Method not allowed"};
     }
 }
 
 Response RestApi::updateZone(const Request &req, const Parsed &parsed,
-                             std::optional<bool> isNew)
+                             std::optional<bool> isNew, bool merge)
 {
     Zone zone;
 
@@ -86,7 +93,18 @@ Response RestApi::updateZone(const Request &req, const Parsed &parsed,
         return {400, "Failed to parse json payload into Zone object"};
     }
 
-    db_.writeZone(parsed.fdqn, zone, isNew);
+    db_.writeZone(parsed.fdqn, zone, isNew, merge);
+
+    return {};
+}
+
+Response RestApi::deleteZone(const Request &req, const Parsed& parsed)
+{
+    try {
+        db_.deleteZone(parsed.fdqn);
+    } catch (Db::NotFoundException&) {
+        return {404, "Not found"};
+    }
 
     return {};
 }

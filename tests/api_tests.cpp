@@ -63,7 +63,6 @@ TEST(testRestApi, serializeToZone2) {
     Zone zone;
     string json{R"({
                 "soa": {
-                  "name": "test",
                   "ttl": 1234,
                   "refresh": 11,
                   "retry": 12,
@@ -80,15 +79,12 @@ TEST(testRestApi, serializeToZone2) {
                     "fqdn": "ns2.example.com"
                   },
                 ],
-                "namespace": {
-                    "id": "foobar"
-                }
+                "tns": "foobar"
               })"};
     EXPECT_EQ(api.fromJson(json, zone), true);
-    EXPECT_EQ(zone.soa().name(), "test");
     EXPECT_EQ(zone.soa().ttl(), 1234);
     EXPECT_EQ(zone.soa().mname(), "a.b.c");
-    EXPECT_EQ(zone.namespace_().id(), "foobar");
+    EXPECT_EQ(zone.tns(), "foobar");
 }
 
 TEST(testRestApi, serializeToZone3) {
@@ -99,7 +95,6 @@ TEST(testRestApi, serializeToZone3) {
     Zone zone;
     string json{R"({
                 "soa": {
-                  "name": "test",
                   "ttl": 123
                 },
                 "ns": [
@@ -109,10 +104,9 @@ TEST(testRestApi, serializeToZone3) {
                 ]
               })"};
     EXPECT_EQ(api.fromJson(json, zone), true);
-    EXPECT_EQ(zone.soa().name(), "test");
     EXPECT_EQ(zone.soa().ttl(), 123);
     EXPECT_EQ(zone.soa().mname(), "");
-    EXPECT_EQ(zone.has_namespace_(), false);
+    EXPECT_EQ(zone.tns(), "");
 }
 
 TEST(testRestApi, serializeToZoneFail1) {

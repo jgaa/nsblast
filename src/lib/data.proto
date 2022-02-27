@@ -12,15 +12,14 @@ message Uuid {
 // -----------------  DNS data
 
 message Soa {
-    string name = 1;
-    uint64 serial = 2;
-    uint32 ttl = 3;
-    uint32 refresh = 4;
-    uint32 retry = 5;
-    uint32 expire = 6;
-    uint32 minimum = 7;
-    string mname = 8; // Primary ns
-    string rname = 9; // email (without '@'), zone admin
+    uint64 serial = 1;
+    uint32 ttl = 2;
+    uint32 refresh = 3;
+    uint32 retry = 4;
+    uint32 expire = 5;
+    uint32 minimum = 6;
+    string mname = 7; // Primary ns
+    string rname = 8; // email (without '@'), zone admin
 }
 
 message Mx {
@@ -44,7 +43,7 @@ message Rr {
 message Zone {
     Soa soa = 1;
     repeated Ns ns = 2;
-    Uuid namespace = 3; // Reference to a tenants namespace
+    string tns = 3; // Reference to a tenants namespace
 }
 
 message Entry {

@@ -39,7 +39,8 @@ public:
 private:
     Response onZone(const Request &req, const Parsed& parsed);
     Response updateZone(const Request &req, const Parsed& parsed,
-                        std::optional<bool> isNew = {});
+                        std::optional<bool> isNew, bool merge);
+    Response deleteZone(const Request &req, const Parsed& parsed);
 
     const Config& config_;
     Db& db_;

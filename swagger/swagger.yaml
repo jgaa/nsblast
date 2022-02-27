@@ -690,8 +690,6 @@ definitions:
   Soa:
     type: object
     properties:
-      name:
-        type: string
       ttl:
         type: integer
         description: Time in seconds that DNS servers can cache the zone before they need to refresh their cache
@@ -724,9 +722,9 @@ definitions:
         $ref: "#/definitions/Soa"
       ns:
         $ref: "#/definitions/Ns"
-      namespace:
-        $ref: "#/definitions/Uuid"
-        #description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
+      tns:
+        type: string
+        description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
     
   # Pet:
   #   type: "object"
