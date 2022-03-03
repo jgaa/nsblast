@@ -58,8 +58,32 @@ public:
     void writeZone(std::string_view fqdn, Zone& zone,
                    std::optional<bool> isNew = {}, bool mergeExisting = true);
 
-    void deleteEntry(std::string_view fqdn);
-    void writeEntry(std::string_view fqdn, const Entry& Entry);
+    /*! Looks up the information regarding a resource record if it exists */
+    std::optional<Rr> getRr(std::string_view fqdn);
+
+    /*! Delete a resource record
+     *
+     *  @param zone Zone key. Required to increment serial
+     *  @param fdqn key
+     *  @param type If set, only the matching resource type (a, aaaa, cname, txt) is
+     *      deleted. The key is deleted if there are no remaining resource types set.
+     */
+    void deleteRr(std::string_view zone, std::string_view fqdn, std::string_view type);
+
+    /*! add/update/replace the rr's.
+     *
+     *  @param zone - Zone key. Required to increment serial
+     *  @param fdqn - key
+     *  @param rr - rr's to set
+     *  @param isNew - If set, the rr record must be new, or must exist.
+     *  @param mergeExisting - If set unset resources in the rr argument are not
+     *      changed. Set resources will be replaced. Sanity checks are always
+     *      performed, fo example, if a cname is set, and a/aaaa entriues are unset,
+     *      existing a/aaaa entries are deleted.
+     */
+
+    void writeRr(std::string_view zone, std::string_view fqdn, const Rr& rr,
+        std::optional<bool> isNew = {}, bool mergeExisting = true);
 
     auto getDb() noexcept {
         assert(db_);

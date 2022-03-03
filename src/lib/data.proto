@@ -47,7 +47,6 @@ message Zone {
 }
 
 message Entry {
-    string path = 1; // fqdn of the zone this entry belong to
     Rr rr = 3;
 }
 

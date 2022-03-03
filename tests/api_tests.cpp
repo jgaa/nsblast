@@ -2,6 +2,8 @@
 #include "RestApi.h"
 #include "Db.h"
 
+#include "TmpDb.h"
+
 #include "test_res.h"
 
 using namespace std;
@@ -138,6 +140,64 @@ TEST(testRestApi, serializeToZoneFail3) {
     string json{R"(testing)"};
     EXPECT_EQ(api.fromJson(json, zone), false);
 }
+
+TEST(testRestApi, reduce) {
+    Config c;
+    Db d{c};
+    RestApi api{d, c};
+
+    EXPECT_EQ(api.reduce("a.b.c"), "b.c");
+    EXPECT_EQ(api.reduce("a.b"), "b");
+    EXPECT_EQ(api.reduce(".a.b"), "a.b");
+    EXPECT_EQ(api.reduce("."), "");
+    EXPECT_EQ(api.reduce(""), "");
+    EXPECT_EQ(api.reduce(api.reduce("a.b.c")), "c");
+}
+
+TEST(testRestApi, lookup) {
+    Config c;
+    TmpDb db;
+
+    Zone zone;
+    auto soa = new Soa;
+    soa->set_ttl(123);
+    zone.set_allocated_soa(soa);
+
+    EXPECT_NO_THROW(db->writeZone("example.com", zone, true));
+
+    RestApi api{*db, c};
+
+    auto zi = api.lookupZone("example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "example.com");
+
+    zi = api.lookupZone("a.b.example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "example.com");
+
+    EXPECT_NO_THROW(db->writeZone("b.example.com", zone, true));
+
+    zi = api.lookupZone("a.b.example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "b.example.com");
+
+    EXPECT_NO_THROW(db->writeZone("leaf.z.x.c.v.example.com", zone, true));
+
+    zi = api.lookupZone("z.x.c.v.example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "example.com");
+
+    zi = api.lookupZone("leaf.z.x.c.v.example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "leaf.z.x.c.v.example.com");
+    zi = api.lookupZone("aa.bb.cc.abc.leaf.z.x.c.v.example.com");
+    EXPECT_EQ(zi.has_value(), true);
+    EXPECT_EQ(zi->fdqn, "leaf.z.x.c.v.example.com");
+
+    zi = api.lookupZone("a.b.c.example2.com");
+    EXPECT_EQ(zi.has_value(), false);
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

@@ -25,6 +25,10 @@ Response RestApi::onReqest(const Request &req)
 {
     const auto p = parse(req);
 
+    if (p.what == "rr") {
+        return onResourceRecord(req, p);
+    }
+
     if (p.what == "zone") {
         return onZone(req, p);
     }
@@ -65,6 +69,30 @@ RestApi::Parsed RestApi::parse(const Request &req)
     }
 
     return p;
+}
+
+std::optional<RestApi::ZoneInfo> RestApi::lookupZone(std::string_view fdqn, bool recurseDown)
+{
+    for(; !fdqn.empty()
+        ; fdqn = (recurseDown ? reduce(fdqn) : std::string_view{})) {
+
+        if (auto z = db_.getZone(fdqn)) {
+            return ZoneInfo{string{fdqn}, *z};
+        }
+    }
+
+    return {};
+}
+
+string_view RestApi::reduce(const std::string_view fdqn)
+{
+    if (const auto pos = fdqn.find('.') ; pos != string_view::npos) {
+        if (const auto start = pos + 1 ; fdqn.size() > start) {
+            return fdqn.substr(start);
+        }
+    }
+
+    return {};
 }
 
 Response RestApi::onZone(const Request &req, const Parsed &parsed)
@@ -120,6 +148,61 @@ Response RestApi::deleteZone(const Request &req, const Parsed& parsed)
     }
 
     return {};
+}
+
+Response RestApi::onResourceRecord(const Request &req, const Parsed &parsed)
+{
+    // TODO: Check ownsership and RBAC access
+    auto zi = lookupZone(parsed.fdqn);
+    if (!zi) {
+        return {403, "Zone not created or not owed by you"};
+    }
+    LOG_TRACE << "Processing API request for " << parsed.fdqn << " belonging to zone " << zi->fdqn;
+
+    try {
+    switch(req.type) {
+        case Request::Type::POST:
+            return updateResourceRecord(req, parsed, *zi, true, false);
+        case Request::Type::PUT:
+            return updateResourceRecord(req, parsed, *zi, false, false);
+        case Request::Type::PATCH:
+            return updateResourceRecord(req, parsed, *zi, {}, true);
+        case Request::Type::DELETE:
+            return deleteResourceRecord(req, parsed);
+
+        default:
+            return {405, "Method not allowed"};
+        }
+    } catch (const Db::AlreadyExistException& ex) {
+        LOG_INFO << "Operation failed: Already exists " << ex.what();
+        return {409, "The object already exists"};
+    } catch (const Db::NotFoundException& ex) {
+        LOG_INFO << "Object not found: " << ex.what();
+        return {404, "Object not found: "s + ex.what()};
+    } catch (const exception& ex) {
+        LOG_INFO << "Operation failed: " << ex.what();
+        return {400, "Operation failed: "s + ex.what()};
+    }
+
+    return {500, "Not here"};
+}
+
+Response RestApi::updateResourceRecord(const Request &req, const Parsed &parsed, const ZoneInfo &zi, std::optional<bool> isNew, bool merge)
+{
+    Rr rr;
+
+    if (!fromJson(req.body, rr)) {
+        return {400, "Failed to parse json payload into Rr object"};
+    }
+
+    db_.writeRr(zi.fdqn, parsed.fdqn, zone, isNew, merge);
+
+    return {};
+}
+
+Response RestApi::deleteResourceRecord(const Request &req, const Parsed &parsed)
+{
+
 }
 
 } // ns

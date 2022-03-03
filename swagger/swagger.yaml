@@ -17,8 +17,8 @@ tags:
   # externalDocs:
   #   description: "A zone is an administrative unit in the DNS hirarcy"
   #   url: "http://swagger.io"
-- name: "fqdn"
-  description: "Operations about an individual DNS entry"
+- name: rr
+  description: Operations about an individual DNS entry's resource record(s)
 - name: "tenant"
   description: "Operations about a tenant"
 - name: "user"
@@ -67,7 +67,7 @@ paths:
     put:
       tags:
       - zone
-      summary: Update an existing zone
+      summary: Replace an existing zone
       description: ""
       operationId: "putZone"
       consumes:
@@ -89,7 +89,7 @@ paths:
     patch:
       tags:
       - zone
-      summary: Create a new zone or update an existing zone
+      summary: Create a new zone or update/merge an existing zone
       description: "Convenience method, like 'upsert' in a database operation"
       operationId: "PatchZone"
       consumes:
@@ -116,6 +116,129 @@ paths:
       responses:
         "404":
           description: "Zone not found"
+
+  /rr/{fdqn}:
+    parameters:
+    - in: path
+      name: fdqn
+      description: "fdqn to change, for example: 'www.example.com' The 'rr' entries contain a, aaa, cname and txt resource records for any fdqn. The Zone and Zone ownership is deduced from the fdqn. You can only uise fdqn's for zones already created under your account."
+      required: true
+      type: string
+
+    post:
+      tags:
+      - rr
+      summary: Add a new fdqn entry with resource records
+      description: "A new fdqn is added. Note that if you have a zone example.com, and you want to associate it with a ip address, you can use POST to create a new resource record with a/aaaa values in it."
+      operationId: "addFdqn"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Resource records for the fdqn
+        required: true
+        schema:
+          $ref: "#/definitions/Entry"
+      responses:
+        "400":
+          description: Invalid input
+        "403":
+          description: Zone not created or not owned by your account
+        "409":
+          description: fdqn already exist
+          
+      # security:
+      # - petstore_auth:
+      #   - "write:pets"
+      #   - "read:pets"
+    put:
+      tags:
+      - rr
+      summary: Replace the resource records for an existing fdqn
+      description: ""
+      operationId: "putFdqn"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the Zone"
+        required: true
+        schema:
+          $ref: "#/definitions/Entry"
+      responses:
+        "400":
+          description: Invalid input
+        "403":
+          description: Zone not created or not owned by your account
+        "404":
+          description: Fdqn not found
+    patch:
+      tags:
+      - rr
+      summary: Create a new fdqn or update/merge an existing fdqn
+      description: "Convenience method, like 'upsert' in a database operation. Note that only declared properties will be merged. For example, if you want to switch from cname to a/aaaa records, you specify 'cname' as an empty string and populate a and aaaa arrays with ip numbers. Or, if you don't specify for example 'txt', its value will remain unchanged."
+      operationId: "patchFdqn"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Resource records for the fdqn
+        required: true
+        schema:
+          $ref: "#/definitions/Entry"
+      responses:
+        "400":
+          description: Invalid input
+        "403":
+          description: Zone not created or not owned by your account
+        "404":
+          description: Fdqn not found
+    delete:
+      tags:
+      - rr
+      operationId: "deleteFdqn"
+      summary: Deletes an existing fdqn
+      description: "Deletes a fdqn and all it's resource records (except nn and soa, which are kept in the zone itself). For example, if you delete 'example.com', that means that the resource records are gone, exept the dns information and the soa properties."
+      responses:
+        "403":
+          description: Zone not created or not owned by your account
+        "404":
+          description: Fdqn not found
+          
+  /rr/{fdqn}/{rrname}:
+    parameters:
+    - in: path
+      name: fdqn
+      description: "fdqn to delete, for example: 'www.example.com' The Zone and Zone ownership is deduced from the fdqn. You can only use fdqn's for zones already created under your account."
+      required: true
+      type: string
+      
+    - in: path
+      name: rrname
+      required: true
+      type: string
+      description: "Narrows the request to a specific resource type. One of: a, aaaa, cname, txt"
+    delete:
+      tags:
+      - rr
+      operationId: "deleteFdqnRr"
+      summary: Deletes a resource record from an existing fdqn 
+      description: "Deletes the specified resource record from a fdqn. If no resource records remains, the fdqn is deleted as well." 
+      responses:
+        "403":
+          description: Zone not created or not owned by your account
+        "404":
+          description: Fdqn not found
+          
 #   /pet/findByStatus:
 #     get:
 #       tags:
@@ -725,6 +848,26 @@ definitions:
       tns:
         type: string
         description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
+        
+  Rra:
+    type: array
+    description: Resource type for A and AA entries
+    items:
+      type: string
+      
+  Entry:
+    type: object
+    properties:
+      a:
+        $ref: "#/definitions/Rra"
+      aaaa:
+        $ref: "#/definitions/Rra"
+      txt:
+        type: string
+      cname:
+        type: string
+        description: Redirect to another fdqn. If used, a and aaaa must be empty
+
     
   # Pet:
   #   type: "object"
