@@ -55,3 +55,19 @@ ExternalProject_Get_Property(rocksdb BINARY_DIR)
 set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
 set(ROCKSDB_FOUND TRUE)
 
+ExternalProject_Add(protobuf-external
+  PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+  GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
+  GIT_TAG "master"
+  CMAKE_ARGS
+    -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+    -Dprotobuf_BUILD_TESTS:BOOL=OFF
+    -Dprotobuf_BUILD_EXAMPLES:BOOL=OFF
+    -Dprotobuf_WITH_ZLIB:BOOL=OFF
+    -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
+)
+
+set(PROTOC ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/bin/protoc)
+set(Protobuf_LIBRARIES ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/lib/libprotobufd.a)
+

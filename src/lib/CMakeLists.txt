@@ -2,7 +2,14 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS data.proto)
+#protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS data.proto)
+
+add_custom_command(
+    COMMAND ${PROTOC} --cpp_out ${CMAKE_CURRENT_BINARY_DIR} --proto_path ${CMAKE_CURRENT_SOURCE_DIR} data.proto
+    DEPENDS protobuf-external data.proto
+    OUTPUT data.pb.cc data.pb.h
+    COMMENT "Compiling protobuf files"
+    )
 
 # See https://lastviking.eu/code_generator.html
 add_custom_command(
@@ -13,7 +20,7 @@ add_custom_command(
     )
 
 add_library(${PROJECT_NAME}
-    ${PROTO_SRCS} ${PROTO_HDRS}
+    data.pb.cc data.pb.h
     data.proto
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
@@ -42,7 +49,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
-add_dependencies(${PROJECT_NAME} rocksdb logfault mkres)
+add_dependencies(${PROJECT_NAME} rocksdb logfault mkres protobuf-external)
 
 install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Config
     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

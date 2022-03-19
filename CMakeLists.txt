@@ -24,7 +24,7 @@ include(GNUInstallDirs)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads)
-find_package(Protobuf REQUIRED)
+#find_package(Protobuf REQUIRED)
 find_package(BZip2 REQUIRED)
 #find_package(LZ4 REQUIRED)
 
