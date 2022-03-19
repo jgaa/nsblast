@@ -22,6 +22,42 @@ using ROCKSDB_NAMESPACE::TransactionDBOptions;
 
 namespace nsblast::lib {
 
+namespace {
+
+tuple<rocksdb::Status, string /* data */> validate(string_view what, Db::Transaction& trx,
+              rocksdb::ColumnFamilyHandle *handle,
+              string_view fdqn, std::optional<bool> isNew) {
+
+    string v;
+    const auto status = trx->GetForUpdate({}, handle, fdqn, &v);
+
+    if (isNew) {
+        if (*isNew) {
+            // Must be new
+            if (!status.IsNotFound()) {
+                LOG_WARN << what << ' ' << fdqn << " already exist!";
+                throw Db::AlreadyExistException{string{fdqn}};
+            }
+        } else {
+            // Must exist
+            if (status.IsNotFound()) {
+                LOG_WARN << what << ' ' << fdqn << " not found!";
+                throw Db::NotFoundException{string{fdqn}};
+            }
+        }
+    }
+
+    if (!status.ok() && !status.IsNotFound()) {
+        LOG_ERROR << what << ' '  << fdqn << " error: " << status.ToString();
+        throw runtime_error{"Database error"};
+    }
+
+    return make_tuple(status, v);
+}
+
+} // ns
+
+
 Db::Db(const Config &config)
     : config_{config}
 {
@@ -79,6 +115,25 @@ std::optional<Zone> Db::getZone(std::string_view fdqn)
     return z;
 }
 
+std::optional<std::tuple<string, Zone> > Db::findZone(std::string_view fdqn)
+{
+    auto target = fdqn;
+
+    while(!target.empty()) {
+        if (auto z = getZone(target)) {
+            return make_tuple(string{target}, *z);
+        }
+
+        if (const auto pos = target.find('.') ; pos != string_view::npos) {
+            target = target.substr(pos + 1);
+        } else {
+            break;
+        }
+    }
+
+    return {};
+}
+
 void Db::deleteZone(std::string_view fdqn)
 {
     LOG_INFO << "Deleting zone " << fdqn;
@@ -109,34 +164,16 @@ void Db::writeZone(string_view fdqn, Zone &zone,
     bool is_update = false;
 
     {
-        string v;
-        const auto get_status = trx->GetForUpdate({}, zoneHandle(), fdqn, &v);
-
-        if (isNew) {
-            if (*isNew) {
-                // Must be new
-                if (!get_status.IsNotFound()) {
-                    LOG_WARN << "Zone " << fdqn << " already exist!";
-                    throw AlreadyExistException{string{fdqn}};
-                }
-            } else {
-                // Must exist
-                if (get_status.IsNotFound()) {
-                    LOG_WARN << "Zone " << fdqn << " not found!";
-                    throw NotFoundException{string{fdqn}};
-                }
-            }
-        }
-
-        if (!get_status.ok() && !get_status.IsNotFound()) {
-            LOG_ERROR << "Zone " << fdqn << " error: " << get_status.ToString();
-            throw runtime_error{"Database error"};
-        }
+        const auto [get_status, data] = validate("Zone",
+                                         trx,
+                                         zoneHandle(),
+                                         fdqn,
+                                         isNew);
 
         if (get_status.ok()) {
             is_update = true;
             Zone old;
-            old.ParseFromString(v);
+            old.ParseFromString(data);
 
             const auto new_serial = zone.soa().serial() ? 0 : old.soa().serial() + 1;
 
@@ -187,6 +224,84 @@ void Db::writeZone(string_view fdqn, Zone &zone,
 
     if (!is_update) {
         LOG_INFO << "Added zone " << fdqn;
+    }
+}
+
+void Db::incrementZone(Transaction& trx, std::string_view fdqn)
+{
+    // TODO: Put the zone serial in a serapare key as it may
+    //       increment frequently
+    string data;
+    auto status = trx->GetForUpdate({}, zoneHandle(), fdqn, &data);
+    if (!status.ok()) {
+        LOG_ERROR << "Failed to get (for serial-no update) zone " << fdqn
+                  << ": " << status.ToString();
+        throw runtime_error{"Zone error"};
+    }
+
+    Zone z;
+    z.ParseFromString(data);
+    auto soa = make_unique<Soa>(z.soa());
+    soa->set_serial(soa->serial() + 1);
+    z.set_allocated_soa(soa.release());
+    z.SerializeToString(&data);
+    status = trx->Put(zoneHandle(), fdqn, data);
+
+    if (!status.ok()) {
+        LOG_ERROR << "Failed to save zone" << fdqn << ": " << status.ToString();
+        throw runtime_error{"Write error"};
+    }
+
+    LOG_DEBUG << "Incremented zone " << fdqn << ": " << z.soa().serial();
+}
+
+void Db::writeRr(std::string_view zone, std::string_view fdqn, Rr &rr, std::optional<bool> isNew, bool mergeExisting)
+{
+    LOG_DEBUG << "Writing zone " << fdqn;
+
+    Transaction trx(*this);
+    bool is_update = false;
+
+    {
+        const auto [get_status, data] = validate("Rr",
+                                         trx,
+                                         entryHandle(),
+                                         fdqn,
+                                         isNew);
+        if (get_status.ok()) {
+            is_update = true;
+            Rr old;
+            old.ParseFromString(data);
+
+            if (mergeExisting) {
+                Rr tmp{old};
+                tmp.MergeFrom(rr);
+                rr = tmp;
+                rr.MergeFrom(old);
+            }
+        }
+    }
+
+    string r;
+    rr.SerializeToString(&r);
+    const auto status = trx->Put(entryHandle(), fdqn, r);
+
+    if (!is_update && status.IsOkOverwritten()) {
+        // Somehow someone else managed to add the key before us, so abort now.
+        LOG_WARN << LOG_WARN << "Rr " << fdqn << " already existed!";
+        throw AlreadyExistException{string{fdqn}};
+    }
+
+    if (!status.ok()) {
+        LOG_ERROR << "Failed to save zone" << fdqn << ": " << status.ToString();
+        throw runtime_error{"Write error"};
+    }
+
+    incrementZone(trx, zone);
+    trx.commit();
+
+    if (!is_update) {
+        LOG_INFO << "Added Rr " << fdqn << " to zone " << zone;
     }
 }
 

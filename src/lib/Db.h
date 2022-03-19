@@ -51,12 +51,19 @@ public:
     /*! Looks up the information regarding a zone if it exists */
     std::optional<Zone> getZone(std::string_view fqdn);
 
+    /*! Search for a zone owning the fdqn */
+    std::optional<std::tuple<std::string /*fdqn */, Zone>>
+    findZone(std::string_view fqdn);
+
     void deleteZone(std::string_view fqdn);
 
     // Overwriting a zone automatically increments it's serial number
     // if `zone->serial() == 0`
     void writeZone(std::string_view fqdn, Zone& zone,
                    std::optional<bool> isNew = {}, bool mergeExisting = true);
+
+    // Increments the serial number of the zone
+    void incrementZone(Transaction& trx, std::string_view fqdn);
 
     /*! Looks up the information regarding a resource record if it exists */
     std::optional<Rr> getRr(std::string_view fqdn);
@@ -82,7 +89,7 @@ public:
      *      existing a/aaaa entries are deleted.
      */
 
-    void writeRr(std::string_view zone, std::string_view fqdn, const Rr& rr,
+    void writeRr(std::string_view zone, std::string_view fdqn, Rr& rr,
         std::optional<bool> isNew = {}, bool mergeExisting = true);
 
     auto getDb() noexcept {
@@ -95,7 +102,7 @@ public:
     }
 
     auto entryHandle() noexcept {
-        return cfh_[ZONE];
+        return cfh_[ENTRY];
     }
 
 private:

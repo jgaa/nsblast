@@ -35,9 +35,9 @@ message Ns {
 message Rr {
     repeated bytes a = 1; // always 4 bytes for each entry
     repeated bytes aa = 2; // always 16 bytes for each entry
-    string cname = 3;
-    string txt = 4;
-    Mx mx = 5;
+    optional string cname = 3;
+    optional string txt = 4;
+    optional Mx mx = 5;
 }
 
 message Zone {

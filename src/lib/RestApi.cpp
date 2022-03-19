@@ -195,7 +195,10 @@ Response RestApi::updateResourceRecord(const Request &req, const Parsed &parsed,
         return {400, "Failed to parse json payload into Rr object"};
     }
 
-    db_.writeRr(zi.fdqn, parsed.fdqn, zone, isNew, merge);
+    if (auto r = db_.findZone(zi.fdqn)) {
+        const auto& [zoneFdqn, zone] = *r;
+        db_.writeRr(zoneFdqn, zi.fdqn, rr, isNew, merge);
+    }
 
     return {};
 }

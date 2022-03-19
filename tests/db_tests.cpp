@@ -286,6 +286,76 @@ TEST(deleteZone, nonexisting) {
     EXPECT_ANY_THROW(db->deleteZone("example.com"));
 }
 
+TEST(findZone, fullMatch) {
+    TmpDb db;
+
+    Zone zone;
+    auto soa = new Soa;
+    soa->set_ttl(123);
+    zone.set_allocated_soa(soa);
+
+    EXPECT_NO_THROW(db->writeZone("example.com", zone, true));
+
+    // Verify
+    auto r = db->findZone("example.com");
+    EXPECT_EQ(r.has_value(), true);
+    if (r) {
+        const auto& [fdqn, z] = *r;
+        EXPECT_EQ(z.soa().ttl(), 123);
+        EXPECT_EQ(z.soa().serial(), 0);
+        EXPECT_EQ(fdqn, "example.com");
+    }
+}
+
+TEST(findZone, partialMatch) {
+    TmpDb db;
+
+    Zone zone;
+    auto soa = new Soa;
+    soa->set_ttl(123);
+    zone.set_allocated_soa(soa);
+
+    EXPECT_NO_THROW(db->writeZone("example.com", zone, true));
+
+    // Verify
+    auto r = db->findZone("a.example.com");
+    EXPECT_EQ(r.has_value(), true);
+    if (r) {
+        const auto& [fdqn, z] = *r;
+        EXPECT_EQ(z.soa().ttl(), 123);
+        EXPECT_EQ(z.soa().serial(), 0);
+        EXPECT_EQ(fdqn, "example.com");
+    }
+
+    // Verify
+    r = db->findZone("a.b.c.d.example.com");
+    EXPECT_EQ(r.has_value(), true);
+    if (r) {
+        const auto& [fdqn, z] = *r;
+        EXPECT_EQ(z.soa().ttl(), 123);
+        EXPECT_EQ(z.soa().serial(), 0);
+        EXPECT_EQ(fdqn, "example.com");
+    }
+}
+
+TEST(findZone, noMatch) {
+    TmpDb db;
+
+    Zone zone;
+    auto soa = new Soa;
+    soa->set_ttl(123);
+    zone.set_allocated_soa(soa);
+
+    EXPECT_NO_THROW(db->writeZone("example.com", zone, true));
+
+    // Verify
+    auto r = db->findZone("example.net");
+    EXPECT_EQ(r.has_value(), false);
+    r = db->findZone("anexample.com");
+    EXPECT_EQ(r.has_value(), false);
+    r = db->findZone("a.b.c.d.e.f.g.e.xample.com");
+    EXPECT_EQ(r.has_value(), false);
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

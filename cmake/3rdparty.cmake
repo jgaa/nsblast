@@ -68,6 +68,11 @@ ExternalProject_Add(protobuf-external
     -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
 )
 
+string(TOLOWER ${CMAKE_BUILD_TYPE} LOWERCASE_CMAKE_BUILD_TYPE)
+if (LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
+    set(libproto_prostfix_tag "d")
+endif()
+
 set(PROTOC ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/bin/protoc)
-set(Protobuf_LIBRARIES ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/lib/libprotobufd.a)
+set(Protobuf_LIBRARIES ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/lib/libprotobuf${libproto_prostfix_tag}.a)
 
