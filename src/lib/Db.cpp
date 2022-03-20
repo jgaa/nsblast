@@ -329,22 +329,12 @@ void Db::writeRr(std::string_view zone, std::string_view fqdn, Rr &rr, std::opti
                if (!rr.has_txt() && old.has_txt()) {
                    rr.set_txt(old.txt());
                }
-               if (old.has_mx()) {
-                   auto mx = make_unique<Mx>();
-                   if (rr.has_mx()) {
-                       *mx = rr.mx();
+               if (!rr.mx_size() &&  old.mx_size()) {
+                   for(const auto& mx : old.mx()) {
+                       auto nmx = rr.add_mx();
+                       assert(nmx);
+                       nmx->CopyFrom(mx);
                    }
-                   if (!mx->ttl()) {
-                       mx->set_ttl(old.mx().ttl());
-                   }
-                   if (!mx->priority()) {
-                       mx->set_priority(old.mx().priority());
-                   }
-                   if (mx->host().empty()) {
-                       mx->set_host(old.mx().host());
-                   }
-
-                   rr.set_allocated_mx(mx.release());
                }
             }
         }

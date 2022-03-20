@@ -37,9 +37,7 @@ message Rr {
     repeated string aa = 2;
     optional string cname = 3;
     optional string txt = 4;
-
-    // TODO: Make repeated
-    optional Mx mx = 5;
+    repeated Mx mx = 5;
 }
 
 message Zone {

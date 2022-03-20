@@ -855,6 +855,17 @@ definitions:
     items:
       type: string
       
+  Mx:
+    type: array
+    items:
+      properties:
+        ttl:
+          type: integer
+        priority:
+          type: integer
+        host:
+          type: string
+        
   Entry:
     type: object
     properties:
@@ -867,6 +878,8 @@ definitions:
       cname:
         type: string
         description: Redirect to another fdqn. If used, a and aaaa must be empty
+      mx:
+        $ref: "#/definitions/Mx"
 
     
   # Pet:

@@ -7,8 +7,6 @@
 #include "test_res.h"
 
 using namespace std;
-//using namespace nsblast;
-//using namespace nsblast::lib;
 
 namespace nsblast::lib {
 
@@ -255,7 +253,7 @@ TEST(testRrApi, updateResourceRecordAdd) {
         EXPECT_EQ(rr->aa_size(), 0);
         EXPECT_EQ(rr->txt(), "teste");
         EXPECT_EQ(rr->cname(), "");
-        EXPECT_EQ(rr->has_mx(), false);
+        EXPECT_EQ(rr->mx_size(), 0);
     }
 }
 
@@ -293,7 +291,7 @@ TEST(testRrApi, updateResourceRecordMerge) {
         EXPECT_EQ(rr->aa_size(), 0);
         EXPECT_EQ(rr->txt(), "teste");
         EXPECT_EQ(rr->cname(), "");
-        EXPECT_EQ(rr->has_mx(), false);
+        EXPECT_EQ(rr->mx_size(), 0);
     }
 }
 
@@ -331,7 +329,7 @@ TEST(testRrApi, updateResourceRecordReplace) {
         EXPECT_EQ(rr->aa_size(), 0);
         EXPECT_EQ(rr->txt(), "");
         EXPECT_EQ(rr->cname(), "");
-        EXPECT_EQ(rr->has_mx(), false);
+        EXPECT_EQ(rr->mx_size(), 0);
     }
 }
 
