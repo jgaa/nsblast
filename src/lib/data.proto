@@ -33,10 +33,12 @@ message Ns {
 }
 
 message Rr {
-    repeated bytes a = 1; // always 4 bytes for each entry
-    repeated bytes aa = 2; // always 16 bytes for each entry
+    repeated string a = 1;
+    repeated string aa = 2;
     optional string cname = 3;
     optional string txt = 4;
+
+    // TODO: Make repeated
     optional Mx mx = 5;
 }
 

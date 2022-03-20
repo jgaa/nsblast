@@ -42,7 +42,7 @@ RestApi::Parsed RestApi::parse(const Request &req)
     // target syntax: /api/v1/zone/{fqdn}[/verb]
     //                        ^
     //                        +---                  = what
-    //                        |    -----            = fdqn
+    //                        |    -----            = fqdn
     //                        |           ----      = operation
     //                        +-----------------    = base
 
@@ -57,13 +57,13 @@ RestApi::Parsed RestApi::parse(const Request &req)
         p.what = p.base.substr(0, pos);
 
         if (p.base.size() > pos) {
-            p.fdqn = p.base.substr(pos + 1);
+            p.fqdn = p.base.substr(pos + 1);
 
-            if (auto end = p.fdqn.find('/') ; end != string_view::npos) {
-                if (p.fdqn.size() > end) {
-                    p.operation = p.fdqn.substr(end + 1);
+            if (auto end = p.fqdn.find('/') ; end != string_view::npos) {
+                if (p.fqdn.size() > end) {
+                    p.operation = p.fqdn.substr(end + 1);
                 }
-                p.fdqn = p.fdqn.substr(0, end);
+                p.fqdn = p.fqdn.substr(0, end);
             }
         }
     }
@@ -71,24 +71,24 @@ RestApi::Parsed RestApi::parse(const Request &req)
     return p;
 }
 
-std::optional<RestApi::ZoneInfo> RestApi::lookupZone(std::string_view fdqn, bool recurseDown)
+std::optional<RestApi::ZoneInfo> RestApi::lookupZone(std::string_view fqdn, bool recurseDown)
 {
-    for(; !fdqn.empty()
-        ; fdqn = (recurseDown ? reduce(fdqn) : std::string_view{})) {
+    for(; !fqdn.empty()
+        ; fqdn = (recurseDown ? reduce(fqdn) : std::string_view{})) {
 
-        if (auto z = db_.getZone(fdqn)) {
-            return ZoneInfo{string{fdqn}, *z};
+        if (auto z = db_.getZone(fqdn)) {
+            return ZoneInfo{string{fqdn}, *z};
         }
     }
 
     return {};
 }
 
-string_view RestApi::reduce(const std::string_view fdqn)
+string_view RestApi::reduce(const std::string_view fqdn)
 {
-    if (const auto pos = fdqn.find('.') ; pos != string_view::npos) {
-        if (const auto start = pos + 1 ; fdqn.size() > start) {
-            return fdqn.substr(start);
+    if (const auto pos = fqdn.find('.') ; pos != string_view::npos) {
+        if (const auto start = pos + 1 ; fqdn.size() > start) {
+            return fqdn.substr(start);
         }
     }
 
@@ -134,7 +134,7 @@ Response RestApi::updateZone(const Request &req, const Parsed &parsed,
         return {400, "Failed to parse json payload into Zone object"};
     }
 
-    db_.writeZone(parsed.fdqn, zone, isNew, merge);
+    db_.writeZone(parsed.fqdn, zone, isNew, merge);
 
     return {};
 }
@@ -142,7 +142,7 @@ Response RestApi::updateZone(const Request &req, const Parsed &parsed,
 Response RestApi::deleteZone(const Request &req, const Parsed& parsed)
 {
     try {
-        db_.deleteZone(parsed.fdqn);
+        db_.deleteZone(parsed.fqdn);
     } catch (Db::NotFoundException&) {
         return {404, "Not found"};
     }
@@ -153,11 +153,11 @@ Response RestApi::deleteZone(const Request &req, const Parsed& parsed)
 Response RestApi::onResourceRecord(const Request &req, const Parsed &parsed)
 {
     // TODO: Check ownsership and RBAC access
-    auto zi = lookupZone(parsed.fdqn);
+    auto zi = lookupZone(parsed.fqdn);
     if (!zi) {
         return {403, "Zone not created or not owed by you"};
     }
-    LOG_TRACE << "Processing API request for " << parsed.fdqn << " belonging to zone " << zi->fdqn;
+    LOG_TRACE << "Processing API request for " << parsed.fqdn << " belonging to zone " << zi->fqdn;
 
     try {
     switch(req.type) {
@@ -168,7 +168,7 @@ Response RestApi::onResourceRecord(const Request &req, const Parsed &parsed)
         case Request::Type::PATCH:
             return updateResourceRecord(req, parsed, *zi, {}, true);
         case Request::Type::DELETE:
-            return deleteResourceRecord(req, parsed);
+            return deleteResourceRecord(req, parsed, *zi);
 
         default:
             return {405, "Method not allowed"};
@@ -190,22 +190,20 @@ Response RestApi::onResourceRecord(const Request &req, const Parsed &parsed)
 Response RestApi::updateResourceRecord(const Request &req, const Parsed &parsed, const ZoneInfo &zi, std::optional<bool> isNew, bool merge)
 {
     Rr rr;
-
     if (!fromJson(req.body, rr)) {
         return {400, "Failed to parse json payload into Rr object"};
     }
 
-    if (auto r = db_.findZone(zi.fdqn)) {
-        const auto& [zoneFdqn, zone] = *r;
-        db_.writeRr(zoneFdqn, zi.fdqn, rr, isNew, merge);
-    }
+    db_.writeRr(zi.fqdn, parsed.fqdn, rr, isNew, merge);
 
     return {};
 }
 
-Response RestApi::deleteResourceRecord(const Request &req, const Parsed &parsed)
+Response RestApi::deleteResourceRecord(const Request &req, const Parsed &parsed,
+                                       const ZoneInfo &zi)
 {
-
+    db_.deleteRr(zi.fqdn, parsed.fqdn, {});
+    return {};
 }
 
 } // ns

@@ -1,4 +1,5 @@
 
+#include "google/protobuf/util/json_util.h"
 #include "gtest/gtest.h"
 #include "RestApi.h"
 
@@ -300,10 +301,10 @@ TEST(findZone, fullMatch) {
     auto r = db->findZone("example.com");
     EXPECT_EQ(r.has_value(), true);
     if (r) {
-        const auto& [fdqn, z] = *r;
+        const auto& [fqdn, z] = *r;
         EXPECT_EQ(z.soa().ttl(), 123);
         EXPECT_EQ(z.soa().serial(), 0);
-        EXPECT_EQ(fdqn, "example.com");
+        EXPECT_EQ(fqdn, "example.com");
     }
 }
 
@@ -321,20 +322,20 @@ TEST(findZone, partialMatch) {
     auto r = db->findZone("a.example.com");
     EXPECT_EQ(r.has_value(), true);
     if (r) {
-        const auto& [fdqn, z] = *r;
+        const auto& [fqdn, z] = *r;
         EXPECT_EQ(z.soa().ttl(), 123);
         EXPECT_EQ(z.soa().serial(), 0);
-        EXPECT_EQ(fdqn, "example.com");
+        EXPECT_EQ(fqdn, "example.com");
     }
 
     // Verify
     r = db->findZone("a.b.c.d.example.com");
     EXPECT_EQ(r.has_value(), true);
     if (r) {
-        const auto& [fdqn, z] = *r;
+        const auto& [fqdn, z] = *r;
         EXPECT_EQ(z.soa().ttl(), 123);
         EXPECT_EQ(z.soa().serial(), 0);
-        EXPECT_EQ(fdqn, "example.com");
+        EXPECT_EQ(fqdn, "example.com");
     }
 }
 
@@ -355,6 +356,135 @@ TEST(findZone, noMatch) {
     EXPECT_EQ(r.has_value(), false);
     r = db->findZone("a.b.c.d.e.f.g.e.xample.com");
     EXPECT_EQ(r.has_value(), false);
+}
+
+TEST(writeRr, addNew) {
+    TmpDb db;
+    string_view zone_fqdn{"example.com"};
+    string_view rr_fqdn{"a.b.c.example.com"};
+
+    Zone zone;
+    EXPECT_NO_THROW(db->writeZone(zone_fqdn, zone, true));
+    {
+        auto z = db->getZone(zone_fqdn);
+        EXPECT_EQ(z->soa().serial(), 0);
+    }
+
+    Rr rr;
+    rr.add_a("127.0.0.1");
+    rr.set_txt("testing");
+
+    db->writeRr(zone_fqdn, rr_fqdn, rr, true);
+
+    {
+        // Check that zone serial no is incremented
+        auto z = db->getZone(zone_fqdn);
+        EXPECT_EQ(z->soa().serial(), 1);
+    }
+
+    auto r = db->getRr(rr_fqdn);
+    EXPECT_EQ(r.has_value(), true);
+    EXPECT_EQ(r.value().a_size(), 1);
+    EXPECT_EQ(r.value().a(0), "127.0.0.1");
+    EXPECT_EQ(r.value().txt(), "testing");
+}
+
+TEST(writeRr, addExisting) {
+    TmpDb db;
+    string_view zone_fqdn{"example.com"};
+    string_view rr_fqdn{"a.b.c.example.com"};
+
+    Zone zone;
+    EXPECT_NO_THROW(db->writeZone(zone_fqdn, zone, true));
+    {
+        auto z = db->getZone(zone_fqdn);
+        EXPECT_EQ(z->soa().serial(), 0);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.1");
+        db->writeRr(zone_fqdn, rr_fqdn, rr, true);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.2");
+        EXPECT_ANY_THROW(db->writeRr(zone_fqdn, rr_fqdn, rr, true));
+    }
+}
+
+TEST(writeRr, updateExisting) {
+    TmpDb db;
+    string_view zone_fqdn{"example.com"};
+    string_view rr_fqdn{"a.b.c.example.com"};
+
+    Zone zone;
+    EXPECT_NO_THROW(db->writeZone(zone_fqdn, zone, true));
+    {
+        auto z = db->getZone(zone_fqdn);
+        EXPECT_EQ(z->soa().serial(), 0);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.1");
+        rr.add_aa("0:0:0:0:0:0:0:1");
+        rr.set_txt("testing");
+        db->writeRr(zone_fqdn, rr_fqdn, rr, true);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.2");
+        rr.add_a("127.0.0.3");
+        db->writeRr(zone_fqdn, rr_fqdn, rr, false);
+    }
+
+    auto r = db->getRr(rr_fqdn);
+    EXPECT_EQ(r.has_value(), true);
+    EXPECT_EQ(r.value().a_size(), 2);
+    EXPECT_EQ(r.value().a(0), "127.0.0.2");
+    EXPECT_EQ(r.value().a(1), "127.0.0.3");
+    EXPECT_EQ(r.value().aa_size(), 1);
+    EXPECT_EQ(r.value().aa(0), "0:0:0:0:0:0:0:1");
+    EXPECT_EQ(r.value().txt(), "testing");
+}
+
+TEST(writeRr, replaceExisting) {
+    TmpDb db;
+    string_view zone_fqdn{"example.com"};
+    string_view rr_fqdn{"a.b.c.example.com"};
+
+    Zone zone;
+    EXPECT_NO_THROW(db->writeZone(zone_fqdn, zone, true));
+    {
+        auto z = db->getZone(zone_fqdn);
+        EXPECT_EQ(z->soa().serial(), 0);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.1");
+        rr.add_aa("0:0:0:0:0:0:0:1");
+        rr.set_txt("testing");
+        db->writeRr(zone_fqdn, rr_fqdn, rr, true);
+    }
+
+    {
+        Rr rr;
+        rr.add_a("127.0.0.2");
+        rr.add_a("127.0.0.3");
+        db->writeRr(zone_fqdn, rr_fqdn, rr, false, false);
+    }
+
+    auto r = db->getRr(rr_fqdn);
+    EXPECT_EQ(r.has_value(), true);
+    EXPECT_EQ(r.value().a_size(), 2);
+    EXPECT_EQ(r.value().a(0), "127.0.0.2");
+    EXPECT_EQ(r.value().a(1), "127.0.0.3");
+    EXPECT_EQ(r.value().aa_size(), 0);
+    EXPECT_EQ(r.value().txt(), "");
 }
 
 int main(int argc, char **argv) {

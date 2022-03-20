@@ -51,8 +51,8 @@ public:
     /*! Looks up the information regarding a zone if it exists */
     std::optional<Zone> getZone(std::string_view fqdn);
 
-    /*! Search for a zone owning the fdqn */
-    std::optional<std::tuple<std::string /*fdqn */, Zone>>
+    /*! Search for a zone owning the fqdn */
+    std::optional<std::tuple<std::string /*fqdn */, Zone>>
     findZone(std::string_view fqdn);
 
     void deleteZone(std::string_view fqdn);
@@ -71,7 +71,7 @@ public:
     /*! Delete a resource record
      *
      *  @param zone Zone key. Required to increment serial
-     *  @param fdqn key
+     *  @param fqdn key
      *  @param type If set, only the matching resource type (a, aaaa, cname, txt) is
      *      deleted. The key is deleted if there are no remaining resource types set.
      */
@@ -80,7 +80,7 @@ public:
     /*! add/update/replace the rr's.
      *
      *  @param zone - Zone key. Required to increment serial
-     *  @param fdqn - key
+     *  @param fqdn - key
      *  @param rr - rr's to set
      *  @param isNew - If set, the rr record must be new, or must exist.
      *  @param mergeExisting - If set unset resources in the rr argument are not
@@ -89,7 +89,7 @@ public:
      *      existing a/aaaa entries are deleted.
      */
 
-    void writeRr(std::string_view zone, std::string_view fdqn, Rr& rr,
+    void writeRr(std::string_view zone, std::string_view fqdn, Rr& rr,
         std::optional<bool> isNew = {}, bool mergeExisting = true);
 
     auto getDb() noexcept {

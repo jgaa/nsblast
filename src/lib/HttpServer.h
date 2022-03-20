@@ -28,7 +28,7 @@ struct Request {
     Type type = Type::GET;
 };
 
-struct Response {
+struct Response {    
     int code = 200;
     std::string reason = "OK";
     std::string body;
@@ -36,6 +36,10 @@ struct Response {
     std::string_view mime_type;
     std::string_view mimeType() const;
     bool close = false;
+
+    bool ok() const noexcept {
+        return code / 100 == 2;
+    }
 };
 
 class RequestHandler {

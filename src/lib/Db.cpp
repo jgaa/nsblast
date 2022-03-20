@@ -26,29 +26,29 @@ namespace {
 
 tuple<rocksdb::Status, string /* data */> validate(string_view what, Db::Transaction& trx,
               rocksdb::ColumnFamilyHandle *handle,
-              string_view fdqn, std::optional<bool> isNew) {
+              string_view fqdn, std::optional<bool> isNew) {
 
     string v;
-    const auto status = trx->GetForUpdate({}, handle, fdqn, &v);
+    const auto status = trx->GetForUpdate({}, handle, fqdn, &v);
 
     if (isNew) {
         if (*isNew) {
             // Must be new
             if (!status.IsNotFound()) {
-                LOG_WARN << what << ' ' << fdqn << " already exist!";
-                throw Db::AlreadyExistException{string{fdqn}};
+                LOG_WARN << what << ' ' << fqdn << " already exist!";
+                throw Db::AlreadyExistException{string{fqdn}};
             }
         } else {
             // Must exist
             if (status.IsNotFound()) {
-                LOG_WARN << what << ' ' << fdqn << " not found!";
-                throw Db::NotFoundException{string{fdqn}};
+                LOG_WARN << what << ' ' << fqdn << " not found!";
+                throw Db::NotFoundException{string{fqdn}};
             }
         }
     }
 
     if (!status.ok() && !status.IsNotFound()) {
-        LOG_ERROR << what << ' '  << fdqn << " error: " << status.ToString();
+        LOG_ERROR << what << ' '  << fqdn << " error: " << status.ToString();
         throw runtime_error{"Database error"};
     }
 
@@ -99,14 +99,14 @@ void Db::init()
     }
 }
 
-std::optional<Zone> Db::getZone(std::string_view fdqn)
+std::optional<Zone> Db::getZone(std::string_view fqdn)
 {
-    LOG_TRACE << "Getting zone " << fdqn;
+    LOG_TRACE << "Getting zone " << fqdn;
 
     string v;
-    const auto status = db_->Get(ReadOptions{}, zoneHandle(), fdqn, &v);
+    const auto status = db_->Get(ReadOptions{}, zoneHandle(), fqdn, &v);
     if (!status.ok()) {
-        LOG_DEBUG << "Failed to get zone" << fdqn << ": " << status.ToString();
+        LOG_DEBUG << "Failed to get zone" << fqdn << ": " << status.ToString();
         return {};
     }
 
@@ -115,9 +115,9 @@ std::optional<Zone> Db::getZone(std::string_view fdqn)
     return z;
 }
 
-std::optional<std::tuple<string, Zone> > Db::findZone(std::string_view fdqn)
+std::optional<std::tuple<string, Zone> > Db::findZone(std::string_view fqdn)
 {
-    auto target = fdqn;
+    auto target = fqdn;
 
     while(!target.empty()) {
         if (auto z = getZone(target)) {
@@ -134,31 +134,31 @@ std::optional<std::tuple<string, Zone> > Db::findZone(std::string_view fdqn)
     return {};
 }
 
-void Db::deleteZone(std::string_view fdqn)
+void Db::deleteZone(std::string_view fqdn)
 {
-    LOG_INFO << "Deleting zone " << fdqn;
+    LOG_INFO << "Deleting zone " << fqdn;
 
     Transaction trx(*this);
 
     string v;
-    auto status = trx->GetForUpdate({}, zoneHandle(), fdqn, &v);
+    auto status = trx->GetForUpdate({}, zoneHandle(), fqdn, &v);
     if (status.IsNotFound()) {
-        throw NotFoundException{string{fdqn}};
+        throw NotFoundException{string{fqdn}};
     }
 
-    status = trx->Delete(zoneHandle(), fdqn);
+    status = trx->Delete(zoneHandle(), fqdn);
     if (!status.ok()) {
-        LOG_ERROR << "Failed to delete: " << fdqn << ": " << status.ToString();
+        LOG_ERROR << "Failed to delete: " << fqdn << ": " << status.ToString();
     }
 
     trx.commit();
 }
 
-void Db::writeZone(string_view fdqn, Zone &zone,
+void Db::writeZone(string_view fqdn, Zone &zone,
                    std::optional<bool> isNew,
                    bool mergeExisting)
 {
-    LOG_DEBUG << "Writing zone " << fdqn;
+    LOG_DEBUG << "Writing zone " << fqdn;
 
     Transaction trx(*this);
     bool is_update = false;
@@ -167,7 +167,7 @@ void Db::writeZone(string_view fdqn, Zone &zone,
         const auto [get_status, data] = validate("Zone",
                                          trx,
                                          zoneHandle(),
-                                         fdqn,
+                                         fqdn,
                                          isNew);
 
         if (get_status.ok()) {
@@ -207,34 +207,34 @@ void Db::writeZone(string_view fdqn, Zone &zone,
 
     string z;
     zone.SerializeToString(&z);
-    const auto status = trx->Put(zoneHandle(), fdqn, z);
+    const auto status = trx->Put(zoneHandle(), fqdn, z);
 
     if (!is_update && status.IsOkOverwritten()) {
         // Somehow someone else managed to add the key before us, so abort now.
-        LOG_WARN << LOG_WARN << "Zone " << fdqn << " already existed!";
-        throw AlreadyExistException{string{fdqn}};
+        LOG_WARN << LOG_WARN << "Zone " << fqdn << " already existed!";
+        throw AlreadyExistException{string{fqdn}};
     }
 
     if (!status.ok()) {
-        LOG_ERROR << "Failed to save zone" << fdqn << ": " << status.ToString();
+        LOG_ERROR << "Failed to save zone" << fqdn << ": " << status.ToString();
         throw runtime_error{"Write error"};
     }
 
     trx.commit();
 
     if (!is_update) {
-        LOG_INFO << "Added zone " << fdqn;
+        LOG_INFO << "Added zone " << fqdn;
     }
 }
 
-void Db::incrementZone(Transaction& trx, std::string_view fdqn)
+void Db::incrementZone(Transaction& trx, std::string_view fqdn)
 {
     // TODO: Put the zone serial in a serapare key as it may
     //       increment frequently
     string data;
-    auto status = trx->GetForUpdate({}, zoneHandle(), fdqn, &data);
+    auto status = trx->GetForUpdate({}, zoneHandle(), fqdn, &data);
     if (!status.ok()) {
-        LOG_ERROR << "Failed to get (for serial-no update) zone " << fdqn
+        LOG_ERROR << "Failed to get (for serial-no update) zone " << fqdn
                   << ": " << status.ToString();
         throw runtime_error{"Zone error"};
     }
@@ -245,19 +245,58 @@ void Db::incrementZone(Transaction& trx, std::string_view fdqn)
     soa->set_serial(soa->serial() + 1);
     z.set_allocated_soa(soa.release());
     z.SerializeToString(&data);
-    status = trx->Put(zoneHandle(), fdqn, data);
+    status = trx->Put(zoneHandle(), fqdn, data);
 
     if (!status.ok()) {
-        LOG_ERROR << "Failed to save zone" << fdqn << ": " << status.ToString();
+        LOG_ERROR << "Failed to save zone" << fqdn << ": " << status.ToString();
         throw runtime_error{"Write error"};
     }
 
-    LOG_DEBUG << "Incremented zone " << fdqn << ": " << z.soa().serial();
+    LOG_DEBUG << "Incremented zone " << fqdn << ": " << z.soa().serial();
 }
 
-void Db::writeRr(std::string_view zone, std::string_view fdqn, Rr &rr, std::optional<bool> isNew, bool mergeExisting)
+std::optional<Rr> Db::getRr(std::string_view fqdn)
 {
-    LOG_DEBUG << "Writing zone " << fdqn;
+    LOG_TRACE << "Getting Rr " << fqdn;
+
+    string v;
+    const auto status = db_->Get(ReadOptions{}, entryHandle(), fqdn, &v);
+    if (!status.ok()) {
+        LOG_DEBUG << "Failed to get Rr" << fqdn << ": " << status.ToString();
+        return {};
+    }
+
+    Rr r;
+    r.ParseFromString(v);
+    return r;
+}
+
+void Db::deleteRr(std::string_view zone, std::string_view fqdn, std::string_view type)
+{
+    LOG_TRACE << "Deleting Rr " << fqdn;
+
+    assert(type.empty());
+
+    Transaction trx(*this);
+
+    string v;
+    auto status = trx->GetForUpdate({}, entryHandle(), fqdn, &v);
+    if (status.IsNotFound()) {
+        throw NotFoundException{string{fqdn}};
+    }
+
+    status = trx->Delete(entryHandle(), fqdn);
+    if (!status.ok()) {
+        LOG_ERROR << "Failed to delete Rr: " << fqdn << ": " << status.ToString();
+    }
+
+    incrementZone(trx, zone);
+    trx.commit();
+}
+
+void Db::writeRr(std::string_view zone, std::string_view fqdn, Rr &rr, std::optional<bool> isNew, bool mergeExisting)
+{
+    LOG_DEBUG << "Writing zone " << fqdn;
 
     Transaction trx(*this);
     bool is_update = false;
@@ -266,7 +305,7 @@ void Db::writeRr(std::string_view zone, std::string_view fdqn, Rr &rr, std::opti
         const auto [get_status, data] = validate("Rr",
                                          trx,
                                          entryHandle(),
-                                         fdqn,
+                                         fqdn,
                                          isNew);
         if (get_status.ok()) {
             is_update = true;
@@ -274,26 +313,55 @@ void Db::writeRr(std::string_view zone, std::string_view fdqn, Rr &rr, std::opti
             old.ParseFromString(data);
 
             if (mergeExisting) {
-                Rr tmp{old};
-                tmp.MergeFrom(rr);
-                rr = tmp;
-                rr.MergeFrom(old);
+               if (!rr.a_size()) {
+                   for (const auto& v : old.a()) {
+                       rr.add_a(v);
+                   }
+               }
+               if (!rr.aa_size()) {
+                   for (const auto& v : old.aa()) {
+                       rr.add_aa(v);
+                   }
+               }
+               if (!rr.has_cname() && old.has_cname()) {
+                   rr.set_cname(old.cname());
+               }
+               if (!rr.has_txt() && old.has_txt()) {
+                   rr.set_txt(old.txt());
+               }
+               if (old.has_mx()) {
+                   auto mx = make_unique<Mx>();
+                   if (rr.has_mx()) {
+                       *mx = rr.mx();
+                   }
+                   if (!mx->ttl()) {
+                       mx->set_ttl(old.mx().ttl());
+                   }
+                   if (!mx->priority()) {
+                       mx->set_priority(old.mx().priority());
+                   }
+                   if (mx->host().empty()) {
+                       mx->set_host(old.mx().host());
+                   }
+
+                   rr.set_allocated_mx(mx.release());
+               }
             }
         }
     }
 
     string r;
     rr.SerializeToString(&r);
-    const auto status = trx->Put(entryHandle(), fdqn, r);
+    const auto status = trx->Put(entryHandle(), fqdn, r);
 
     if (!is_update && status.IsOkOverwritten()) {
         // Somehow someone else managed to add the key before us, so abort now.
-        LOG_WARN << LOG_WARN << "Rr " << fdqn << " already existed!";
-        throw AlreadyExistException{string{fdqn}};
+        LOG_WARN << LOG_WARN << "Rr " << fqdn << " already existed!";
+        throw AlreadyExistException{string{fqdn}};
     }
 
     if (!status.ok()) {
-        LOG_ERROR << "Failed to save zone" << fdqn << ": " << status.ToString();
+        LOG_ERROR << "Failed to save zone" << fqdn << ": " << status.ToString();
         throw runtime_error{"Write error"};
     }
 
@@ -301,7 +369,7 @@ void Db::writeRr(std::string_view zone, std::string_view fdqn, Rr &rr, std::opti
     trx.commit();
 
     if (!is_update) {
-        LOG_INFO << "Added Rr " << fdqn << " to zone " << zone;
+        LOG_INFO << "Added Rr " << fqdn << " to zone " << zone;
     }
 }
 
