@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.19)
 
 if (NOT DEFINED NSBLAST_VERSION)
     set(NSBLAST_VERSION 0.0.1)

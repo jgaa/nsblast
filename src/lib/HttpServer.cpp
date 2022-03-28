@@ -51,8 +51,6 @@ public:
 
     void flush() {
         if (location.empty()) {
-            // some scary bug causes the constructor and destructor to be recalled,
-            // probably on some coroutine resume operations.
             LOG_TRACE << "Called out of order!";
             return;
         }

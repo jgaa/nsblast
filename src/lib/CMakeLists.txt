@@ -35,6 +35,8 @@ add_library(${PROJECT_NAME}
     RestApi.cpp
     swagger_res.cpp
     swagger_res.h
+    DnsServer.cpp
+    DnsServer.h
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
