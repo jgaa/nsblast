@@ -1,6 +1,6 @@
 swagger: "2.0"
 info:
-  description: "Welcome to this REST API for the [nsblast](https://github.com/jgaa/nsblast) authorative DNS server"
+  description: "Welcome to this REST API for the [nsblast](https://github.com/jgaa/nsblast) authoritative DNS server"
   version: "1.0.0"
   title: "nsBLAST API"
   #termsOfService: "http://swagger.io/terms/"
