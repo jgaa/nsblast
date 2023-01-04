@@ -3,6 +3,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
+//#include <boost/uuid/string_generator.hpp>
 #include <boost/lexical_cast.hpp>
 
 #include <filesystem>
@@ -28,9 +29,8 @@ using namespace nsblast::lib;
 
 string getUuid() {
     static boost::uuids::random_generator uuid_gen_;
-    return boost::lexical_cast<string>(uuid_gen_());
+    return boost::uuids::to_string(uuid_gen_());
 }
-
 
 
 class TmpDb {

@@ -22,21 +22,26 @@ add_custom_command(
 add_library(${PROJECT_NAME}
     data.pb.cc data.pb.h
     data.proto
-    ${NSBLAST_ROOT}/include/nsblast/nsblast.h
-    ${NSBLAST_ROOT}/include/nsblast/logging.h
-    ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/Admin.h
-    Db.h
+    ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
+    ${NSBLAST_ROOT}/include/nsblast/logging.h
+    ${NSBLAST_ROOT}/include/nsblast/nsblast.h
+    AnswerBase.cpp
+    AnswerBase.h
     Db.cpp
+    Db.h
     DnsEngine.cpp
-    HttpServer.h
-    HttpServer.cpp
-    RestApi.h
-    RestApi.cpp
-    swagger_res.cpp
-    swagger_res.h
     DnsServer.cpp
     DnsServer.h
+    HttpServer.cpp
+    HttpServer.h
+    LabelHeader.h
+    MessageHeader.h
+    RestApi.cpp
+    RestApi.h
+    swagger_res.cpp
+    swagger_res.h
+    type_values.h
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

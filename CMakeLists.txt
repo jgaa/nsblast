@@ -29,6 +29,7 @@ find_package(BZip2 REQUIRED)
 #find_package(LZ4 REQUIRED)
 
 find_package(snappy REQUIRED)
+find_package(gflags REQUIRED)
 
 if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.74)

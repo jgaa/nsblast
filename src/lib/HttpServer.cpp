@@ -109,25 +109,25 @@ void DoSession(streamT& stream,
     }
 
     while(!close) {
-        LogRequest lr;
-        lr.remote =  beast::get_lowest_layer(stream).socket().remote_endpoint();
-        lr.local = beast::get_lowest_layer(stream).socket().local_endpoint();
-
         beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
         http::request<http::string_body> req;
         http::async_read(stream, buffer, req, yield[ec]);
-        if(ec == http::error::end_of_stream)
+        if(ec == http::error::end_of_stream) {
+            LOG_TRACE << "Exiting loop end_of_stream";
             break;
+        }
         if(ec) {
             LOG_ERROR << "read failed: " << ec.message();
-            lr.cancel();
-            return;
+            break;
         }
 
         if (!req.keep_alive()) {
             close = true;
         }
 
+        LogRequest lr;
+        lr.remote =  beast::get_lowest_layer(stream).socket().remote_endpoint();
+        lr.local = beast::get_lowest_layer(stream).socket().local_endpoint();
         lr.location = req.base().target().to_string();
         lr.type = req.base().method_string().to_string();
 
