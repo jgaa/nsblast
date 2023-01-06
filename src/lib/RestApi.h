@@ -4,7 +4,6 @@
 #include "HttpServer.h"
 #include "nsblast/logging.h"
 #include "google/protobuf/util/json_util.h"
-#include "data.pb.h"
 
 namespace nsblast::lib {
 

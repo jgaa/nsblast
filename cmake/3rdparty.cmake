@@ -31,7 +31,7 @@ ExternalProject_Add(googletest
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
-    GIT_TAG "v6.29.3"
+    GIT_TAG "v7.8.3"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DUSE_RTTI=1
@@ -42,37 +42,17 @@ ExternalProject_Add(rocksdb
         -DWITH_TOOLS=OFF
         -DWITH_BENCHMARK_TOOLS=OFF
         -DWITH_CORE_TOOLS=OFF
-#        -DWITH_BZ2=ON
-#        -DWITH_LZ4=ON
         -DWITH_SNAPPY=ON
         -DWITH_ZLIB=ON
         -DCMAKE_POSITION_INDEPENDENT_CODE=True
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+
+     # Required because CMake don't work really well with ninja
+     BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
 )
 
 ExternalProject_Get_Property(rocksdb BINARY_DIR)
 set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
 set(ROCKSDB_FOUND TRUE)
-
-ExternalProject_Add(protobuf-external
-  PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
-  GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
-  GIT_TAG "master"
-  CMAKE_ARGS
-    -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
-    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-    -Dprotobuf_BUILD_TESTS:BOOL=OFF
-    -Dprotobuf_BUILD_EXAMPLES:BOOL=OFF
-    -Dprotobuf_WITH_ZLIB:BOOL=OFF
-    -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
-)
-
-string(TOLOWER ${CMAKE_BUILD_TYPE} LOWERCASE_CMAKE_BUILD_TYPE)
-if (LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
-    set(libproto_prostfix_tag "d")
-endif()
-
-set(PROTOC ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/bin/protoc)
-set(Protobuf_LIBRARIES ${EXTERNAL_PROJECTS_INSTALL_PREFIX}/lib/libprotobuf${libproto_prostfix_tag}.a)
 

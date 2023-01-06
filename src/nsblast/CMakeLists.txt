@@ -10,7 +10,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${NSBLAST_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${Protobuf_INCLUDE_DIRS}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include/
     $<INSTALL_INTERFACE:include>
@@ -21,8 +20,6 @@ add_dependencies(${PROJECT_NAME} logfault rocksdb nsblastlib)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib
-    ${Protobuf_LIBRARIES}
-    ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
     ${Boost_LIBRARIES}
     ${ZLIB_LIBRARIES}
@@ -42,6 +39,7 @@ install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}App
 
 set_target_properties(${PROJECT_NAME}
     PROPERTIES
+    IMPORTED_LOCATION "external-projects/src/rocksdb-build/librocksdb.a"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

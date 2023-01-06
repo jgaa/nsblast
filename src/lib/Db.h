@@ -7,7 +7,6 @@
 #include "rocksdb/utilities/transaction_db.h"
 
 #include "nsblast/nsblast.h"
-#include "data.pb.h"
 
 namespace nsblast::lib {
 

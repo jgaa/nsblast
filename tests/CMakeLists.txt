@@ -30,8 +30,6 @@ target_include_directories(http_tests
 target_link_libraries(http_tests
     gtest
     nsblastlib
-    ${Protobuf_LIBRARIES}
-    ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
     ${Boost_LIBRARIES}
     ${ZLIB_LIBRARIES}
@@ -71,7 +69,6 @@ target_include_directories(api_tests
 target_link_libraries(api_tests
     gtest
     nsblastlib
-    ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
     ${Boost_LIBRARIES}
@@ -112,8 +109,6 @@ target_include_directories(db_tests
 target_link_libraries(db_tests
     gtest
     nsblastlib
-    ${Protobuf_LIBRARIES}
-    ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
     ${Boost_LIBRARIES}
     ${ZLIB_LIBRARIES}

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.18)
 
 if (NOT DEFINED NSBLAST_VERSION)
     set(NSBLAST_VERSION 0.0.1)
@@ -14,24 +14,15 @@ if(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES)
     add_definitions(-DBOOST_ALLOW_DEPRECATED_HEADERS=1)
 endif()
 
-#option(BOOST_ERROR_CODE_HEADER_ONLY "Work-around for another boost issue" ON)
-#if (BOOST_ERROR_CODE_HEADER_ONLY)
-    #add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY=1)
-#endif()
-
 include(GNUInstallDirs)
 
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads)
-#find_package(Protobuf REQUIRED)
 find_package(BZip2 REQUIRED)
-#find_package(LZ4 REQUIRED)
-
-find_package(snappy REQUIRED)
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.74)
+    set(USE_BOOST_VERSION 1.81)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS

@@ -1,6 +1,9 @@
 #pragma once
 
-#include "data.pb.h"
+#include <string>
+#include <string_view>
+#include <optional>
+
 
 namespace nsblast::lib {
 
@@ -10,8 +13,8 @@ public:
        CREATE_ZONE
     };
 
-    std::optional<Zone> zone;
-    std::optional<Entry> entry;
+    //std::optional<Zone> zone;
+    //std::optional<Entry> entry;
 };
 
 class Context {
