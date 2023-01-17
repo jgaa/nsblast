@@ -5,7 +5,6 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
-#include "nsblast/DnsEngine.h"
 
 using namespace std;
 using namespace nsblast;
@@ -93,9 +92,10 @@ int main(int argc, char* argv[]) {
     LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
 
     try {
-        auto engine = DnsEngine::create(config);
-        engine->init();
-        engine->run();
+//        auto engine = DnsEngine::create(config);
+//        engine->init();
+//        engine->run();
+        ;
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception from engine: " << ex.what();
     }

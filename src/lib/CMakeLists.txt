@@ -3,29 +3,18 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
 # See https://lastviking.eu/code_generator.html
-add_custom_command(
-    COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
-    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
-    OUTPUT swagger_res.cpp swagger_res.h
-    COMMENT "Embedding swagger..."
-    )
+#add_custom_command(
+#    COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
+#    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
+#    OUTPUT swagger_res.cpp swagger_res.h
+#    COMMENT "Embedding swagger..."
+#    )
 
 add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
-    ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
-    ${NSBLAST_ROOT}/include/nsblast/Admin.h
-#    Db.h
-#    Db.cpp
-#    DnsEngine.cpp
-#    HttpServer.h
-#    HttpServer.cpp
-#    RestApi.h
-#    RestApi.cpp
-#    swagger_res.cpp
-#    swagger_res.h
-#    DnsServer.cpp
-#    DnsServer.h
+    ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
+    DnsMessages.cpp
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -33,7 +22,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${NSBLAST_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    PRIVATE ${CMAKE_BINARY_DIR}/generated-include/
     $<INSTALL_INTERFACE:include>
     PRIVATE $Boost_INCLUDE_DIR
     PRIVATE src)
