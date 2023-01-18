@@ -210,6 +210,68 @@ TEST(CreateMessageHeader, CheckingBitsAndCounters) {
     EXPECT_EQ(header.arcount(), 1);
 }
 
+TEST(Cpp, SimpleArray) {
+    char data[] = {"\003www\007example\003com"};
+    boost::span s{data};
+
+    // Just validate my assumption that hex expansion still works
+    EXPECT_EQ(s.size(), ".www.example.com."s.size());
+}
+
+TEST(Labels, CreateSimpleOk) {
+    char data[] = {"\003www\007example\003com"};
+    optional<Labels> label;
+    EXPECT_NO_THROW(label.emplace(data, 0));
+    EXPECT_EQ(label->count(), 4); // www example com root
+    EXPECT_EQ(label->size(), "www.example.com."s.size());
+}
+
+TEST(Labels, CreateLabelTooLong) {
+    char data[] = {"\003www\100xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\003com"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, CreateLabelAlmostTooLong) {
+    char data[] = {"\003www\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\003com"};
+    EXPECT_NO_THROW(Labels(data, 0));
+}
+
+TEST(Labels, CreateLabelsCombinedTooLong) {
+    char data[] = {"\003www\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\003com"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, CreateLabelsCombinedAlmostTooLong) {
+    char data[] = {"\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\076xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"};
+    EXPECT_NO_THROW(Labels(data, 0));
+}
+
+TEST(Labels, CreateLabelsCombinedExactelyTooLong) {
+    char data[] = {"\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   "\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, CreateExeedsBuffer) {
+    char data[] = {"\003www\077xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, CreateExeedsSmallBuffer) {
+    char data[] = {"\003www\077"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+// TODO: Add tests with pointers
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

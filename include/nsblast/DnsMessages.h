@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string_view>
-
+#include <boost/core/span.hpp>
 #include "nsblast/nsblast.h"
 
 
@@ -104,6 +103,68 @@ protected:
     buffer_t buffer_;
 };
 
+/*! Representation of RFC1035 labels
+ *
+ *  A label is a single node in the name-tree.
+ *  It must start with a ASCII letter, and then contain letters or numbers.
+ *  '.' can exist as part of the label, but normally it is used in strings
+ *  as a delimiter between labels. If '.' is used, it's escaped with '\'
+ *  in the text-representation of the label.
+ *
+ *  The binary representation is a single unsigned octet as a length
+ *  field, immediately followed by <length> cxharacters. Unlike, C
+ *  strings, there are no \0 string terminator.
+ *
+ *  A length of 0 represents the root node in the global DNS name space.
+ *
+ */
+class Labels {
+public:
+    class Iterator {
+    public:
+        Iterator(const Labels&);
+    }
+
+
+    /*! Constructor
+     *
+     *  @param buffer Buffer that covers the message.
+     *  @param startOffset The location in the buffer where this
+     *     labels data start.
+     *
+     *  The lables may contain pointers to other labels within
+     *  the message, and therefore, we need the boundry for the
+     *  messages buffer in order to parse and validate the labels.
+     *
+     *  The constructor parses and validates the buffer, and
+     *  sets it local buffer_view_ to exactely match the
+     *  labels from the original buffer.
+     *
+     *  Note: This object does not own any buffers.
+     */
+    Labels(boost::span<const char> buffer, size_t startOffset);
+
+    /*! Returns the size of the labels buffer in bytes */
+    size_t size() const noexcept;
+
+    /*! Returns the number of labels in the list, including the trailing root label. */
+    size_t count() const noexcept;
+
+    /*! Return the fqdn as a string */
+    std::string string(bool showRoot=false) const;
+
+private:
+    /*! Parse the buffer.
+     *
+     *  @throws std::runtime_error on buffer-validation errors.
+     */
+    void parse(boost::span<const char> buffer, size_t startOffset);
+
+    size_t count_ = {}; // Number of labels
+    size_t size_ = {}; // Number of bytes for the fqdn
+    boost::span<const char> buffer_view_;
+};
+
 /*! Means to build a new message */
 class MessageBuilder : public Message {
 public:
@@ -132,6 +193,8 @@ public:
     MessageBuilder() = default;
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
+
+
 };
 
 } // ns
