@@ -21,6 +21,8 @@ namespace nsblast::lib {
  */
 class Message {
 public:
+    static constexpr std::uint16_t CLASS_IN = 1;
+
     // The buffer-type we present to the world.
     using buffer_t = std::vector<char>;
 
@@ -238,9 +240,34 @@ public:
         buffer_t& mutable_buffer_;
     };
 
+    class NewRr {
+    public:
+        NewRr(buffer_t& b, uint16_t offset, uint16_t size)
+            : mutable_buffer_{b}, offset_{offset}, size_{size}  {}
+
+        size_t size() const noexcept {
+            return size_;
+        }
+
+        uint16_t offset() const noexcept {
+            return offset_;
+        }
+
+        // Return a view of the buffer for this RR only
+        auto span() const  {
+            return boost::span{mutable_buffer_.data() + offset_, size()};
+        }
+
+    private:
+        uint16_t size_ = {};
+        const uint16_t offset_ = {};
+        buffer_t& mutable_buffer_;
+    };
+
     MessageBuilder() = default;
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
+    NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
 
 
 };

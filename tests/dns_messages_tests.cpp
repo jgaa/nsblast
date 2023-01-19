@@ -279,6 +279,26 @@ TEST(Labels, ToString) {
     EXPECT_EQ(label->string(true), "www.example.com."s);
 }
 
+TEST(Rr, CreateGeneral) {
+    optional<MessageBuilder::NewRr> rr;
+
+    MessageBuilder mb;
+
+    char b[] = "abcdefg";
+    const boost::span data{b};
+    const auto fqdn = "www.example.com"s;
+
+    EXPECT_NO_THROW(rr.emplace(mb.createRr(fqdn, 1, 2, data)));
+
+    const auto esize = fqdn.size() + 2 // first length field and root node length field
+                       + 2 // type
+                       + 2 // class
+                       + 4 // ttl
+                       + 2 // rdlength
+                       + data.size(); // rdata;
+    EXPECT_EQ(rr->size(), esize);
+}
+
 // TODO: Add tests with pointers
 
 int main(int argc, char **argv) {

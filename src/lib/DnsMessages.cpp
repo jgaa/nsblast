@@ -37,14 +37,31 @@ auto get16bValueAt(const T& b, size_t loc) {
     return ntohs(*v);
 }
 
-template <typename T>
-auto set16bValueAt(const T& b, size_t loc, uint16_t value) {
-    if (loc + 1 >= b.size()) {
+template <typename T, typename I>
+void setValueAt(const T& b, size_t loc, I value) {
+    if (loc + (sizeof(I) -1) >= b.size()) {
         throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
     }
 
-    auto *v = reinterpret_cast<uint16_t *>(const_cast<char *>(b.data() + loc));
-    *v = htons(value);
+    auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
+
+    auto constexpr ilen = sizeof(I);
+
+    if constexpr (ilen == 1) {
+        *v = value;
+    } else if constexpr (ilen == 2) {
+        *v = htons(value);
+    } else if constexpr (ilen == 4) {
+        *v = htonl(value);
+    } else {
+        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "Unexpected integer length");
+    }
+}
+
+
+template <typename T>
+void set16bValueAt(const T& b, size_t loc, uint16_t value) {
+    return setValueAt(b, loc, value);
 }
 
 template <typename T>
@@ -105,6 +122,101 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
     *v = bits;
 
     return NewHeader{buffer_};
+}
+
+// Write a fdqn in text representation as a RFC1035 name (array of labels)
+template <typename T>
+uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
+    assert((offset + fdqn.size() + 2) < buffer.size());
+
+    if (fdqn.size() > 255) {
+        throw runtime_error{"writeName: fdqn must be less than 256 bytes. This fdqn is: "s
+                            + to_string(fdqn.size())};
+    }
+
+    for(auto dot = fdqn.find('.'); !fdqn.empty(); dot = fdqn.find('.')) {
+        const auto label = (dot != string_view::npos) ? fdqn.substr(0, dot) : fdqn;
+
+        // The root should not appear here as a dot
+        assert(label != ".");
+
+        if (label.size() > 63) {
+            throw runtime_error{"writeName: labels must be less 64 bytes. This label: "s
+                                + to_string(label.size())};
+        }
+        buffer[offset] = static_cast<uint8_t>(label.size());
+        ++offset;
+        std::copy(label.begin(), label.end(), buffer.begin() + offset);
+        offset += label.size();
+
+        if (dot == string_view::npos) {
+            break;
+        }
+
+        // Strip the label off `fdqn` so we can go hunting for the next label!
+        fdqn = fdqn.substr(label.size());
+        if (!fdqn.empty()) {
+            assert(fdqn.front() == '.');
+            fdqn = fdqn.substr(1);
+        }
+    }
+
+    // Always add root
+    buffer[offset] = 0;
+    return ++offset;
+}
+
+MessageBuilder::NewRr
+MessageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
+{
+    const auto start_offset = buffer_.size();
+
+    if (fqdn.empty()) {
+        throw runtime_error{"createRr: fqdn is empty"};
+    }
+
+    if (fqdn.back() == '.') {
+        fqdn = fqdn.substr(0, fqdn.size() -1);
+    }
+
+    auto labels_len = fqdn.size() + 2;
+    // TODO: Try to compress the fdqn by searching for substrings
+
+    const auto len = labels_len // labels
+                     + 2 // type
+                     + 2 // class
+                     + 4 // ttl
+                     + 2 // rdlenght
+                     + rdata.size() // rdata
+                     ;
+
+    buffer_.resize(buffer_.size() + len);
+
+    {
+        const auto rlen = writeName(buffer_, start_offset, fqdn);
+        assert(rlen == labels_len);
+    }
+
+    size_t coffset = start_offset + labels_len;
+    set16bValueAt(buffer_, coffset, type); // Type
+    coffset += 2;
+
+    set16bValueAt(buffer_, coffset, Message::CLASS_IN); // Class
+    coffset += 2;
+
+    setValueAt(buffer_, coffset, ttl); // TTL
+    coffset += 4;
+
+    set16bValueAt(buffer_, coffset, rdata.size()); // Class
+    coffset += 2;
+
+    assert(buffer_.size() >= coffset + rdata.size());
+    std::copy(rdata.begin(), rdata.end(), buffer_.begin() + coffset);
+
+    auto used_bytes = (buffer_.data() + coffset + rdata.size()) - (buffer_.data() + start_offset);
+    assert(static_cast<ptrdiff_t>(len) == used_bytes);
+
+    return {buffer_, static_cast<uint16_t>(start_offset), static_cast<uint16_t>(len)};
 }
 
 uint16_t Message::Header::id() const
