@@ -1,5 +1,8 @@
 #pragma once
 
+#include <limits>
+#include <iterator>
+#include <cassert>
 #include <boost/core/span.hpp>
 #include "nsblast/nsblast.h"
 
@@ -122,8 +125,91 @@ class Labels {
 public:
     class Iterator {
     public:
-        Iterator(const Labels&);
-    }
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t; // best nonsense choise?
+        using value_type        = std::string_view;
+        using pointer           = const std::string_view*;
+        using reference         = const std::string_view&;
+
+        Iterator(boost::span<const char> buffer, uint16_t offset)
+            : buffer_{buffer}, current_loc_{offset} {
+            update();
+        }
+
+        Iterator(const Iterator& it)
+            : buffer_{it.buffer_}, current_loc_{it.current_loc_}
+        {
+            update();
+        }
+
+        Iterator& operator = (const Iterator& it) {
+            buffer_ = it.buffer_;
+            current_loc_ = it.current_loc_;
+            update();
+            return *this;
+        }
+
+        reference operator*() const { return csw_; }
+
+        pointer operator->() { return &csw_; }
+
+        Iterator& operator++() {
+            increment();
+            return *this;
+        }
+
+        Iterator operator++(int) {
+            auto tmp = *this;
+            increment();
+            return tmp;
+        }
+
+        friend bool operator== (const Iterator& a, const Iterator& b) {
+            return equals(a.buffer_, b.buffer_) && a.current_loc_ == b.current_loc_;
+        };
+
+        friend bool operator!= (const Iterator& a, const Iterator& b) {
+            return !equals(a.buffer_, b.buffer_) || a.current_loc_ != b.current_loc_;
+        };
+
+    private:
+        static bool equals(const boost::span<const char> a, const boost::span<const char> b) {
+            return a.data() == b.data() && a.size() == b.size();
+        }
+
+        void update() {
+            if (!buffer_.empty()) {
+                const auto *b =  buffer_.data() + current_loc_ + 1;
+                const auto len = static_cast<size_t>(buffer_[current_loc_]);
+
+                csw_ = {b, len};
+
+                if (csw_.size() == 0) {
+                    // Root node. Don't point to anything
+                    csw_ = {};
+                } else {
+                    assert((csw_.data() + csw_.size()) < (buffer_.data() + buffer_.size()));
+                    assert(csw_.data() > buffer_.data());
+                }
+            }
+        }
+
+        void increment() {
+            if (!csw_.empty()) {
+                current_loc_ += csw_.size() + 1;
+                update();
+            } else {
+                // Morph into an end() iterator
+                current_loc_ = {};
+                buffer_ = {};
+                csw_ = {};
+            }
+        }
+
+        boost::span<const char> buffer_;
+        uint16_t current_loc_ = 0;
+        std::string_view csw_;
+    };
 
 
     /*! Constructor
@@ -153,6 +239,14 @@ public:
     /*! Return the fqdn as a string */
     std::string string(bool showRoot=false) const;
 
+    Iterator begin() const {
+        return Iterator(buffer_view_, offset_);
+    }
+
+    Iterator end() const {
+        return Iterator({}, 0);
+    }
+
 private:
     /*! Parse the buffer.
      *
@@ -163,6 +257,7 @@ private:
     size_t count_ = {}; // Number of labels
     size_t size_ = {}; // Number of bytes for the fqdn
     boost::span<const char> buffer_view_;
+    uint16_t offset_ = {}; // Offset to the start of the buffer
 };
 
 /*! Means to build a new message */

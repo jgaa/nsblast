@@ -242,6 +242,27 @@ size_t Labels::count() const noexcept
     return count_;
 }
 
+string Labels::string(bool showRoot) const
+{
+    std::string v;
+    v.reserve(size());
+
+    for(const auto label : *this) {
+        if (!label.empty()) { // root is empty, no need to add it
+            if (!v.empty()) { // Only add dot if we already have at least one label in the buffer
+                v += '.';
+            }
+            v.append(label);
+        }
+    }
+
+    if (showRoot) { // Trailing dot
+        v += '.';
+    }
+
+    return v;
+}
+
 // This is a critical method as it fiddles with pointers into
 // buffers for data received from the internet. It's the
 // first place a hacker will look for exploits.
@@ -252,6 +273,8 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
     if (startOffset >= buffer.size()) {
         throw runtime_error("Labels::parse: startOffset needs to be smaller than the buffers size");
     }
+
+    offset_ = startOffset;
 
     //size_t octets = 0;
     size_t label_bytes = 0;

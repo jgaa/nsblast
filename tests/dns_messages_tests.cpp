@@ -214,7 +214,7 @@ TEST(Cpp, SimpleArray) {
     char data[] = {"\003www\007example\003com"};
     boost::span s{data};
 
-    // Just validate my assumption that hex expansion still works
+    // Just validate my assumption that octal expansion still works
     EXPECT_EQ(s.size(), ".www.example.com."s.size());
 }
 
@@ -268,6 +268,15 @@ TEST(Labels, CreateExeedsBuffer) {
 TEST(Labels, CreateExeedsSmallBuffer) {
     char data[] = {"\003www\077"};
     EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, ToString) {
+    char data[] = {"\003www\007example\003com"};
+    optional<Labels> label;
+    EXPECT_NO_THROW(label.emplace(data, 0));
+
+    EXPECT_EQ(label->string(), "www.example.com"s);
+    EXPECT_EQ(label->string(true), "www.example.com."s);
 }
 
 // TODO: Add tests with pointers
