@@ -123,6 +123,7 @@ protected:
  */
 class Labels {
 public:
+    /*! Simple forward iterator to allow labels to looped over */
     class Iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
@@ -131,80 +132,32 @@ public:
         using pointer           = const std::string_view*;
         using reference         = const std::string_view&;
 
-        Iterator(boost::span<const char> buffer, uint16_t offset)
-            : buffer_{buffer}, current_loc_{offset} {
-            update();
-        }
+        Iterator(boost::span<const char> buffer, uint16_t offset);
 
-        Iterator(const Iterator& it)
-            : buffer_{it.buffer_}, current_loc_{it.current_loc_}
-        {
-            update();
-        }
+        Iterator(const Iterator& it);
 
-        Iterator& operator = (const Iterator& it) {
-            buffer_ = it.buffer_;
-            current_loc_ = it.current_loc_;
-            update();
-            return *this;
-        }
+        Iterator& operator = (const Iterator& it);
 
         reference operator*() const { return csw_; }
 
         pointer operator->() { return &csw_; }
 
-        Iterator& operator++() {
-            increment();
-            return *this;
-        }
+        Iterator& operator++();
 
-        Iterator operator++(int) {
-            auto tmp = *this;
-            increment();
-            return tmp;
-        }
+        Iterator operator++(int);
 
         friend bool operator== (const Iterator& a, const Iterator& b) {
             return equals(a.buffer_, b.buffer_) && a.current_loc_ == b.current_loc_;
-        };
+        }
 
         friend bool operator!= (const Iterator& a, const Iterator& b) {
             return !equals(a.buffer_, b.buffer_) || a.current_loc_ != b.current_loc_;
-        };
+        }
 
     private:
-        static bool equals(const boost::span<const char> a, const boost::span<const char> b) {
-            return a.data() == b.data() && a.size() == b.size();
-        }
-
-        void update() {
-            if (!buffer_.empty()) {
-                const auto *b =  buffer_.data() + current_loc_ + 1;
-                const auto len = static_cast<size_t>(buffer_[current_loc_]);
-
-                csw_ = {b, len};
-
-                if (csw_.size() == 0) {
-                    // Root node. Don't point to anything
-                    csw_ = {};
-                } else {
-                    assert((csw_.data() + csw_.size()) < (buffer_.data() + buffer_.size()));
-                    assert(csw_.data() > buffer_.data());
-                }
-            }
-        }
-
-        void increment() {
-            if (!csw_.empty()) {
-                current_loc_ += csw_.size() + 1;
-                update();
-            } else {
-                // Morph into an end() iterator
-                current_loc_ = {};
-                buffer_ = {};
-                csw_ = {};
-            }
-        }
+        static bool equals(const boost::span<const char> a, const boost::span<const char> b);
+        void update();
+        void increment();
 
         boost::span<const char> buffer_;
         uint16_t current_loc_ = 0;

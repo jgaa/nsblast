@@ -252,7 +252,7 @@ string Labels::string(bool showRoot) const
             if (!v.empty()) { // Only add dot if we already have at least one label in the buffer
                 v += '.';
             }
-            v.append(label);
+            v += label;
         }
     }
 
@@ -353,6 +353,68 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
     }
 
     throw runtime_error("Labels::parse: Labels are not valid");
+}
+
+Labels::Iterator::Iterator(boost::span<const char> buffer, uint16_t offset)
+    : buffer_{buffer}, current_loc_{offset} {
+    update();
+}
+
+Labels::Iterator::Iterator(const Labels::Iterator &it)
+    : buffer_{it.buffer_}, current_loc_{it.current_loc_}
+{
+    update();
+}
+
+Labels::Iterator &Labels::Iterator::operator =(const Labels::Iterator &it) {
+    buffer_ = it.buffer_;
+    current_loc_ = it.current_loc_;
+    update();
+    return *this;
+}
+
+Labels::Iterator &Labels::Iterator::operator++() {
+    increment();
+    return *this;
+}
+
+bool Labels::Iterator::equals(const boost::span<const char> a, const boost::span<const char> b) {
+    return a.data() == b.data() && a.size() == b.size();
+}
+
+Labels::Iterator Labels::Iterator::operator++(int) {
+    auto tmp = *this;
+    increment();
+    return tmp;
+}
+
+void Labels::Iterator::update() {
+    if (!buffer_.empty()) {
+        const auto *b =  buffer_.data() + current_loc_ + 1;
+        const auto len = static_cast<size_t>(buffer_[current_loc_]);
+
+        csw_ = {b, len};
+
+        if (csw_.size() == 0) {
+            // Root node. Don't point to anything
+            csw_ = {};
+        } else {
+            assert((csw_.data() + csw_.size()) < (buffer_.data() + buffer_.size()));
+            assert(csw_.data() > buffer_.data());
+        }
+    }
+}
+
+void Labels::Iterator::increment() {
+    if (!csw_.empty()) {
+        current_loc_ += csw_.size() + 1;
+        update();
+    } else {
+        // Morph into an end() iterator
+        current_loc_ = {};
+        buffer_ = {};
+        csw_ = {};
+    }
 }
 
 
