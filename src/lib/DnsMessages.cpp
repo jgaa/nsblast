@@ -14,6 +14,9 @@ namespace nsblast::lib {
 
 namespace {
 
+constexpr int MAX_PTRS_IN_A_ROW = 16;
+constexpr auto START_OF_POINTER_TAG = 0xC0; // Binary: 11000000
+
 #pragma pack(1)
 struct hdrbits {
     uint16_t qr : 1;
@@ -87,6 +90,20 @@ void setHdrFlags(T& b, hdrbits newBits) {
     }
     auto bits = reinterpret_cast<hdrbits *>(b.data() + 2);
     *bits = newBits;
+}
+
+template <typename T>
+uint16_t resolvePtr(const T& buffer, uint16_t offset) {
+    // Loose the 2 bits signaling the pointer and get a uint16 pointer to the pointer value
+    auto *ch = buffer.data() + offset;
+    array<char, 2> ptr_buf;
+    ptr_buf[0] = *ch & ~START_OF_POINTER_TAG;
+    ptr_buf[1] = *++ch;
+    const auto *v = reinterpret_cast<const uint16_t *>(ptr_buf.data());
+    // Convert to host representation
+
+    const auto ptr = ntohs(*v);
+    return ptr;
 }
 
 
@@ -380,7 +397,7 @@ string Labels::string(bool showRoot) const
 // first place a hacker will look for exploits.
 void Labels::parse(boost::span<const char> buffer, size_t startOffset)
 {
-    std::vector<uint16_t> seen_labels;
+    std::vector<uint16_t> jumped_to;
 
     if (startOffset >= buffer.size()) {
         throw runtime_error("Labels::parse: startOffset needs to be smaller than the buffers size");
@@ -390,6 +407,7 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
 
     //size_t octets = 0;
     size_t label_bytes = 0;
+    auto num_ptrs_in_sequence = 0;
     bool in_header = true;
     for(auto it = buffer.begin() + startOffset; it != buffer.end(); ++it) {
         const auto ch = static_cast<uint8_t>(*it);
@@ -400,7 +418,6 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
             if (offset >= numeric_limits<uint16_t>::max()) {
                 throw runtime_error("Labels::parse: Too long distance between labels in the buffer. Must be addressable with 16 bits.");
             }
-            seen_labels.push_back(static_cast<uint16_t>(offset));
 
             // root?
             if (ch == 0) {
@@ -410,26 +427,28 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
                         // limits for their individual and total size, and that
                         // they are withinn the boundries for the buffer.
             }
+
             // Is it a pointer to the start of another label?
-            if ((ch & 0xC0) == 0xC0) {
+            if ((ch & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
+                num_ptrs_in_sequence = 0;
+            } else {
+                if (++num_ptrs_in_sequence >= MAX_PTRS_IN_A_ROW) {
+                    throw runtime_error{"Labels::parse: Too many pointers in a row"};
+                }
                 if ((it + 1) == buffer.end()) {
                     throw runtime_error("Labels::parse: Found a label pointer starting at the last byte of the buffer");
                 }
-                if (find(seen_labels.begin(), seen_labels.end(), static_cast<uint16_t>(offset)) != seen_labels.end()) {
-                    throw runtime_error("Labels::parse: Found a recursive pointer.");
-                }
 
-                // Loose the 2 bits signaling the pointer
-                array<char, 2> ptr_buf;
-                ptr_buf[0] = *it & ~0xC0;
-                ptr_buf[1] = *++it;
-                const auto *v = reinterpret_cast<const uint16_t *>(ptr_buf.data());
-                // Convert to host representation
-                const auto ptr = ntohs(*v);
-
-                if (ptr >= buffer.size()) {
+                auto ptr = resolvePtr(buffer, offset);
+                if (ptr >= buffer.size() || ptr < 0) {
                     throw runtime_error("Labels::parse: Pointer tried to escape buffer");
                 }
+
+                // Don't allow jumping to the same pointer again
+                if (find(jumped_to.begin(), jumped_to.end(), static_cast<uint16_t>(ptr)) != jumped_to.end()) {
+                    throw runtime_error("Labels::parse: Found a recursive pointer.");
+                }
+                jumped_to.push_back(static_cast<uint16_t>(ptr));
 
                 // We will count the label when we land on it.
                 --count_;
@@ -520,6 +539,22 @@ void Labels::Iterator::update() {
 void Labels::Iterator::increment() {
     if (!csw_.empty()) {
         current_loc_ += csw_.size() + 1;
+
+        // Is it a pointer?
+        for(auto i = 0; ((buffer_[current_loc_] & START_OF_POINTER_TAG) == START_OF_POINTER_TAG); ++i) {
+            if (i >= MAX_PTRS_IN_A_ROW) {
+                throw runtime_error{"Labels::Iterator::increment: Recursive pointer or too many jumps!"};
+            }
+
+            const auto ptr = resolvePtr(buffer_, current_loc_);
+
+            // The parsing validated the pointers. But to avoid coding errors...
+            assert(ptr >= 0);
+            assert(ptr < buffer_.size());
+
+            current_loc_ = ptr;
+        }
+
         update();
     } else {
         // Morph into an end() iterator

@@ -279,6 +279,79 @@ TEST(Labels, ToString) {
     EXPECT_EQ(label->string(true), "www.example.com."s);
 }
 
+TEST(Labels, WithValidPointer) {
+    char data[] = {"\003www\300\014XXXXXX\007example\003com"};
+
+    // Validate that the offset to lhe last segment is octec 14 (dec 12)
+    EXPECT_EQ(data[12], 007);
+
+    optional<Labels> label;
+    EXPECT_NO_THROW(label.emplace(data, 0));
+
+    EXPECT_EQ(label->string(), "www.example.com"s);
+    EXPECT_EQ(label->string(true), "www.example.com."s);
+}
+
+TEST(Labels, WithInvalidPointerOffBuffer) {
+    char data[] = {"\003www\300\031XXXXXX\007example\003com"};
+
+    // Validate that the offset to lhe last segment is octec 14 (dec 12)
+    EXPECT_EQ(data[12], 007);
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, WithInvalidPointerAtEndOfBuffer) {
+    char data[] = {"\003www\300"};
+
+    boost::span b{data, 5}; // We don't want the trailing 0
+    EXPECT_THROW(Labels(b, 0), runtime_error);
+}
+
+TEST(Labels, WithRecursivePtr) {
+    char data[] = {"\003www\300\000"};
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+TEST(Labels, WithPtr2Ptr) {
+    char first[] = {"\003www"};
+    char last[] = {"\007example\003com"};
+    std::vector<char> data;
+
+    // Start with "www"
+    boost::span<char> b{first};
+    b = b.subspan(0, b.size() -1); // strip trailing zero
+    std::copy(b.begin(), b.end(), std::back_inserter(data));
+
+    // Create an array of 15 pointers to the next pointer
+    for(auto i = 0; i < 15; i++) {
+        data.push_back('\300');
+        data.push_back(data.size() + 1);
+    }
+
+    // End with "example.com"
+    b = {last};
+    std::copy(b.begin(), b.end(), std::back_inserter(data));
+
+    optional<Labels> label;
+    EXPECT_NO_THROW(label.emplace(data, 0));
+
+    EXPECT_EQ(label->string(), "www.example.com"s);
+    EXPECT_EQ(label->string(true), "www.example.com."s);
+}
+
+TEST(Labels, With2ManyPtr2Ptr) {
+    std::vector<char> data;
+
+    // Create an array of 16 pointers to the next pointer
+    for(auto i = 0; i < 16; i++) {
+        data.push_back('\300');
+        data.push_back(data.size() + 1);
+    }
+
+    EXPECT_THROW(Labels(data, 0), runtime_error);
+}
+
+
 TEST(Rr, CreateGeneral) {
     optional<MessageBuilder::NewRr> rr;
 
@@ -299,7 +372,7 @@ TEST(Rr, CreateGeneral) {
     EXPECT_EQ(rr->size(), esize);
 }
 
-// TODO: Add tests with pointers
+// TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
