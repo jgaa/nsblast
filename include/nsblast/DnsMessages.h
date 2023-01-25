@@ -244,30 +244,6 @@ public:
         buffer_t& mutable_buffer_;
     };
 
-//    class NewRr {
-//    public:
-//        NewRr(buffer_t& b, uint16_t offset, uint16_t size)
-//            : mutable_buffer_{b}, offset_{offset}, size_{size}  {}
-
-//        size_t size() const noexcept {
-//            return size_;
-//        }
-
-//        uint16_t offset() const noexcept {
-//            return offset_;
-//        }
-
-//        // Return a view of the buffer for this RR only
-//        auto span() const  {
-//            return boost::span{mutable_buffer_.data() + offset_, size()};
-//        }
-
-//    private:
-//        uint16_t size_ = {};
-//        const uint16_t offset_ = {};
-//        buffer_t& mutable_buffer_;
-//    };
-
     MessageBuilder() = default;
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
@@ -276,8 +252,18 @@ public:
 
 /* Storage format
 
+    The idea is to store the data as Rr's, (almost) ready to be
+    sent on the wire in a DNS reply, after they are copied
+    to the outgoing message buffer. We have our own header
+    to understand the data and to work efficiently with it.
+
+    When we copy data to a DNS reply buffer, we must handle
+    the NAME (labels) gracefully (it must be copied at least once,
+    and pointers in other records in a RrSet must be updated
+    accordingly).
+
     version     Version of the data frmat
-    flags       Flags to quickly check if a type of RR's are present
+    flags       Flags to quickly check if a popular type of RR's are present
     labelsize   Size of the labels buffer (in the first RR)
     zonelen     Offset to the start of labels that identifies the zone
     rrcount     Number of RR's in the RRSet
@@ -301,7 +287,7 @@ public:
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-    The index is sorted so that same type are clustered
+    The index is sorted so that rr's with the same type are clustered
     and most popular types (in lookups) are first
 
     Index format
@@ -389,6 +375,10 @@ public:
         prepare();
     }
 
+    /*! Create the appropriate A or AAAA record from boost::asio::ip::address, v4 or v6
+     *
+     *  (This may be a little too "smart" to my taste...)
+     */
     template <typename T>
     NewRr createRrA(std::string_view fqdn, uint32_t ttl, T ip) {
         if constexpr (std::is_same_v<T, boost::asio::ip::address>) {
@@ -400,7 +390,7 @@ public:
                 throw std::runtime_error{"createRrA: unsupported boost::asio::ip::address type"};
             }
         } else {
-            auto bytes = ip.to_bytes();
+            const auto bytes = ip.to_bytes();
             auto b = boost::span(reinterpret_cast<const char *>(bytes.data()), bytes.size());
             if constexpr (std::is_same_v<T, boost::asio::ip::address_v4>) {
                 assert(b.size() == 4);
@@ -416,7 +406,33 @@ public:
         }
     }
 
+    /*! Create a new resource record
+     *
+     *  The resource records in a storage buffer is a RrSet, which means
+     *  that they all refer to the same name (fqdn), and have the same ttl.
+     *  For that reason, those two arguments are only relevant when adding
+     *  the first RR.
+     *
+     *  \param fqdn Fully qualified domain name (not ending with .)
+     *              This is ignored for all but the first record.
+     *  \param type The type of the record
+     *  \param ttl time to live in seconds. This is ignored for all but the first record.
+     *  \param rdata The data to store. The data is in binary format, ready to be send in
+     *         DNS answers.
+     *
+     *  \return An NewRr object referencing the new record.
+     *  \exception std::runtime_error and other exceptions thrown by the C++ standard library and asio.
+     */
     NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+
+    /*! Create a new resource record
+     *
+     *  Same as above, except that nameOffset replaces the fqdn.
+     *
+     *  \param nameOffset The offset into the storages buffer to the
+     *         NAME (labels) for the RrSet.
+     *
+     */
     NewRr createRr(uint16_t nameOffset, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
 
     /*! Get the raw data buffer for the message
