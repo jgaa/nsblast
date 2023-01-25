@@ -1,3 +1,5 @@
+
+#include <cstring>
 #include "gtest/gtest.h"
 
 #include "nsblast/DnsMessages.h"
@@ -353,15 +355,15 @@ TEST(Labels, With2ManyPtr2Ptr) {
 
 
 TEST(Rr, CreateGeneral) {
-    optional<MessageBuilder::NewRr> rr;
+    optional<StorageBuilder::NewRr> rr;
 
-    MessageBuilder mb;
+    StorageBuilder sb;
 
     char b[] = "abcdefg";
     const boost::span data{b};
     const auto fqdn = "www.example.com"s;
 
-    EXPECT_NO_THROW(rr.emplace(mb.createRr(fqdn, 1, 2, data)));
+    EXPECT_NO_THROW(rr.emplace(sb.createRr(fqdn, 1, 2, data)));
 
     const auto esize = fqdn.size() + 2 // first length field and root node length field
                        + 2 // type
@@ -370,6 +372,102 @@ TEST(Rr, CreateGeneral) {
                        + 2 // rdlength
                        + data.size(); // rdata;
     EXPECT_EQ(rr->size(), esize);
+
+    // Validate labels using the RR's internal buffer-window
+    const Labels rrlabel{rr->span(), 0};
+    EXPECT_EQ(rrlabel.string(), "www.example.com"s);
+
+    // Validate labels using the Message's buffer and the rr's offset.
+    const Labels mblabel{sb.buffer(), rr->offset()};
+    EXPECT_EQ(mblabel.string(), "www.example.com"s);
+}
+
+TEST(Rr, A) {
+    StorageBuilder sb;
+
+    auto ip = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto rr = sb.createRrA("www.example.com", 0, ip);
+
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 4);
+
+    const auto bytes = ip.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 4) == 0);
+
+
+}
+
+TEST(Rr, AAAA) {
+    StorageBuilder sb;
+
+    auto ip = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto rr = sb.createRrA("www.example.com", 0, ip);
+
+     EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 16);
+
+    const auto bytes = ip.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 16) == 0);
+}
+
+TEST(Rr, GenericA) {
+    StorageBuilder sb;
+
+    auto ip = boost::asio::ip::address::from_string("127.0.0.1");
+    auto rr = sb.createRrA("www.example.com", 0, ip);
+
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 4);
+
+    const auto bytes = ip.to_v4().to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 4) == 0);
+}
+
+TEST(Rr, GenericAAAA) {
+    StorageBuilder sb;
+
+    auto ip = boost::asio::ip::address::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto rr = sb.createRrA("www.example.com", 0, ip);
+
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 16);
+
+    const auto bytes = ip.to_v6().to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 16) == 0);
+}
+
+TEST(Rr, MultipleA) {
+    StorageBuilder sb;
+
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
+    auto rr1 = sb.createRrA("www.example.com", 0, ip1);
+    auto rr2 = sb.createRrA("ignored.example.com", 0, ip2);
+    auto rr3 = sb.createRrA("", 0, ip3);
+
+    EXPECT_EQ(rr1.labels().string(), "www.example.com");
+    EXPECT_EQ(rr2.labels().string(), "www.example.com");
+    EXPECT_EQ(rr3.labels().string(), "www.example.com");
+
+    // All labels should point to to rr1.labels()
+    EXPECT_EQ(rr1.labels().begin(), rr2.labels().begin());
+    EXPECT_EQ(rr2.labels().begin(), rr3.labels().begin());
+
+    EXPECT_EQ(rr1.rdata().size(), 4);
+    EXPECT_EQ(rr2.rdata().size(), 4);
+    EXPECT_EQ(rr3.rdata().size(), 4);
+
+    auto bytes = ip1.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr1.rdata().data(), 4) == 0);
+    bytes = ip2.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr2.rdata().data(), 4) == 0);
+    bytes = ip3.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr3.rdata().data(), 4) == 0);
 }
 
 // TODO: Add more tests with pointers

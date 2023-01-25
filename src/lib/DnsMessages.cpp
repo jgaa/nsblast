@@ -16,6 +16,7 @@ namespace {
 
 constexpr int MAX_PTRS_IN_A_ROW = 16;
 constexpr auto START_OF_POINTER_TAG = 0xC0; // Binary: 11000000
+constexpr char CURRENT_STORAGE_VERSION = 1;
 
 #pragma pack(1)
 struct hdrbits {
@@ -144,6 +145,7 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
 // Write a fdqn in text representation as a RFC1035 name (array of labels)
 template <typename T>
 uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
+    const auto start_offset = offset;
     assert((offset + fdqn.size() + 2) < buffer.size());
 
     if (fdqn.size() > 255) {
@@ -180,12 +182,25 @@ uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
 
     // Always add root
     buffer[offset] = 0;
-    return ++offset;
+    return ++offset - start_offset;
 }
 
-MessageBuilder::NewRr
-MessageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
+template <typename T>
+void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
+    auto *w = reinterpret_cast<uint16_t *>(buffer.data() + offset);
+    *w = htons(namePtr);
+    buffer[offset] |= START_OF_POINTER_TAG;
+}
+
+StorageBuilder::NewRr
+StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
 {
+    if (name_ptr_) {
+        // A list of rr's (RRSet) always contain the same fqdn,
+        // so if we already have the name, we re-use it.
+        return createRr(name_ptr_, type, ttl, rdata);
+    }
+
     const auto start_offset = buffer_.size();
 
     if (fqdn.empty()) {
@@ -197,24 +212,43 @@ MessageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
     }
 
     auto labels_len = fqdn.size() + 2;
-    // TODO: Try to compress the fdqn by searching for substrings
 
-    const auto len = labels_len // labels
-                     + 2 // type
-                     + 2 // class
-                     + 4 // ttl
-                     + 2 // rdlenght
-                     + rdata.size() // rdata
-                     ;
-
+    const auto len = calculateLen(labels_len, rdata.size());
     buffer_.resize(buffer_.size() + len);
 
     {
-        const auto rlen = writeName(buffer_, start_offset, fqdn);
+        const auto rlen = writeName(buffer_, start_offset, fqdn);\
+        assert(name_ptr_ == 0);
+        assert(start_offset != 0);
+        name_ptr_ = start_offset;
         assert(rlen == labels_len);
     }
 
-    size_t coffset = start_offset + labels_len;
+    return finishRr(start_offset, labels_len, ttl, type, rdata);
+}
+
+StorageBuilder::NewRr
+StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
+                         uint32_t ttl, boost::span<const char> rdata)
+{
+    const auto start_offset = buffer_.size();
+    auto labels_len =  2;
+
+    const auto len = calculateLen(labels_len, rdata.size());
+
+    buffer_.resize(buffer_.size() + len);
+    writeNamePtr(buffer_, start_offset, nameOffset);
+
+    return finishRr(start_offset, labels_len, ttl, type, rdata);
+}
+
+StorageBuilder::NewRr
+StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
+                         uint32_t ttl, boost::span<const char> rdata)
+{
+    const auto len = calculateLen(labelLen, rdata.size());
+    size_t coffset = startOffset + labelLen;
+
     set16bValueAt(buffer_, coffset, type); // Type
     coffset += 2;
 
@@ -230,10 +264,35 @@ MessageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
     assert(buffer_.size() >= coffset + rdata.size());
     std::copy(rdata.begin(), rdata.end(), buffer_.begin() + coffset);
 
-    auto used_bytes = (buffer_.data() + coffset + rdata.size()) - (buffer_.data() + start_offset);
+    auto used_bytes = (buffer_.data() + coffset + rdata.size()) - (buffer_.data() + startOffset);
     assert(static_cast<ptrdiff_t>(len) == used_bytes);
 
-    return {buffer_, static_cast<uint16_t>(start_offset), static_cast<uint16_t>(len)};
+    ++num_rr_;
+
+    return {buffer_,
+                static_cast<uint16_t>(startOffset),
+                static_cast<uint16_t>(coffset - startOffset),
+                static_cast<uint16_t>(len)};
+}
+
+size_t StorageBuilder::calculateLen(uint16_t labelsLen, size_t rdataLen) const
+{
+    return labelsLen // labels
+            + 2 // type
+            + 2 // class
+            + 4 // ttl
+            + 2 // rdlenght
+            + rdataLen // rdata
+            ;
+}
+
+void StorageBuilder::prepare()
+{
+    // Create the header
+    buffer_.reserve(1024); // TODO: Get some stats to find a reasonamble value here
+
+    buffer_.resize(6); // Header
+    buffer_[0] = CURRENT_STORAGE_VERSION;
 }
 
 uint16_t Message::Header::id() const
@@ -356,8 +415,14 @@ const Message::Header Message::header() const
     return Header{buffer_};
 }
 
+const Message::buffer_t &Message::buffer() const
+{
+    return buffer_;
+}
+
 Labels::Labels(boost::span<const char> buffer, size_t startOffset)
 {
+
     parse(buffer, startOffset);
 }
 
@@ -421,7 +486,7 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
 
             // root?
             if (ch == 0) {
-                buffer_view_ = buffer.subspan(0, offset +1);
+                buffer_view_ = buffer;
                 ++size_;
                 return; // At this point we know that the labels are within the
                         // limits for their individual and total size, and that
@@ -488,18 +553,21 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
 
 Labels::Iterator::Iterator(boost::span<const char> buffer, uint16_t offset)
     : buffer_{buffer}, current_loc_{offset} {
+    followPointers();
     update();
 }
 
 Labels::Iterator::Iterator(const Labels::Iterator &it)
     : buffer_{it.buffer_}, current_loc_{it.current_loc_}
 {
+    followPointers();
     update();
 }
 
 Labels::Iterator &Labels::Iterator::operator =(const Labels::Iterator &it) {
     buffer_ = it.buffer_;
     current_loc_ = it.current_loc_;
+    followPointers();
     update();
     return *this;
 }
@@ -539,28 +607,31 @@ void Labels::Iterator::update() {
 void Labels::Iterator::increment() {
     if (!csw_.empty()) {
         current_loc_ += csw_.size() + 1;
-
-        // Is it a pointer?
-        for(auto i = 0; ((buffer_[current_loc_] & START_OF_POINTER_TAG) == START_OF_POINTER_TAG); ++i) {
-            if (i >= MAX_PTRS_IN_A_ROW) {
-                throw runtime_error{"Labels::Iterator::increment: Recursive pointer or too many jumps!"};
-            }
-
-            const auto ptr = resolvePtr(buffer_, current_loc_);
-
-            // The parsing validated the pointers. But to avoid coding errors...
-            assert(ptr >= 0);
-            assert(ptr < buffer_.size());
-
-            current_loc_ = ptr;
-        }
-
+        followPointers();
         update();
     } else {
         // Morph into an end() iterator
         current_loc_ = {};
         buffer_ = {};
         csw_ = {};
+    }
+}
+
+void Labels::Iterator::followPointers()
+{
+    // Is it a pointer?
+    for(auto i = 0; ((buffer_[current_loc_] & START_OF_POINTER_TAG) == START_OF_POINTER_TAG); ++i) {
+        if (i >= MAX_PTRS_IN_A_ROW) {
+            throw runtime_error{"Labels::Iterator::increment: Recursive pointer or too many jumps!"};
+        }
+
+        const auto ptr = resolvePtr(buffer_, current_loc_);
+
+        // The parsing validated the pointers. But to avoid coding errors...
+        assert(ptr >= 0);
+        assert(ptr < buffer_.size());
+
+        current_loc_ = ptr;
     }
 }
 

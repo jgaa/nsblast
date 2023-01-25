@@ -4,6 +4,7 @@
 #include <iterator>
 #include <cassert>
 #include <boost/core/span.hpp>
+#include <boost/asio.hpp>
 #include "nsblast/nsblast.h"
 
 
@@ -160,6 +161,7 @@ public:
         static bool equals(const boost::span<const char> a, const boost::span<const char> b);
         void update();
         void increment();
+        void followPointers();
 
         boost::span<const char> buffer_;
         uint16_t current_loc_ = 0;
@@ -215,7 +217,9 @@ private:
     uint16_t offset_ = {}; // Offset to the start of the buffer
 };
 
-/*! Means to build a new message */
+/*! Means to build a new message
+ *
+ */
 class MessageBuilder : public Message {
 public:
     /*! Allocates space in the buffer for the header
@@ -240,10 +244,114 @@ public:
         buffer_t& mutable_buffer_;
     };
 
+//    class NewRr {
+//    public:
+//        NewRr(buffer_t& b, uint16_t offset, uint16_t size)
+//            : mutable_buffer_{b}, offset_{offset}, size_{size}  {}
+
+//        size_t size() const noexcept {
+//            return size_;
+//        }
+
+//        uint16_t offset() const noexcept {
+//            return offset_;
+//        }
+
+//        // Return a view of the buffer for this RR only
+//        auto span() const  {
+//            return boost::span{mutable_buffer_.data() + offset_, size()};
+//        }
+
+//    private:
+//        uint16_t size_ = {};
+//        const uint16_t offset_ = {};
+//        buffer_t& mutable_buffer_;
+//    };
+
+    MessageBuilder() = default;
+
+    NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
+    //NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+};
+
+/* Storage format
+
+    version     Version of the data frmat
+    flags       Flags to quickly check if a type of RR's are present
+    labelsize   Size of the labels buffer (in the first RR)
+    zonelen     Offset to the start of labels that identifies the zone
+    rrcount     Number of RR's in the RRSet
+
+    0                   1
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | version       | flags         |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | rrcount                       |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | labelsize     | zonelen       |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                               |
+    /            index              /
+    |                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                               |
+    / RRset entries                 /
+    |                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+    The index is sorted so that same type are clustered
+    and most popular types (in lookups) are first
+
+    Index format
+    0                   1
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | Type                          |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    + Offset                        +
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+    RR format (from RFC 1035)
+    The first entry has a NAME. All other entries
+    have just a pointer to the first entries NAME.
+
+                                    1  1  1  1  1  1
+      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                                               |
+    /                                               /
+    /                      NAME                     /
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TYPE                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     CLASS                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TTL                      |
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                   RDLENGTH                    |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
+    /                     RDATA                     /
+    /                                               /
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+
+*/
+
+/*! Class to build a message in our storage format.
+ *
+ */
+class StorageBuilder {
+public:
+    using buffer_t = std::vector<char>;
+
     class NewRr {
     public:
-        NewRr(buffer_t& b, uint16_t offset, uint16_t size)
-            : mutable_buffer_{b}, offset_{offset}, size_{size}  {}
+        NewRr(buffer_t& b, uint16_t offset, uint16_t rdataOffset, uint16_t size)
+            : buffer_{b}, offset_{offset}, rdataOffset_{rdataOffset}
+            , size_{size}  {}
 
         size_t size() const noexcept {
             return size_;
@@ -255,21 +363,79 @@ public:
 
         // Return a view of the buffer for this RR only
         auto span() const  {
-            return boost::span{mutable_buffer_.data() + offset_, size()};
+            return boost::span{buffer_.data() + offset_, size()};
+        }
+
+        const auto rdata() const {
+            const auto b = span();
+            auto len = size_ - rdataOffset_;
+            auto rval = boost::span<const char>(b.data() + rdataOffset_, len);
+            return rval;
+        }
+
+        const Labels labels() {
+            return Labels{buffer_, offset_};
         }
 
     private:
-        uint16_t size_ = {};
+        const uint16_t size_ = {};
         const uint16_t offset_ = {};
-        buffer_t& mutable_buffer_;
+        const uint16_t rdataOffset_ = {};
+        const buffer_t& buffer_;
     };
 
-    MessageBuilder() = default;
 
-    NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
+    StorageBuilder() {
+        prepare();
+    }
+
+    template <typename T>
+    NewRr createRrA(std::string_view fqdn, uint32_t ttl, T ip) {
+        if constexpr (std::is_same_v<T, boost::asio::ip::address>) {
+            if (ip.is_v4()) {
+                return createRrA(fqdn, ttl, ip.to_v4());
+            } else if (ip.is_v6()) {
+                return createRrA(fqdn, ttl, ip.to_v6());
+            } else {
+                throw std::runtime_error{"createRrA: unsupported boost::asio::ip::address type"};
+            }
+        } else {
+            auto bytes = ip.to_bytes();
+            auto b = boost::span(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+            if constexpr (std::is_same_v<T, boost::asio::ip::address_v4>) {
+                assert(b.size() == 4);
+                return createRr(fqdn, TYPE_A, ttl, b);
+            }
+            else if constexpr (std::is_same_v<T, boost::asio::ip::address_v6>) {
+                assert(b.size() == 16);
+                return createRr(fqdn, TYPE_AAAA, ttl, b);
+            } else {
+                // TODO: How to get the compiler to bail out here?
+                throw std::runtime_error{"createRrA: unsupported IP type"};
+            }
+        }
+    }
+
     NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+    NewRr createRr(uint16_t nameOffset, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+
+    /*! Get the raw data buffer for the message
+     *
+     *  This is the data in the message, ready to be sent over the wire or written to a database.
+     *
+     */
+    const buffer_t& buffer() const noexcept {
+        return buffer_;
+    }
 
 
+private:
+    NewRr finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+    size_t calculateLen(uint16_t labelsLen, size_t rdataLen) const ;
+    void prepare();
+    buffer_t buffer_;
+    size_t num_rr_ = 0;
+    uint16_t name_ptr_ = 0;
 };
 
 } // ns
