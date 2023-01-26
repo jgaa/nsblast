@@ -31,20 +31,43 @@ struct hdrbits {
 };
 #pragma pack(0)
 
-template <typename T>
-auto get16bValueAt(const T& b, size_t loc) {
-    if (loc + 1 >= b.size()) {
+template <typename T, typename I>
+I getValueAt(const T& b, size_t loc) {
+    if (loc + (sizeof(I) -1) >= b.size()) {
         throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
     }
 
-    const auto *v = reinterpret_cast<const uint16_t *>(b.data() + loc);
-    return ntohs(*v);
+    auto *v = reinterpret_cast<const I *>(b.data() + loc);
+
+    auto constexpr ilen = sizeof(I);
+
+    if constexpr (ilen == 1) {
+        return *v;
+    } else if constexpr (ilen == 2) {
+        return ntohs(*v);
+    } else if constexpr (ilen == 4) {
+        return ntohl(*v);
+    } else {
+        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "getValueAt: Unexpected integer length");
+    }
+
+    throw runtime_error{"getValueAt: Something is very, very wrong..."};
+}
+
+template <typename T>
+auto get16bValueAt(const T& b, size_t loc) {
+    return getValueAt<T, uint16_t>(b, loc);
+}
+
+template <typename T>
+auto get32bValueAt(const T& b, size_t loc) {
+    return getValueAt<T, uint32_t>(b, loc);
 }
 
 template <typename T, typename I>
 void setValueAt(const T& b, size_t loc, I value) {
     if (loc + (sizeof(I) -1) >= b.size()) {
-        throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
+        throw runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
     }
 
     auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
@@ -58,7 +81,7 @@ void setValueAt(const T& b, size_t loc, I value) {
     } else if constexpr (ilen == 4) {
         *v = htonl(value);
     } else {
-        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "Unexpected integer length");
+        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "setValueAt: Unexpected integer length");
     }
 }
 
@@ -225,6 +248,34 @@ StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
     }
 
     return finishRr(start_offset, labels_len, ttl, type, rdata);
+}
+
+StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, string_view mname,
+                                                string_view rname, uint32_t serial,
+                                                uint32_t refresh, uint32_t retry,
+                                                uint32_t expire, uint32_t minimum)
+{
+    // I could be fancy and create the SOA while creating the Rr, to avoid
+    // copying the rdata buffer, but this code is much cleaner - and soa's
+    // are not frequently updated (normally)
+
+    vector<char> rdata;
+    rdata.reserve(mname.size() + rname.size() + 4 + sizeof(4 * 5));
+
+    // TODO: See if we can compress the labels if parts of the names are already present
+    // in the builders buffer.
+    writeName(rdata, 0, mname);
+    writeName(rdata, 0, rname);
+
+    auto offset = rdata.size();
+
+    // Write the 32 bit values in the correct order
+    for(const auto val : {serial, refresh, retry, expire, minimum}) {
+        setValueAt(rdata, offset, val);
+        offset += sizeof(uint32_t);
+    }
+
+    return createRr(fqdn, TYPE_SOA, ttl, rdata);
 }
 
 StorageBuilder::NewRr
@@ -413,6 +464,16 @@ const Message::Header Message::header() const
     auto b = boost::span{buffer_};
 
     return Header{buffer_};
+}
+
+RrSet Message::getQuestions() const
+{
+
+}
+
+RrSet Message::getAnswers() const
+{
+
 }
 
 const Message::buffer_t &Message::buffer() const
@@ -635,6 +696,188 @@ void Labels::Iterator::followPointers()
             current_loc_ = ptr;
         }
     }
+}
+
+uint16_t Rr::type() const
+{
+    return get16bValueAt(buffer_view_, offset_to_type_);
+}
+
+uint16_t Rr::clas() const
+{
+    return get16bValueAt(buffer_view_, offset_to_type_ + 2);
+}
+
+uint32_t Rr::ttl() const
+{
+    return get32bValueAt(buffer_view_, offset_to_type_ + 4);
+}
+
+uint16_t Rr::rdlength() const
+{
+    return get32bValueAt(buffer_view_, offset_to_type_ + 8);
+}
+
+Rr::buffer_t Rr::rdata() const
+{
+    const auto start_of_rdata = offset_to_type_ + 10;
+    return self_view_.subspan(start_of_rdata);
+            //{self_view_.data() + start_of_rdata, self_view_.size() - start_of_rdata};
+}
+
+Labels Rr::labels() const
+{
+    if (!labels_) {
+        labels_.emplace(buffer_view_, offset_);
+    }
+
+    return *labels_;
+}
+
+void Rr::parse()
+{
+    const auto max_window_size = buffer_view_.size() - offset_;
+    if (max_window_size < 2) {
+        throw runtime_error{"Rr::parse: Buffer-window < 2 bytes!"};
+    }
+
+    size_t labelLen = 2;
+
+    // Only parse the labels at this time if it's not a pointer.
+    // If it's a pointer, we know that the buffer size for the label section
+    // is 2 bytes.
+    if ((buffer_view_[offset_] & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
+        labels_.emplace(buffer_view_, offset_);
+        labelLen = labels_->size();
+    }
+
+    // Get the start of the buffer after the labels
+    offset_to_type_ = offset_ + labelLen;
+    const auto rdlenSizeOffset = offset_to_type_ + 2 +  2 + 4;
+
+    if ((rdlenSizeOffset + 2) < max_window_size) {
+        throw runtime_error{"Rr::parse: Buffer-window is too small to hold rdtata section!"};
+    }
+
+    const auto rdlen = get16bValueAt(buffer_view_, rdlenSizeOffset);
+    const auto len = labelLen + (2 + 2 + 4 + rdlen);
+
+    if (len > max_window_size) {
+        throw runtime_error{"Rr::parse: Buffer-window is too small to hold the full RR!"};
+    }
+
+    assert(self_view_.size() >= offset_ + len);
+    self_view_ =  buffer_view_.subspan(offset_, len);
+    assert(self_view_.size() == len);
+    assert(self_view_.size() <= max_window_size);
+}
+
+RrSet::RrSet(RrSet::buffer_t bufferView, uint16_t offset, uint16_t count)
+    : view_{bufferView}, offset_{offset}, count_{count}
+{
+    parse();
+}
+
+RrSet::Iterator RrSet::begin() const
+{
+    return Iterator{view_, offset_, index_};
+}
+
+RrSet::Iterator RrSet::end() const
+{
+    return Iterator{{}, {}, index_};
+}
+
+void RrSet::parse()
+{
+    uint16_t coffset = offset_;
+    for(size_t i = 0; i < count_; ++i) {
+        Rr rr{view_, coffset};
+        index_.emplace_back(rr.type(), coffset);
+        coffset += rr.size();
+    }
+}
+
+RrSet::Iterator::Iterator(boost::span<const char> buffer, uint16_t offset, const RrSet::index_t &index)
+    : index_{index}, buffer_{buffer}
+{
+    if (buffer.empty()) { // end() iterator
+        current_ = index_.end();
+        return;
+    }
+
+    update();
+}
+
+//RrSet::Iterator::Iterator(const RrSet::Iterator &it)
+//    : index_{it.index_}, buffer_{it.buffer_}, current_{it.current_}, crr_{it.crr_}
+//{
+
+//}
+
+bool RrSet::Iterator::equals(const boost::span<const char> a, const boost::span<const char> b)
+{
+    return a.data() == b.data() && a.size() == b.size();
+}
+
+void RrSet::Iterator::update()
+{
+    if (current_ == index_.end()) {
+        crr_ = {};
+    }
+
+    crr_ = {buffer_, current_->offset};
+}
+
+void RrSet::Iterator::increment()
+{
+    ++current_;
+}
+
+Labels RrSoa::mname()
+{
+    return {rdata(), 0};
+}
+
+Labels RrSoa::rname()
+{
+    // TODO: Not optimal...
+    return {rdata(), mname().size()};
+}
+
+uint32_t RrSoa::serial() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+    return get32bValueAt(rd, rd.size() - 20);
+}
+
+uint32_t RrSoa::refresh() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+    return get32bValueAt(rd, rd.size() - 16);
+}
+
+uint32_t RrSoa::retry() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+    return get32bValueAt(rd, rd.size() - 12);
+}
+
+uint32_t RrSoa::expire() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+    return get32bValueAt(rd, rd.size() - 8);
+}
+
+uint32_t RrSoa::minimum() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+    return get32bValueAt(rd, rd.size() - 4);
 }
 
 

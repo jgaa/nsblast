@@ -3,6 +3,7 @@
 #include <limits>
 #include <iterator>
 #include <cassert>
+#include <deque>
 #include <boost/core/span.hpp>
 #include <boost/asio.hpp>
 #include "nsblast/nsblast.h"
@@ -10,6 +11,7 @@
 
 namespace nsblast::lib {
 
+class RrSet;
 
 /*! RFC 1035 message
  *
@@ -95,6 +97,9 @@ public:
     };
 
     const Header header() const;
+
+    RrSet getQuestions() const;
+    RrSet getAnswers() const;
 
 
     /*! Get the raw data buffer for the message
@@ -217,6 +222,149 @@ private:
     uint16_t offset_ = {}; // Offset to the start of the buffer
 };
 
+/*! Representation for a Resource Record.
+ *
+ *  The rr does not own it's buffer.
+ *
+ */
+class Rr {
+public:
+    using buffer_t = boost::span<const char>;
+
+    Rr() = default;
+    Rr(const Rr&) = default;
+    Rr(buffer_t bufferView, uint32_t offset)
+        : buffer_view_{bufferView}, offset_{offset} {
+        parse();
+    }
+
+    Rr& operator = (const Rr&) = default;
+
+    uint16_t type() const;
+    uint16_t clas() const;
+    uint32_t ttl() const;
+    uint16_t rdlength() const;
+    buffer_t rdata() const;
+
+    Labels labels() const;
+
+    size_t size() const {
+        return self_view_.size();
+    }
+
+protected:
+    void parse();
+
+    mutable std::optional<Labels> labels_;
+    buffer_t buffer_view_;
+    uint32_t offset_ = 0;
+    uint32_t offset_to_type_ = 0;
+    buffer_t self_view_;
+};
+
+class RrSoa : public Rr {
+public:
+    RrSoa(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels mname();
+    Labels rname();
+    uint32_t serial() const;
+    uint32_t refresh() const;
+    uint32_t retry() const;
+    uint32_t expire() const;
+    uint32_t minimum() const;
+};
+
+/*! Wrapper / view over a RrSet
+ *
+ *  The object does not own it's buffer
+ */
+class RrSet {
+public:
+    using buffer_t = boost::span<const char>;
+
+#pragma pack(1)
+    struct Index {
+        Index(uint16_t type, uint16_t offset)
+            : type{type}, offset{offset} {}
+        Index(const Index&) = default;
+        Index(Index&&) = default;
+
+        Index& operator = (const Index&) = default;
+
+        uint16_t type;
+        uint16_t offset;
+    };
+#pragma pack(0)
+    using index_t = std::deque<Index>;
+
+    /*! Simple forward iterator to allow us to iterate over the rr's */
+    class Iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t; // best nonsense choise?
+        using value_type        = Rr;
+        using pointer           = const value_type*;
+        using reference         = const value_type&;
+
+        // Empty buffer constructs and end() iterator
+        Iterator(boost::span<const char> buffer, uint16_t offset, const index_t& index);
+
+        Iterator(const Iterator& it) = default;
+
+        Iterator& operator = (const Iterator& it);
+
+        reference operator*() const { return crr_; }
+
+        pointer operator->() { return &crr_; }
+
+        Iterator& operator++();
+
+        Iterator operator++(int);
+
+        friend bool operator== (const Iterator& a, const Iterator& b) {
+            return equals(a.buffer_, b.buffer_) && a.current_ == b.current_;
+        }
+
+        friend bool operator!= (const Iterator& a, const Iterator& b) {
+            return !equals(a.buffer_, b.buffer_) || a.current_ != b.current_;
+        }
+
+    private:
+        static bool equals(const boost::span<const char> a, const boost::span<const char> b);
+        void update();
+        void increment();
+
+        const index_t& index_;
+        boost::span<const char> buffer_;
+        index_t::const_iterator current_;
+        Rr crr_;
+    };
+
+    RrSet(buffer_t bufferView, uint16_t offset, uint16_t count);
+
+    size_t count() const {
+        return count_;
+    }
+
+    auto buffer() const {
+        return view_;
+    }
+
+    Iterator begin() const;
+
+    Iterator end() const;
+
+private:
+    void parse();
+
+    buffer_t view_;
+    const uint16_t offset_ = 0;
+    const uint16_t count_ = 0;
+    index_t index_;
+};
+
 /*! Means to build a new message
  *
  */
@@ -314,6 +462,17 @@ public:
     StorageBuilder() {
         prepare();
     }
+
+    /*! Create a SOA record. */
+    NewRr createSoa(std::string_view fqdn,
+                    uint32_t ttl,
+                    std::string_view mname, // primary NS
+                    std::string_view rname, // email
+                    uint32_t serial,
+                    uint32_t refresh,
+                    uint32_t retry,
+                    uint32_t expire,
+                    uint32_t minimum);
 
     /*! Create the appropriate A or AAAA record from boost::asio::ip::address, v4 or v6
      *
