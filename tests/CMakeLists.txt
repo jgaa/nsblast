@@ -19,7 +19,7 @@ set_property(TARGET dns_messages_tests PROPERTY CXX_STANDARD 17)
 
 add_dependencies(dns_messages_tests
     nsblastlib
-    googletest
+    ${DEPENDS_GTEST}
     )
 
 target_include_directories(dns_messages_tests
@@ -31,7 +31,7 @@ target_include_directories(dns_messages_tests
     )
 
 target_link_libraries(dns_messages_tests
-    gtest
+    ${GTEST_LIBRARIES}
     nsblastlib
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}

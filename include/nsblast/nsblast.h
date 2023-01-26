@@ -7,29 +7,66 @@
 
 namespace nsblast {
 
+/*! The applications configuration */
 struct Config {
+    /*! \name Database */
+    ///@{
+    /// Path to the database directory
     std::string db_path = "/var/lib/nsblast";
 
-    // DNS
-    // Number of threads for the DNS server. Note that db and file access
-    // is syncronous, so even if the DNS server is asyncroneous, we need some
-    // extra threads to wait for slow IO to complete.
+
+    ///@}
+
+    /*! \name DNS */
+    ///@{
+
+    /*! Number of threads for the DNS server.
+     *
+     *  Note that db and file access is syncronous, so even
+     *  if the DNS server is asyncroneous, we need some
+     *  extra threads to wait for slow IO to complete.
+     */
     size_t num_dns_threads = 6;
+
+    /*! endpoint to the DNS interface.
+     *
+     *  Can be a hostname or an IP address.
+     *  If a hostname is provided and it resolves to multiple IP
+     *  addresses, nsblast will try to listen to all of them.
+     *
+     */
     std::string dns_endpoint;
+
+    /*! The port to listen to */
     std::string dns_port; // Only required for non-standard ports
 
-    // HTTP
+    ///@}
 
-    // Number of threads for the API and UI. Note that db and file access
-    // is syncronous, so even if the HTTP server is asyncroneous, we need some
-    // extra threads to wait for slow IO to complete.
+    /*! \name HTTP */
+    ///@{
+
+    /*! Number of threads for the API and UI.
+     *  Note that db and file access
+     *  is syncronous, so even if the HTTP server is
+     *  asyncroneous, we need some
+     *  extra threads to wait for slow IO to complete.
+     */
     size_t num_http_threads = 6;
 
+    /*! Ip address or hostname for the REST API endpoint */
     std::string http_endpoint;
-    std::string http_port; // Only required for non-standard ports
-    std::string http_tls_key;
-    std::string http_tls_cert;
 
+    /*! HTTP port
+     *
+     *  Only required for non-standard ports
+     */
+    std::string http_port;
+
+    /*! Path to the TLS key-file if HTTPS is used */
+    std::string http_tls_key;
+    /*! Path to the TLS cert-file if HTTPS is used */
+    std::string http_tls_cert;
+    ///@}
 };
 
 // RFC 1035

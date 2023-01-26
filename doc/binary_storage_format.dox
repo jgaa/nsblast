@@ -1,0 +1,80 @@
+/*!
+    \page binary_storage_format Binary Storage Format
+
+    The idea is to store the data as Rr's, (almost) ready to be
+    sent on the wire in a DNS reply, after they are copied
+    to the outgoing message buffer. We have our own header
+    to understand the data and to work efficiently with it.
+
+    When we copy data to a DNS reply buffer, we must handle
+    the NAME (labels) gracefully (it must be copied at least once,
+    and pointers in other records in a RrSet must be updated
+    accordingly).
+
+    - version     Version of the data frmat
+    - flags       Flags to quickly check if a popular type of RR's are present
+    - labelsize   Size of the labels buffer (in the first RR)
+    - zonelen     Offset to the start of labels that identifies the zone
+    - rrcount     Number of RR's in the RRSet
+
+    \verbatim
+    0                   1
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | version       | flags         |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | rrcount                       |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | labelsize     | zonelen       |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                               |
+    /            index              /
+    |                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                               |
+    / RRset entries                 /
+    |                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    \endverbatim
+
+    The index is sorted so that rr's with the same type are clustered
+    and most popular types (in lookups) are first
+
+    Index format
+    \verbatim
+    0                   1
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | Type                          |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    + Offset                        +
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    \endverbatim
+
+    RR format (from RFC 1035)
+    
+    The first entry has a NAME. All other entries
+    have just a pointer to the first entries NAME.
+    \verbatim
+                                    1  1  1  1  1  1
+      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                                               |
+    /                                               /
+    /                      NAME                     /
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TYPE                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     CLASS                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TTL                      |
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                   RDLENGTH                    |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
+    /                     RDATA                     /
+    /                                               /
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    \endverbatim
+*/

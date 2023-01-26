@@ -118,7 +118,7 @@ protected:
  *  in the text-representation of the label.
  *
  *  The binary representation is a single unsigned octet as a length
- *  field, immediately followed by <length> cxharacters. Unlike, C
+ *  field, immediately followed by "length" characters. Unlike, C
  *  strings, there are no \0 string terminator.
  *
  *  A length of 0 represents the root node in the global DNS name space.
@@ -171,8 +171,8 @@ public:
 
     /*! Constructor
      *
-     *  @param buffer Buffer that covers the message.
-     *  @param startOffset The location in the buffer where this
+     *  \param buffer Buffer that covers the message.
+     *  \param startOffset The location in the buffer where this
      *     labels data start.
      *
      *  The lables may contain pointers to other labels within
@@ -207,7 +207,7 @@ public:
 private:
     /*! Parse the buffer.
      *
-     *  @throws std::runtime_error on buffer-validation errors.
+     *  \throws std::runtime_error on buffer-validation errors.
      */
     void parse(boost::span<const char> buffer, size_t startOffset);
 
@@ -224,7 +224,7 @@ class MessageBuilder : public Message {
 public:
     /*! Allocates space in the buffer for the header
      *
-     *  @return Mutable header where some properties can be updated.
+     *  \returns Mutable header where some properties can be updated.
      */
     class NewHeader {
     public:
@@ -250,108 +250,42 @@ public:
     //NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
 };
 
-/* Storage format
 
-    The idea is to store the data as Rr's, (almost) ready to be
-    sent on the wire in a DNS reply, after they are copied
-    to the outgoing message buffer. We have our own header
-    to understand the data and to work efficiently with it.
-
-    When we copy data to a DNS reply buffer, we must handle
-    the NAME (labels) gracefully (it must be copied at least once,
-    and pointers in other records in a RrSet must be updated
-    accordingly).
-
-    version     Version of the data frmat
-    flags       Flags to quickly check if a popular type of RR's are present
-    labelsize   Size of the labels buffer (in the first RR)
-    zonelen     Offset to the start of labels that identifies the zone
-    rrcount     Number of RR's in the RRSet
-
-    0                   1
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    | version       | flags         |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    | rrcount                       |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    | labelsize     | zonelen       |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                               |
-    /            index              /
-    |                               |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                               |
-    / RRset entries                 /
-    |                               |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-
-    The index is sorted so that rr's with the same type are clustered
-    and most popular types (in lookups) are first
-
-    Index format
-    0                   1
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    | Type                          |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    + Offset                        +
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-    RR format (from RFC 1035)
-    The first entry has a NAME. All other entries
-    have just a pointer to the first entries NAME.
-
-                                    1  1  1  1  1  1
-      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                                               |
-    /                                               /
-    /                      NAME                     /
-    |                                               |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                      TYPE                     |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                     CLASS                     |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                      TTL                      |
-    |                                               |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                   RDLENGTH                    |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
-    /                     RDATA                     /
-    /                                               /
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-
-*/
-
-/*! Class to build a message in our storage format.
+/*! Class to build a message in our own storage format.
  *
+ *  See \ref binary_storage_format
  */
 class StorageBuilder {
 public:
     using buffer_t = std::vector<char>;
 
+    /*! Non-owning reference to a newly created RR
+     *
+     * Can be used to get relevant information for
+     * sanity checks and information required by unit-tests.
+     */
     class NewRr {
     public:
         NewRr(buffer_t& b, uint16_t offset, uint16_t rdataOffset, uint16_t size)
             : buffer_{b}, offset_{offset}, rdataOffset_{rdataOffset}
             , size_{size}  {}
 
+        /// Size of the RR's buffer-space
         size_t size() const noexcept {
             return size_;
         }
 
+        /// Start-offset into the shared buffer used by thes RR
         uint16_t offset() const noexcept {
             return offset_;
         }
 
-        // Return a view of the buffer for this RR only
+        /// Returns a view of the buffer for this RR only
         auto span() const  {
             return boost::span{buffer_.data() + offset_, size()};
         }
 
+        /// Returns a view of the binary RDATA section of the RR
         const auto rdata() const {
             const auto b = span();
             auto len = size_ - rdataOffset_;
@@ -359,6 +293,12 @@ public:
             return rval;
         }
 
+        /*! Returns the Labels for this RR
+         *
+         *  Note that it will resolve pointers and return
+         *  the effective labels, even if those are stored
+         *  in another RR's buffer-view.
+         */
         const Labels labels() {
             return Labels{buffer_, offset_};
         }
@@ -377,7 +317,7 @@ public:
 
     /*! Create the appropriate A or AAAA record from boost::asio::ip::address, v4 or v6
      *
-     *  (This may be a little too "smart" to my taste...)
+     *  (This may be a little too clever to my taste...)
      */
     template <typename T>
     NewRr createRrA(std::string_view fqdn, uint32_t ttl, T ip) {
@@ -431,6 +371,13 @@ public:
      *
      *  \param nameOffset The offset into the storages buffer to the
      *         NAME (labels) for the RrSet.
+     *  \param type The type of the record
+     *  \param ttl time to live in seconds. This is ignored for all but the first record.
+     *  \param rdata The data to store. The data is in binary format, ready to be send in
+     *         DNS answers.
+     *
+     *  \return An NewRr object referencing the new record.
+     *  \exception std::runtime_error and other exceptions thrown by the C++ standard library and asio.
      *
      */
     NewRr createRr(uint16_t nameOffset, uint16_t type, uint32_t ttl, boost::span<const char> rdata);

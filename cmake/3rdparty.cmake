@@ -16,17 +16,41 @@ ExternalProject_Add(logfault
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
 )
 
-ExternalProject_Add(googletest
-    GIT_TAG "main"
-    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-)
+# If we compile the tests; download and install gtest if it's not found on the target
+# On ubuntu and debian, you can install `libgtest-dev` to avoid this step.
+if (NSBLAST_WITH_TESTS)
+    find_package(GTest)
+    if (GTest_FOUND)
+        message("Using installed googletest")
+    else()
+        message("Will download and install googletest as a cmake included project")
+        set(DEPENDS_GTEST googletest)
+        set(GTEST_LIBRARIES gtest)
+
+        if (NOT DEFINED GTEST_TAG)
+            set(GTEST_TAG "main")
+        endif()
+
+        message("GTEST_TAG: ${GTEST_TAG}")
+
+        ExternalProject_Add(googletest
+            GIT_TAG "${GTEST_TAG}"
+            PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            CMAKE_ARGS
+                -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+                ${GTEST_EXTRA_ARGS}
+        )
+        set(GTEST_LIB_DIR ${RESTC_EXTERNAL_INSTALLED_LIB_DIR})
+    endif()
+endif()
 
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
@@ -47,6 +71,7 @@ ExternalProject_Add(rocksdb
         -DCMAKE_POSITION_INDEPENDENT_CODE=True
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
 
      # Required because CMake don't work really well with ninja
      BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
