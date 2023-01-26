@@ -619,19 +619,21 @@ void Labels::Iterator::increment() {
 
 void Labels::Iterator::followPointers()
 {
+    if (!buffer_.empty()) { // end() ?
     // Is it a pointer?
-    for(auto i = 0; ((buffer_[current_loc_] & START_OF_POINTER_TAG) == START_OF_POINTER_TAG); ++i) {
-        if (i >= MAX_PTRS_IN_A_ROW) {
-            throw runtime_error{"Labels::Iterator::increment: Recursive pointer or too many jumps!"};
+        for(auto i = 0; ((buffer_[current_loc_] & START_OF_POINTER_TAG) == START_OF_POINTER_TAG); ++i) {
+            if (i >= MAX_PTRS_IN_A_ROW) {
+                throw runtime_error{"Labels::Iterator::increment: Recursive pointer or too many jumps!"};
+            }
+
+            const auto ptr = resolvePtr(buffer_, current_loc_);
+
+            // The parsing validated the pointers. But to avoid coding errors...
+            assert(ptr >= 0);
+            assert(ptr < buffer_.size());
+
+            current_loc_ = ptr;
         }
-
-        const auto ptr = resolvePtr(buffer_, current_loc_);
-
-        // The parsing validated the pointers. But to avoid coding errors...
-        assert(ptr >= 0);
-        assert(ptr < buffer_.size());
-
-        current_loc_ = ptr;
     }
 }
 
