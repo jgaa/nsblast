@@ -137,8 +137,8 @@ public:
         using iterator_category = std::forward_iterator_tag;
         using difference_type   = std::ptrdiff_t; // best nonsense choise?
         using value_type        = std::string_view;
-        using pointer           = const std::string_view*;
-        using reference         = const std::string_view&;
+        using pointer           = const value_type*;
+        using reference         = const value_type&;
 
         Iterator(boost::span<const char> buffer, uint16_t offset);
 
@@ -186,14 +186,37 @@ public:
      *
      *  The constructor parses and validates the buffer, and
      *  sets it local buffer_view_ to exactely match the
-     *  labels from the original buffer.
+     *  labels from the original buffer(?).
      *
      *  Note: This object does not own any buffers.
      */
     Labels(boost::span<const char> buffer, size_t startOffset);
 
-    /*! Returns the size of the labels buffer in bytes */
+    /*! Returns the size of the labels
+     *
+     *  Equals stringlen, including the trailing dot
+     */
     size_t size() const noexcept;
+
+
+    /*! Returns the bytes used by this label in the buffer
+     *
+     *  This may be 1 for a root node, 2 for a pointer, or up to
+     *  63 bytes for a normal or partial label.
+     */
+
+    uint16_t bytes() const noexcept;
+
+    /*! Returns the buffer space occupied by the labels
+     *
+     *  This is the buffer used by the labels, so we can calculate
+     *  the offset of the next segment in a message. A pointer
+     *  for example, is 2 bytes, no matter what domain name it
+     *  points to. A root node is 1 byte.
+     */
+    auto buffer() const noexcept {
+        return buffer_view_;
+    }
 
     /*! Returns the number of labels in the list, including the trailing root label. */
     size_t count() const noexcept;
@@ -217,9 +240,10 @@ private:
     void parse(boost::span<const char> buffer, size_t startOffset);
 
     size_t count_ = {}; // Number of labels
-    size_t size_ = {}; // Number of bytes for the fqdn
-    boost::span<const char> buffer_view_;
+    size_t size_ = {}; // Number of bytes for the fqdn (stringlen, including trailing dot)
+    uint16_t bytes_ = {}; // Bumber of bytes this label occupies in the buffer
     uint16_t offset_ = {}; // Offset to the start of the buffer
+    boost::span<const char> buffer_view_; // A span over the full buffer
 };
 
 /*! Representation for a Resource Record.
@@ -252,6 +276,14 @@ public:
         return self_view_.size();
     }
 
+    uint32_t offset() const noexcept {
+        return offset_;
+    }
+
+    auto view() const noexcept {
+        return self_view_;
+    }
+
 protected:
     void parse();
 
@@ -262,6 +294,10 @@ protected:
     buffer_t self_view_;
 };
 
+/*! Wrapper over a RR SOA instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
 class RrSoa : public Rr {
 public:
     RrSoa(buffer_t bufferView, uint32_t offset)
@@ -449,6 +485,10 @@ public:
          */
         const Labels labels() {
             return Labels{buffer_, offset_};
+        }
+
+        boost::span<const char> view() const noexcept {
+            return {buffer_.data() + offset_, size_};
         }
 
     private:

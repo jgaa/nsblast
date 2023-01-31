@@ -167,9 +167,12 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
 
 // Write a fdqn in text representation as a RFC1035 name (array of labels)
 template <typename T>
-uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
+uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn, bool commit = true) {
     const auto start_offset = offset;
-    assert((offset + fdqn.size() + 2) < buffer.size());
+
+    if (commit) {
+        assert((offset + fdqn.size() + 2) < buffer.size());
+    }
 
     if (fdqn.size() > 255) {
         throw runtime_error{"writeName: fdqn must be less than 256 bytes. This fdqn is: "s
@@ -186,9 +189,13 @@ uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
             throw runtime_error{"writeName: labels must be less 64 bytes. This label: "s
                                 + to_string(label.size())};
         }
-        buffer[offset] = static_cast<uint8_t>(label.size());
+        if (commit) {
+            buffer[offset] = static_cast<uint8_t>(label.size());
+        }
         ++offset;
-        std::copy(label.begin(), label.end(), buffer.begin() + offset);
+        if (commit) {
+            std::copy(label.begin(), label.end(), buffer.begin() + offset);
+        }
         offset += label.size();
 
         if (dot == string_view::npos) {
@@ -204,7 +211,9 @@ uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn) {
     }
 
     // Always add root
-    buffer[offset] = 0;
+    if (commit) {
+        buffer[offset] = 0;
+    }
     return ++offset - start_offset;
 }
 
@@ -215,7 +224,7 @@ void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
     buffer[offset] |= START_OF_POINTER_TAG;
 }
 
-StorageBuilder::NewRr
+StorageBuilder::        NewRr
 StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
 {
     if (name_ptr_) {
@@ -240,14 +249,14 @@ StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
     buffer_.resize(buffer_.size() + len);
 
     {
-        const auto rlen = writeName(buffer_, start_offset, fqdn);\
+        const auto rlen = writeName(buffer_, start_offset, fqdn);
         assert(name_ptr_ == 0);
         assert(start_offset != 0);
         name_ptr_ = start_offset;
         assert(rlen == labels_len);
     }
 
-    return finishRr(start_offset, labels_len, ttl, type, rdata);
+    return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
 StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, string_view mname,
@@ -260,14 +269,22 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
     // are not frequently updated (normally)
 
     vector<char> rdata;
-    rdata.reserve(mname.size() + rname.size() + 4 + sizeof(4 * 5));
+
+    const auto mname_size = writeName(rdata, 0, mname, false);
+    const auto rname_size = writeName(rdata, 0, rname, false);
+
+    rdata.resize(mname_size + rname_size + (4 * 5));
 
     // TODO: See if we can compress the labels if parts of the names are already present
     // in the builders buffer.
-    writeName(rdata, 0, mname);
-    writeName(rdata, 0, rname);
+    auto bytes = writeName(rdata, 0, mname);
+    assert(bytes == mname_size);
 
-    auto offset = rdata.size();
+    bytes = writeName(rdata, mname_size, rname);
+    assert(bytes == rname_size);
+
+    auto offset = mname_size + rname_size;
+    assert(offset == (static_cast<int>(rdata.size()) - (4 * 5)));
 
     // Write the 32 bit values in the correct order
     for(const auto val : {serial, refresh, retry, expire, minimum}) {
@@ -290,7 +307,7 @@ StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
     buffer_.resize(buffer_.size() + len);
     writeNamePtr(buffer_, start_offset, nameOffset);
 
-    return finishRr(start_offset, labels_len, ttl, type, rdata);
+    return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
 StorageBuilder::NewRr
@@ -309,7 +326,7 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
     setValueAt(buffer_, coffset, ttl); // TTL
     coffset += 4;
 
-    set16bValueAt(buffer_, coffset, rdata.size()); // Class
+    set16bValueAt(buffer_, coffset, rdata.size()); // RDLEN
     coffset += 2;
 
     assert(buffer_.size() >= coffset + rdata.size());
@@ -492,6 +509,11 @@ size_t Labels::size() const noexcept
     return size_;
 }
 
+uint16_t Labels::bytes() const noexcept
+{
+    return bytes_;
+}
+
 size_t Labels::count() const noexcept
 {
     return count_;
@@ -530,12 +552,18 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
     }
 
     offset_ = startOffset;
+    buffer_view_ = buffer;
+
+    bool in_pointer = false;
 
     //size_t octets = 0;
     size_t label_bytes = 0;
     auto num_ptrs_in_sequence = 0;
     bool in_header = true;
     for(auto it = buffer.begin() + startOffset; it != buffer.end(); ++it) {
+        if (!in_pointer) {
+            ++bytes_;
+        }
         const auto ch = static_cast<uint8_t>(*it);
         if (in_header) {
             ++count_;
@@ -547,8 +575,8 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
 
             // root?
             if (ch == 0) {
-                buffer_view_ = buffer;
                 ++size_;
+
                 return; // At this point we know that the labels are within the
                         // limits for their individual and total size, and that
                         // they are withinn the boundries for the buffer.
@@ -558,11 +586,20 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
             if ((ch & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
                 num_ptrs_in_sequence = 0;
             } else {
+                if (!in_pointer) {
+                    in_pointer = true;
+                    ++bytes_; // This is the end of the buffer occupied by this label
+                }
+
                 if (++num_ptrs_in_sequence >= MAX_PTRS_IN_A_ROW) {
                     throw runtime_error{"Labels::parse: Too many pointers in a row"};
                 }
                 if ((it + 1) == buffer.end()) {
                     throw runtime_error("Labels::parse: Found a label pointer starting at the last byte of the buffer");
+                }
+
+                if (buffer_view_.empty()) {
+                    buffer_view_ = buffer.subspan(offset_, size_ + 1);
                 }
 
                 auto ptr = resolvePtr(buffer, offset);
@@ -700,22 +737,22 @@ void Labels::Iterator::followPointers()
 
 uint16_t Rr::type() const
 {
-    return get16bValueAt(buffer_view_, offset_to_type_);
+    return get16bValueAt(self_view_, offset_to_type_);
 }
 
 uint16_t Rr::clas() const
 {
-    return get16bValueAt(buffer_view_, offset_to_type_ + 2);
+    return get16bValueAt(self_view_, offset_to_type_ + 2);
 }
 
 uint32_t Rr::ttl() const
 {
-    return get32bValueAt(buffer_view_, offset_to_type_ + 4);
+    return get32bValueAt(self_view_, offset_to_type_ + 4);
 }
 
 uint16_t Rr::rdlength() const
 {
-    return get32bValueAt(buffer_view_, offset_to_type_ + 8);
+    return get32bValueAt(self_view_, offset_to_type_ + 8);
 }
 
 Rr::buffer_t Rr::rdata() const
@@ -748,25 +785,26 @@ void Rr::parse()
     // is 2 bytes.
     if ((buffer_view_[offset_] & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
         labels_.emplace(buffer_view_, offset_);
-        labelLen = labels_->size();
+        labelLen = labels_->bytes();
+        auto sl = labels_->string().size();
+        assert(labels_->bytes() == (sl + 2 /* first len + root */));
     }
 
-    // Get the start of the buffer after the labels
-    offset_to_type_ = offset_ + labelLen;
-    const auto rdlenSizeOffset = offset_to_type_ + 2 +  2 + 4;
+    // Get the start of the buffer after the labels (in self_view_)
+    offset_to_type_ = labelLen;
+    const auto rdlenSizeOffset = offset_ + offset_to_type_ + 2 +  2 + 4;
 
-    if ((rdlenSizeOffset + 2) < max_window_size) {
+    if ((rdlenSizeOffset + 2) > max_window_size) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold rdtata section!"};
     }
 
-    const auto rdlen = get16bValueAt(buffer_view_, rdlenSizeOffset);
-    const auto len = labelLen + (2 + 2 + 4 + rdlen);
+    const auto rdlen = get16bValueAt(buffer_view_,  rdlenSizeOffset);
+    const auto len = labelLen + (2 + 2 + 4 + 2 + rdlen);
 
     if (len > max_window_size) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold the full RR!"};
     }
 
-    assert(self_view_.size() >= offset_ + len);
     self_view_ =  buffer_view_.subspan(offset_, len);
     assert(self_view_.size() == len);
     assert(self_view_.size() <= max_window_size);
@@ -842,7 +880,7 @@ Labels RrSoa::mname()
 Labels RrSoa::rname()
 {
     // TODO: Not optimal...
-    return {rdata(), mname().size()};
+    return {rdata(), mname().bytes()};
 }
 
 uint32_t RrSoa::serial() const

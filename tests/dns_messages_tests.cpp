@@ -470,6 +470,56 @@ TEST(Rr, MultipleA) {
     EXPECT_TRUE(memcmp(bytes.data(), rr3.rdata().data(), 4) == 0);
 }
 
+TEST(Rr, parse) {
+    StorageBuilder sb;
+
+    string_view fdqn = "www.example.com";
+
+    char data[] = "teste";
+
+    auto nr = sb.createRr(fdqn, 123, 1000, data);
+
+    // This parses the buffert for the RR
+    // rr must now equal nr
+    Rr rr{sb.buffer(), nr.offset()};
+
+    EXPECT_EQ(rr.labels().string(), fdqn);
+    EXPECT_EQ(rr.type(), 123);
+    EXPECT_EQ(rr.ttl(), 1000);
+    EXPECT_EQ(nr.rdata().size(), rr.rdata().size());
+    EXPECT_EQ(nr.rdata().data(), rr.rdata().data());
+    EXPECT_EQ(nr.labels().begin(), rr.labels().begin());
+    EXPECT_EQ(nr.size(), rr.size());
+    EXPECT_EQ(nr.offset(), rr.offset());
+    EXPECT_EQ(nr.view().size(), rr.view().size());
+    EXPECT_EQ(nr.view().data(), rr.view().data());
+}
+
+TEST(Rr, Soa) {
+    StorageBuilder sb;
+
+    string_view fdqn = "www.example.com";
+    string_view mname = "ns1.example.com";
+    string_view rname = "hostmaster@example.com";
+
+    auto rr = sb.createSoa(fdqn, 9999, mname, rname,
+                           1000, 1001, 1002, 1003, 1004);
+
+    RrSoa soa{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(soa.labels().string(), fdqn);
+    EXPECT_EQ(soa.type(), nsblast::TYPE_SOA);
+    EXPECT_EQ(soa.ttl(), 9999);
+
+    EXPECT_EQ(soa.mname().string(), mname);
+    EXPECT_EQ(soa.rname().string(), rname);
+    EXPECT_EQ(soa.serial(), 1000);
+    EXPECT_EQ(soa.refresh(), 1001);
+    EXPECT_EQ(soa.retry(), 1002);
+    EXPECT_EQ(soa.expire(), 1003);
+    EXPECT_EQ(soa.minimum(), 1004);
+}
+
 // TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {
