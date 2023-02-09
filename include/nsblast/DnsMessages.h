@@ -324,6 +324,18 @@ public:
     Labels cname() const;
 };
 
+/*! Wrapper over a RR NS instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrNs : public Rr {
+public:
+    RrNs(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels ns() const;
+};
+
 /*! Wrapper over a RR CNAME instance.
  *
  *  Can be used to simply obtain data from the record.
@@ -580,6 +592,11 @@ public:
                       uint32_t ttl,
                       std::string_view cname);
 
+    /*! Create a NS record. */
+    NewRr createNs(std::string_view fqdn,
+                      uint32_t ttl,
+                      std::string_view ns);
+
     /*! Create a TXT record.
      *
      * \param fqdn Fully Qualified Domanin Name
@@ -711,6 +728,11 @@ public:
 
 
 private:
+    NewRr createDomainNameInRdata(std::string_view fqdn,
+                                  uint16_t type,
+                                  uint32_t ttl,
+                                  std::string_view dname);
+
     NewRr finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
     size_t calculateLen(uint16_t labelsLen, size_t rdataLen) const ;
     void prepare();

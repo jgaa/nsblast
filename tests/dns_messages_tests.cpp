@@ -598,6 +598,25 @@ TEST(Rr, Cname) {
     EXPECT_EQ(cn.cname().string(), cname);
 }
 
+TEST(Rr, Ns) {
+    StorageBuilder sb;
+
+    string_view fdqn = "example.com";
+    string_view ns = "ns1.example.com";
+
+    auto rr = sb.createNs(fdqn, 1000, ns);
+
+    EXPECT_EQ(rr.labels().string(), fdqn);
+
+    RrNs dn{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(dn.labels().string(), fdqn);
+    EXPECT_EQ(dn.type(), nsblast::TYPE_NS);
+    EXPECT_EQ(dn.ttl(), 1000);
+    EXPECT_EQ(dn.ns().string(), ns);
+}
+
+
 TEST(Rr, TxtSimple) {
     StorageBuilder sb;
 

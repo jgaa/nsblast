@@ -297,11 +297,12 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
 
 StorageBuilder::NewRr StorageBuilder::createCname(string_view fqdn, uint32_t ttl, string_view cname)
 {
-    vector<char> rdata;
-    const auto mname_size = writeName(rdata, 0, cname, false);
-    rdata.resize(mname_size);
-    writeName(rdata, 0, cname);
-    return createRr(fqdn, TYPE_CNAME, ttl, rdata);
+    return createDomainNameInRdata(fqdn, TYPE_CNAME, ttl, cname);
+}
+
+StorageBuilder::NewRr StorageBuilder::createNs(string_view fqdn, uint32_t ttl, string_view ns)
+{
+    return createDomainNameInRdata(fqdn, TYPE_NS, ttl, ns);
 }
 
 StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, string_view txt, bool split)
@@ -338,6 +339,15 @@ StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
     writeNamePtr(buffer_, start_offset, nameOffset);
 
     return finishRr(start_offset, labels_len, type, ttl, rdata);
+}
+
+StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
+{
+    vector<char> rdata;
+    const auto mname_size = writeName(rdata, 0, dname, false);
+    rdata.resize(mname_size);
+    writeName(rdata, 0, dname);
+    return createRr(fqdn, type, ttl, rdata);
 }
 
 StorageBuilder::NewRr
@@ -966,6 +976,17 @@ uint32_t RrSoa::minimum() const
 
 Labels RrCname::cname() const
 {
+    if (type() != TYPE_CNAME) {
+        throw runtime_error{"Not a TYPE_CNAME"};
+    }
+    return {rdata(), 0};
+}
+
+Labels RrNs::ns() const
+{
+    if (type() != TYPE_NS) {
+        throw runtime_error{"Not a TYPE_NS"};
+    }
     return {rdata(), 0};
 }
 
