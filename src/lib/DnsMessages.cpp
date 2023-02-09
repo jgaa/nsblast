@@ -794,7 +794,7 @@ void Rr::parse()
     offset_to_type_ = labelLen;
     const auto rdlenSizeOffset = offset_ + offset_to_type_ + 2 +  2 + 4;
 
-    if ((rdlenSizeOffset + 2) > max_window_size) {
+    if ((rdlenSizeOffset + 2) >= buffer_view_.size()) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold rdtata section!"};
     }
 
@@ -844,7 +844,20 @@ RrSet::Iterator::Iterator(boost::span<const char> buffer, uint16_t offset, const
         return;
     }
 
+    current_ = index_.begin();
     update();
+}
+
+RrSet::Iterator &RrSet::Iterator::operator++()
+{
+    increment();
+    return *this;
+}
+
+RrSet::Iterator RrSet::Iterator::operator++(int) {
+    auto self = *this;
+    increment();
+    return self;
 }
 
 //RrSet::Iterator::Iterator(const RrSet::Iterator &it)
@@ -862,6 +875,7 @@ void RrSet::Iterator::update()
 {
     if (current_ == index_.end()) {
         crr_ = {};
+        return;
     }
 
     crr_ = {buffer_, current_->offset};
@@ -869,7 +883,9 @@ void RrSet::Iterator::update()
 
 void RrSet::Iterator::increment()
 {
+    assert(current_ != index_.end());
     ++current_;
+    update();
 }
 
 Labels RrSoa::mname()

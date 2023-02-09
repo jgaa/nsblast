@@ -360,11 +360,11 @@ public:
         Iterator operator++(int);
 
         friend bool operator== (const Iterator& a, const Iterator& b) {
-            return equals(a.buffer_, b.buffer_) && a.current_ == b.current_;
+            return a.current_ == b.current_;
         }
 
         friend bool operator!= (const Iterator& a, const Iterator& b) {
-            return !equals(a.buffer_, b.buffer_) || a.current_ != b.current_;
+            return a.current_ != b.current_;
         }
 
     private:
