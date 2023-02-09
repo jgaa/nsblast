@@ -509,14 +509,19 @@ TEST(RrSet, parse) {
     auto rr1 = sb.createRrA(fdqn, 5000, ip1);
     auto rr2 = sb.createRrA(fdqn, 5001, ip2);
     auto rr3 = sb.createRrA(fdqn, 5002, ip3);
-    auto rrs = sb.createSoa(fdqn, 9999, mname, rname,
+    auto rrs = sb.createSoa(fdqn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
     RrSet rs{sb.buffer(), rr1.offset(), 4};
     EXPECT_EQ(rs.count(), 4);
 
-    for(const auto& rr : rs) {
-        EXPECT_EQ(rr.labels().string(), fdqn);
+    {
+        uint32_t ttl = 5000;
+        for(const auto& rr : rs) {
+            EXPECT_EQ(rr.labels().string(), fdqn);
+            EXPECT_EQ(rr.ttl(), ttl);
+            ++ttl;
+        }
     }
 
     auto it = rs.begin();
@@ -542,12 +547,12 @@ TEST(RrSet, parse) {
     ++it;
     EXPECT_EQ(it->labels().string(), fdqn);
     EXPECT_EQ(it->type(), nsblast::TYPE_SOA);
-    EXPECT_EQ(it->ttl(), 9999);
+    EXPECT_EQ(it->ttl(), 5003);
 
     RrSoa soa{sb.buffer(), it->offset()};
     EXPECT_EQ(soa.labels().string(), fdqn);
     EXPECT_EQ(soa.type(), nsblast::TYPE_SOA);
-    EXPECT_EQ(soa.ttl(), 9999);
+    EXPECT_EQ(soa.ttl(), 5003);
 }
 
 TEST(Rr, Soa) {
