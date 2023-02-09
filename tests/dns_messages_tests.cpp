@@ -733,6 +733,25 @@ TEST(Rr, TxtOverflowTotal) {
     EXPECT_THROW(sb.createTxtRdata(fqdn, 1000, v), runtime_error);
 }
 
+TEST(Rr, Mx) {
+    StorageBuilder sb;
+
+    string_view fdqn = "example.com";
+    string_view host = "mail.example.com";
+
+    auto rr = sb.createMx(fdqn, 1000, 10, host);
+
+    EXPECT_EQ(rr.labels().string(), fdqn);
+
+    RrMx dn{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(dn.labels().string(), fdqn);
+    EXPECT_EQ(dn.type(), nsblast::TYPE_MX);
+    EXPECT_EQ(dn.ttl(), 1000);
+    EXPECT_EQ(dn.host().string(), host);
+    EXPECT_EQ(dn.priority(), 10);
+}
+
 // TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {

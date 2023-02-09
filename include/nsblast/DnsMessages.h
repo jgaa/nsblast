@@ -385,6 +385,20 @@ public:
     }
 };
 
+/*! Wrapper over a RR MX instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrMx : public Rr {
+public:
+    RrMx(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels host();
+    uint32_t priority() const;
+};
+
+
 /*! Wrapper / view over a RrSet
  *
  *  The object does not own it's buffer
@@ -596,6 +610,12 @@ public:
     NewRr createNs(std::string_view fqdn,
                       uint32_t ttl,
                       std::string_view ns);
+
+    /*! Create a MX record. */
+    NewRr createMx(std::string_view fqdn,
+                   uint32_t ttl,
+                   uint16_t priority,
+                   std::string_view host);
 
     /*! Create a TXT record.
      *

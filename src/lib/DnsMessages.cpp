@@ -305,6 +305,19 @@ StorageBuilder::NewRr StorageBuilder::createNs(string_view fqdn, uint32_t ttl, s
     return createDomainNameInRdata(fqdn, TYPE_NS, ttl, ns);
 }
 
+StorageBuilder::NewRr StorageBuilder::createMx(string_view fqdn, uint32_t ttl, uint16_t priority, string_view host)
+{
+    vector<char> rdata;
+
+    const auto host_size = writeName(rdata, 0, host, false);
+    rdata.resize(host_size + 2);
+
+    setValueAt(rdata, 0, priority);
+    writeName(rdata, 2, host);
+
+    return createRr(fqdn, TYPE_MX, ttl, rdata);
+}
+
 StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, string_view txt, bool split)
 {
     if (txt.size() > TXT_SEGMENT_MAX) {
@@ -988,6 +1001,25 @@ Labels RrNs::ns() const
         throw runtime_error{"Not a TYPE_NS"};
     }
     return {rdata(), 0};
+}
+
+Labels RrMx::host()
+{
+    if (type() != TYPE_MX) {
+        throw runtime_error{"Not a TYPE_MX"};
+    }
+    return {rdata(), 2};
+}
+
+uint32_t RrMx::priority() const
+{
+    if (type() != TYPE_MX) {
+        throw runtime_error{"Not a TYPE_MX"};
+    }
+
+    const auto rd = rdata();
+    assert(rd.size() >= 2);
+    return get16bValueAt(rd, 0);
 }
 
 
