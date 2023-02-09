@@ -92,5 +92,8 @@ static constexpr std::uint16_t CLASS_IN = 1;
 // rfc 35962
 static constexpr std::uint16_t TYPE_AAAA = 28;
 
+static constexpr size_t TXT_SEGMENT_MAX = 255;
+static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
+
 
 } // ns

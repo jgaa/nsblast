@@ -171,7 +171,7 @@ uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn, bool commit = t
     const auto start_offset = offset;
 
     if (commit) {
-        assert((offset + fdqn.size() + 2) < buffer.size());
+        assert((offset + fdqn.size() + 2) <= buffer.size());
     }
 
     if (fdqn.size() > 255) {
@@ -293,6 +293,36 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
     }
 
     return createRr(fqdn, TYPE_SOA, ttl, rdata);
+}
+
+StorageBuilder::NewRr StorageBuilder::createCname(string_view fqdn, uint32_t ttl, string_view cname)
+{
+    vector<char> rdata;
+    const auto mname_size = writeName(rdata, 0, cname, false);
+    rdata.resize(mname_size);
+    writeName(rdata, 0, cname);
+    return createRr(fqdn, TYPE_CNAME, ttl, rdata);
+}
+
+StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, string_view txt, bool split)
+{
+    if (txt.size() > TXT_SEGMENT_MAX) {
+        if (split) {
+            deque<string_view> q;
+            while(!txt.empty()) {
+                const auto len = min(TXT_SEGMENT_MAX, txt.size());
+                q.emplace_back(txt.substr(0, len));
+                txt = txt.substr(len);
+            }
+            assert(!q.empty());
+            return createTxtRdata(fqdn, ttl, q);
+        }
+
+        throw runtime_error{"Text entry is too long to fit in one segment"};
+    }
+
+    array<string_view, 1> a = {txt};
+    return createTxtRdata(fqdn, ttl, a);
 }
 
 StorageBuilder::NewRr
@@ -932,6 +962,11 @@ uint32_t RrSoa::minimum() const
     const auto rd = rdata();
     assert(rd.size() >= 24);
     return get32bValueAt(rd, rd.size() - 4);
+}
+
+Labels RrCname::cname() const
+{
+    return {rdata(), 0};
 }
 
 

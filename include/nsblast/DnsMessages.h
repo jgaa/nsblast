@@ -312,6 +312,67 @@ public:
     uint32_t minimum() const;
 };
 
+/*! Wrapper over a RR CNAME instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrCname : public Rr {
+public:
+    RrCname(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels cname() const;
+};
+
+/*! Wrapper over a RR CNAME instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrTxt : public Rr {
+public:
+    RrTxt(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    /*! Get a container with the string elements.
+     *
+     *  Normally, there will only be one
+     */
+    template <typename V=std::string_view, typename T=std::vector<V>>
+    auto text() const {
+        T q;
+        auto r = rdata();
+        for(auto p = r.begin(); p < r.end();) {
+            const auto len = static_cast<uint8_t>(*p);
+            if ((p + 1+ len) > r.end()) {
+                throw std::runtime_error{"Invalid bounds of string rdata-segment"};
+            }
+            ++p;
+            q.emplace_back(&*p, len);
+            p += len;
+        }
+        return q;
+    }
+
+    /*! Get a copy of the text as a normal string
+     *
+     *  If there are multiple elements, they will all
+     *  be appended to the string returned.
+     */
+    auto string() const {
+        const auto t = text();
+        size_t len = 0;
+        for(const auto& s: t) {
+            len += s.size();
+        }
+        std::string rval;
+        rval.reserve(len);
+        for(const auto& s: t) {
+            rval += s;
+        }
+        return rval;
+    }
+};
+
 /*! Wrapper / view over a RrSet
  *
  *  The object does not own it's buffer
@@ -513,6 +574,64 @@ public:
                     uint32_t retry,
                     uint32_t expire,
                     uint32_t minimum);
+
+    /*! Create a CNAME record. */
+    NewRr createCname(std::string_view fqdn,
+                      uint32_t ttl,
+                      std::string_view cname);
+
+    /*! Create a TXT record.
+     *
+     * \param fqdn Fully Qualified Domanin Name
+     * \param ttl Time To Live
+     * \param txt Text to add.
+     *            The text is treated as binary data by the dns server
+     * \param split. A text-segment is up to 255 bytes. If more data is
+     *            submitted, it must be split into multiple segments of
+     *            0 - 255 bytes. If `split` is true, this will be handled
+     *            automatically.
+     */
+    NewRr createTxt(std::string_view fqdn,
+                      uint32_t ttl,
+                      std::string_view txt, bool split = false);
+
+    /*! Create a rdata segment composed of one or more strings/views from a container.
+     *
+     *  Each item must be 0 - 255 bytes.
+     *  Total length must be < TXT_MAX
+     */
+    template <typename T>
+    auto createTxtRdata(std::string_view fqdn,
+                     uint32_t ttl,
+                     const T& txt,
+                     uint16_t type = TYPE_TXT) {
+        size_t len = 0;
+        for(const auto& segment : txt) {
+            if (segment.size() > TXT_SEGMENT_MAX) {
+                throw std::runtime_error{"Text segment is too large!"};
+            }
+            len += segment.size();
+            ++len; // size byte
+            if (len > TXT_MAX) {
+                throw std::runtime_error{"Text entry is too large!"};
+            }
+        }
+
+        std::vector<char> rdata;
+        rdata.resize(len);
+
+        auto p = rdata.begin();
+        for(const auto& segment : txt) {
+            // Set length
+            *p = static_cast<char>(segment.size());
+
+            // Copy text
+            p = std::copy(segment.begin(), segment.end(), ++p);
+        }
+
+        return createRr(fqdn, type, ttl, rdata);
+    }
+
 
     /*! Create the appropriate A or AAAA record from boost::asio::ip::address, v4 or v6
      *

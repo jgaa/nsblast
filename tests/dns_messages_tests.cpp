@@ -580,6 +580,140 @@ TEST(Rr, Soa) {
     EXPECT_EQ(soa.minimum(), 1004);
 }
 
+TEST(Rr, Cname) {
+    StorageBuilder sb;
+
+    string_view fdqn = "example.com";
+    string_view cname = "blogs.example.com";
+
+    auto rr = sb.createCname(fdqn, 1000, cname);
+
+    EXPECT_EQ(rr.labels().string(), fdqn);
+
+    RrCname cn{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(cn.labels().string(), fdqn);
+    EXPECT_EQ(cn.type(), nsblast::TYPE_CNAME);
+    EXPECT_EQ(cn.ttl(), 1000);
+    EXPECT_EQ(cn.cname().string(), cname);
+}
+
+TEST(Rr, TxtSimple) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view txt = "Just some simple text";
+
+    auto rr = sb.createTxt(fqdn, 1000, txt);
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrTxt rt{sb.buffer(), rr.offset()};
+    EXPECT_EQ(rt.text().size(), 1);
+    EXPECT_EQ(rt.text().at(0), txt);
+    EXPECT_EQ(rt.string(), txt);
+}
+
+TEST(Rr, Txt250b) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view txt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+        "Sed tristique sed felis ac ultricies. Pellentesque a sollicitudin magna, "
+        "et mollis libero. Praesent at vestibulum ante. Vestibulum non purus ac "
+        "diam imperdiet euismod. Suspendisse ipsum mi leo.";
+
+    EXPECT_EQ(txt.size(), 250);
+
+    auto rr = sb.createTxt(fqdn, 1000, txt);
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrTxt rt{sb.buffer(), rr.offset()};
+    EXPECT_EQ(rt.text().size(), 1);
+    EXPECT_EQ(rt.text().at(0), txt);
+    EXPECT_EQ(rt.string(), txt);
+}
+
+TEST(Rr, Txt1250b) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view txt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum id rutrum purus. Vestibulum viverra accumsan nibh eu ornare. Maecenas ac efficitur mi. Donec bibendum pharetra iaculis. Donec dolor nulla, suscipit vitae orci nec, venenatis pulvinar tortor. Duis nec mauris ut orci fringilla pharetra. Phasellus vitae dolor id est dignissim tincidunt at ac odio. Aliquam sed leo tellus. Pellentesque faucibus, sem quis dignissim faucibus, lacus ipsum facilisis sapien, vel suscipit ex nibh tristique odio."
+        "Morbi scelerisque eros sodales pretium imperdiet. Aliquam luctus, ex ut vulputate molestie, ante dui tincidunt arcu, sed tristique ligula turpis vel ipsum. Sed orci sapien, tristique id bibendum et, tristique at lectus. Maecenas id pulvinar nunc. Donec nibh tortor, imperdiet et lacus nec, interdum egestas sapien. Duis pellentesque purus et felis congue, vel tincidunt urna scelerisque. Praesent rutrum nisl ligula, sit amet accumsan felis pellentesque at. Fusce aliquam egestas dui, eget tristique nibh varius vel. Sed quis laoreet augue. Fusce eu nunc et nibh auctor semper. Integer tempus lectus in est interdum, quis mattis turpis tincidunt. Sed malesuada dui erat, a vulputate purus tempor nec. Duis ornare elementum rutrum. Sed neque in.";
+
+    EXPECT_EQ(txt.size(), 1250);
+
+    auto rr = sb.createTxt(fqdn, 1000, txt, true);
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrTxt rt{sb.buffer(), rr.offset()};
+    EXPECT_EQ(rt.text().size(), 5);
+    EXPECT_EQ(rt.text().at(0), txt.substr(0, 255));
+    EXPECT_EQ(rt.text().at(1), txt.substr(255, 255));
+    EXPECT_EQ(rt.string(), txt);
+}
+
+TEST(Rr, TxtRdataSegments) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    array<string_view, 4> txt = {"This is a test", "Lorem ipsum dolor sit amet", "Morbi scelerisque eros sodales pretium imperdiet. ", {}};
+
+    auto rr = sb.createTxtRdata(fqdn, 1000, txt);
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrTxt rt{sb.buffer(), rr.offset()};
+    EXPECT_EQ(rt.text().size(), 4);
+    EXPECT_EQ(rt.text().at(0), txt.at(0));
+    EXPECT_EQ(rt.text().at(1), txt.at(1));
+    EXPECT_EQ(rt.text().at(2), txt.at(2));
+    EXPECT_EQ(rt.text().at(3), string_view{}); // empty
+}
+
+TEST(Rr, TxtOverflowSimple) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view txt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam laoreet magna quis metus posuere hendrerit. Aliquam pretium sem justo, id euismod nibh dapibus ac. Quisque lobortis lacus eget nibh vulputate, sit amet pharetra ante mattis. Nullam cras amet.";
+
+    EXPECT_EQ(txt.size(), 256);
+    EXPECT_THROW(sb.createTxt(fqdn, 1000, txt), runtime_error);
+}
+
+TEST(Rr, TxtOverflowSegment) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+
+    string_view overflow = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam laoreet magna quis metus posuere hendrerit. Aliquam pretium sem justo, id euismod nibh dapibus ac. Quisque lobortis lacus eget nibh vulputate, sit amet pharetra ante mattis. Nullam cras amet.";
+    array<string_view, 4> txt = {"This is a test", "Lorem ipsum dolor sit amet", "Morbi scelerisque eros sodales pretium imperdiet. ", overflow};
+
+    EXPECT_THROW(sb.createTxtRdata(fqdn, 1000, txt), runtime_error);
+}
+
+TEST(Rr, TxtOverflowTotal) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view txt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+        "Sed tristique sed felis ac ultricies. Pellentesque a sollicitudin magna, "
+        "et mollis libero. Praesent at vestibulum ante. Vestibulum non purus ac "
+        "diam imperdiet euismod. Suspendisse ipsum mi leo.";
+
+    EXPECT_EQ(txt.size(), 250);
+
+    vector<string_view> v;
+    for(size_t i = 0; i < 32; ++i) {
+        v.emplace_back(txt);
+    }
+
+    auto rr = sb.createTxtRdata(fqdn, 1000, v);
+    RrTxt rt{sb.buffer(), rr.offset()};
+    EXPECT_EQ(rt.text().size(), 32);
+
+    v.emplace_back(txt);
+    EXPECT_THROW(sb.createTxtRdata(fqdn, 1000, v), runtime_error);
+}
+
 // TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {
