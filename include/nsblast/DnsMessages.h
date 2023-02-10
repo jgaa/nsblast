@@ -523,12 +523,7 @@ public:
 };
 
 
-/*! Class to build a message in our own storage format.
- *
- *  See \ref binary_storage_format
- */
-class StorageBuilder {
-public:
+struct StorageTypes {
     using buffer_t = std::vector<char>;
 
 #pragma pack(1)
@@ -557,6 +552,104 @@ public:
     };
 
 #pragma pack(0)
+
+};
+
+class Entry : public StorageTypes {
+public:
+    using index_t = boost::span<const Index>;
+
+    /*! Simple forward iterator to allow us to iterate over the rr's */
+    class Iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t; // best nonsense choise?
+        using value_type        = Rr;
+        using pointer           = const value_type*;
+        using reference         = const value_type&;
+
+
+        Iterator(const Entry& entry, bool begin);
+
+        Iterator(const Iterator& it) = default;
+
+        Iterator& operator = (const Iterator& it) = default;
+
+        reference operator*() const { return crr_; }
+
+        pointer operator->() { return &crr_; }
+
+        Iterator& operator++();
+
+        Iterator operator++(int);
+
+        friend bool operator== (const Iterator& a, const Iterator& b) {
+            return a.ix_ == b.ix_;
+        }
+
+        friend bool operator!= (const Iterator& a, const Iterator& b) {
+            return a.ix_ != b.ix_;
+        }
+
+    private:
+        //static bool equals(const boost::span<const char> a, const boost::span<const char> b);
+        void update();
+        void increment();
+
+        index_t::const_iterator ix_;
+        const Entry *entry_ = {};
+        Rr crr_;
+    };
+
+    Entry(boost::span<const char> buffer);
+
+    Flags flags() const noexcept {
+        return header_->flags;
+    }
+
+    const Header& header() const noexcept {
+        return *header_;
+    }
+
+    Iterator begin() const {
+        return Iterator{*this, true};
+    }
+
+    Iterator end() const {
+        return Iterator{*this, false};
+    }
+
+    size_t count() const noexcept {
+        return count_;
+    }
+
+    boost::span<const char> buffer() const noexcept {
+        return buffer_;
+    }
+
+    const index_t& index() const noexcept {
+        return index_;
+    }
+
+private:
+    static index_t mkIndex(buffer_t b, const Header& h, size_t count) {
+         const auto p = b.data() + ntohs(h.ixoffset);
+         return {reinterpret_cast<const Index *>(p), count};
+    }
+
+    buffer_t buffer_;
+    const Header *header_ = {};
+    const size_t count_ = {};
+    index_t index_;
+};
+
+
+/*! Class to build a message in our own storage format.
+ *
+ *  See \ref binary_storage_format
+ */
+class StorageBuilder : public StorageTypes {
+public:
 
 
     /*! Non-owning reference to a newly created RR

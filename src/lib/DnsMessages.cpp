@@ -372,7 +372,7 @@ void StorageBuilder::finish()
         static constexpr array<uint8_t, 30> sorting_table = {
             9, /* a */ 3, /* ns */ 2, 9, 9, /* cname */ 5, /* soa */ 1, 9, 9, 9, // 0
             9, 9, 9, 9, 9, /* mx */ 6, /* txt */ 7, 9, 9, 9,                     // 10
-            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 3, 9                              // 20
+            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 4, 9                              // 20
         };
 
         assert(left.type < sorting_table.size());
@@ -382,7 +382,13 @@ void StorageBuilder::finish()
 
     boost::span index{reinterpret_cast<const char *>(&index_[0]), index_.size() * sizeof(Index)};
 
-    // Append the sorted index to the buffer.
+    // Convert the index entries to network byte order
+    for(auto& e : index_) {
+        e.offset = htons(e.offset);
+        e.type = htons(e.type);
+    }
+
+    // Append the sorted and converted index to the buffer.
     index_offset_ = buffer_.size();
     buffer_.insert(buffer_.end(), index.begin(), index.end());
 
@@ -1100,6 +1106,53 @@ uint32_t RrMx::priority() const
     const auto rd = rdata();
     assert(rd.size() >= 2);
     return get16bValueAt(rd, 0);
+}
+
+Entry::Entry(boost::span<const char> buffer)
+    : buffer_(buffer.begin(), buffer.end())
+    , header_{reinterpret_cast<const Header *>(buffer_.data())}
+    , count_{ntohs(header_->rrcount)}
+    , index_{mkIndex(buffer_, *header_, count_)}
+{
+}
+
+Entry::Iterator::Iterator(const Entry &entry, bool begin)
+    : entry_{&entry}
+    , ix_{begin ? entry.index().begin() : entry.index().end()}
+{
+    update();
+}
+
+Entry::Iterator Entry::Iterator::operator++(int)
+{
+    auto self = *this;
+    increment();
+    update();
+    return self;
+}
+
+Entry::Iterator& Entry::Iterator::operator++()
+{
+    increment();
+    update();
+}
+
+void Entry::Iterator::update()
+{
+    if (ix_ != entry_->index().end()) {
+        const auto pos = ntohs(ix_->offset);
+        assert(pos < entry_->buffer().size() + 10);
+        crr_ = {entry_->buffer(), pos};
+        assert(crr_.type() == ntohs(ix_->type));
+        return;
+    }
+
+    crr_ = {};
+}
+
+void Entry::Iterator::increment()
+{
+   ++ix_;
 }
 
 

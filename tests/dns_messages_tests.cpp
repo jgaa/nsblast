@@ -769,6 +769,326 @@ TEST(StorageBuilder, SingleA) {
     EXPECT_EQ(sb.header().flags.cname, false);
 }
 
+TEST(Entry, SingleA) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+
+    sb.createRrA(fqdn, 1000, ip1);
+    sb.finish();
+
+    optional<Entry> e;
+    EXPECT_NO_THROW(e.emplace(sb.buffer()));
+
+    EXPECT_EQ(e->count(), 1);
+    EXPECT_EQ(e->header().flags.a, true);
+    EXPECT_EQ(e->header().flags.aaaa, false);
+    EXPECT_EQ(e->header().flags.soa, false);
+    EXPECT_EQ(e->header().flags.ns, false);
+    EXPECT_EQ(e->header().flags.txt, false);
+    EXPECT_EQ(e->header().flags.cname, false);
+
+    auto it = e->begin();
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip1.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_EQ(it, e->end());
+}
+
+TEST(Entry, DoubleA) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+
+    sb.createRrA(fqdn, 1000, ip1);
+    sb.createRrA(fqdn, 1000, ip2);
+    sb.finish();
+
+    optional<Entry> e;
+    EXPECT_NO_THROW(e.emplace(sb.buffer()));
+
+    EXPECT_EQ(e->count(), 2);
+    EXPECT_EQ(e->header().flags.a, true);
+    EXPECT_EQ(e->header().flags.aaaa, false);
+    EXPECT_EQ(e->header().flags.soa, false);
+    EXPECT_EQ(e->header().flags.ns, false);
+    EXPECT_EQ(e->header().flags.txt, false);
+    EXPECT_EQ(e->header().flags.cname, false);
+
+    auto it = e->begin();
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip1.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip2.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_EQ(it, e->end());
+}
+
+TEST(Entry, TripleA) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+
+    sb.createRrA(fqdn, 1000, ip1);
+    sb.createRrA(fqdn, 1000, ip2);
+    sb.createRrA(fqdn, 1000, ip3);
+    sb.finish();
+
+    optional<Entry> e;
+    EXPECT_NO_THROW(e.emplace(sb.buffer()));
+
+    EXPECT_EQ(e->count(), 3);
+    EXPECT_EQ(e->header().flags.a, true);
+    EXPECT_EQ(e->header().flags.aaaa, false);
+    EXPECT_EQ(e->header().flags.soa, false);
+    EXPECT_EQ(e->header().flags.ns, false);
+    EXPECT_EQ(e->header().flags.txt, false);
+    EXPECT_EQ(e->header().flags.cname, false);
+
+    auto it = e->begin();
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip1.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip2.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip3.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_EQ(it, e->end());
+}
+
+TEST(Entry, AandAAAASorting) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+
+    // Notice order. Sorting the index must work to iterate in the expected order below
+    sb.createRrA(fqdn, 1000, ip1);
+    sb.createRrA(fqdn, 1000, ip3);
+    sb.createRrA(fqdn, 1000, ip2);
+    sb.createRrA(fqdn, 1000, ip4);
+    sb.finish();
+
+    optional<Entry> e;
+    EXPECT_NO_THROW(e.emplace(sb.buffer()));
+
+    EXPECT_EQ(e->count(), 4);
+    EXPECT_EQ(e->header().flags.a, true);
+    EXPECT_EQ(e->header().flags.aaaa, true);
+    EXPECT_EQ(e->header().flags.soa, false);
+    EXPECT_EQ(e->header().flags.ns, false);
+    EXPECT_EQ(e->header().flags.txt, false);
+    EXPECT_EQ(e->header().flags.cname, false);
+
+    auto it = e->begin();
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip1.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_A);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip2.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 4) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_AAAA);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip3.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 16) == 0);
+    }
+
+    ++it;
+    EXPECT_NE(it, e->end());
+    if (it != e->end()) {
+        EXPECT_EQ(it->type(), nsblast::TYPE_AAAA);
+        EXPECT_EQ(it->ttl(), 1000);
+        EXPECT_EQ(it->labels().string(), fqdn);
+        auto bytes = ip4.to_bytes();
+        EXPECT_TRUE(memcmp(bytes.data(), it->rdata().data(), 16) == 0);
+    }
+
+    ++it;
+    EXPECT_EQ(it, e->end());
+}
+
+TEST(Entry, Mx) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    string_view mxname = "mail.example.com";
+
+    sb.createMx(fqdn, 9999, 10, mxname);
+    sb.finish();
+
+    Entry e{sb.buffer()};
+    auto it = e.begin();
+    RrMx mx{sb.buffer(), it->offset()};
+    EXPECT_EQ(mx.labels().string(), fqdn);
+    EXPECT_EQ(mx.host().string(), mxname);
+    EXPECT_EQ(mx.priority(), 10);
+    EXPECT_EQ(mx.ttl(), 9999);
+}
+
+TEST(Entry, Ns) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    string_view nsname = "ns1.example.com";
+
+    sb.createNs(fqdn, 9999, nsname);
+    sb.finish();
+
+    Entry e{sb.buffer()};
+    auto it = e.begin();
+    RrNs ns{sb.buffer(), it->offset()};
+    EXPECT_EQ(ns.labels().string(), fqdn);
+    EXPECT_EQ(ns.ns().string(), nsname);
+    EXPECT_EQ(ns.ttl(), 9999);
+}
+
+TEST(Entry, Zone) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    string_view nsname = "ns1.example.com";
+    string_view rname = "hostmaster@example.com";
+    string_view mxname = "mail.example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+
+    // Notice order. Sorting the index must work to iterate in the expected order below
+    sb.createRrA(fqdn, 1000, ip1);
+    sb.createRrA(fqdn, 1000, ip3);
+    sb.createRrA(fqdn, 1000, ip2);
+    sb.createRrA(fqdn, 1000, ip4);
+    sb.createNs(fqdn, 1000, "ns1.example.com");
+    sb.createNs(fqdn, 1000, "ns2.example.com");
+    sb.createNs(fqdn, 1000, "ns3.example.com");
+    sb.createNs(fqdn, 1000, "ns4.example.com");
+    sb.createSoa(fqdn, 5003, nsname, rname, 1000, 1001, 1002, 1003, 1004);
+    sb.createMx(fqdn, 9999, 10, mxname);
+    sb.finish();
+
+    Entry e{sb.buffer()};
+
+    EXPECT_EQ(e.header().flags.a, true);
+    EXPECT_EQ(e.header().flags.aaaa, true);
+    EXPECT_EQ(e.header().flags.soa, true);
+    EXPECT_EQ(e.header().flags.ns, true);
+    EXPECT_EQ(e.header().flags.txt, false);
+    EXPECT_EQ(e.header().flags.cname, false);
+
+    bool visited_ns = false;
+    auto it = e.begin();
+    for(auto type : {nsblast::TYPE_SOA,
+        nsblast::TYPE_NS, nsblast::TYPE_NS, nsblast::TYPE_NS, nsblast::TYPE_NS,
+        nsblast::TYPE_A, nsblast::TYPE_A, nsblast::TYPE_AAAA, nsblast::TYPE_AAAA,
+        nsblast::TYPE_MX}) {
+
+        EXPECT_NE(it, e.end());
+        if (it != e.end()) {
+            EXPECT_EQ(it->type(), type);
+            EXPECT_EQ(it->labels().string(), fqdn);
+        }
+
+        switch(type) {
+            case nsblast::TYPE_NS:
+            if (!visited_ns) {
+                visited_ns = true;
+
+                auto n = it;
+                for(auto i = 1; i <= 4; ++i) {
+                    auto name = "ns"s + to_string(i) + ".example.com";
+                    RrNs ns{sb.buffer(), n->offset()};
+                    EXPECT_EQ(ns.ns().string(), name);
+                    ++n;
+                    EXPECT_NE(n, e.end());
+                }
+            }
+            break;
+            case nsblast::TYPE_MX:
+            {
+                RrMx mx{sb.buffer(), it->offset()};
+                EXPECT_EQ(mx.host().string(), mxname);
+                EXPECT_EQ(mx.priority(), 10);
+            }
+            break;
+            case nsblast::TYPE_SOA:
+            {
+                RrSoa soa{sb.buffer(), it->offset()};
+                EXPECT_EQ(soa.mname().string(), nsname);
+                EXPECT_EQ(soa.rname().string(), rname);
+            }
+            break;
+            default:
+                ;
+        }
+        ++it;
+    }
+}
+
 // TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {
