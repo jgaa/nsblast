@@ -95,5 +95,6 @@ static constexpr std::uint16_t TYPE_AAAA = 28;
 static constexpr size_t TXT_SEGMENT_MAX = 255;
 static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
 
+constexpr char CURRENT_STORAGE_VERSION = 1;
 
 } // ns

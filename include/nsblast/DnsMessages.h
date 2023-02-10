@@ -11,6 +11,7 @@
 
 namespace nsblast::lib {
 
+
 class RrSet;
 
 /*! RFC 1035 message
@@ -530,6 +531,34 @@ class StorageBuilder {
 public:
     using buffer_t = std::vector<char>;
 
+#pragma pack(1)
+    struct Flags {
+        uint8_t soa: 1;
+        uint8_t ns: 1;
+        uint8_t a: 1;
+        uint8_t aaaa: 1;
+        uint8_t cname: 1;
+        uint8_t txt: 1;
+        uint8_t reserved: 2;
+    };
+
+    struct Index {
+        uint16_t type = 0;
+        uint16_t offset = 0;
+    };
+
+    struct Header {
+        uint8_t version = CURRENT_STORAGE_VERSION;
+        Flags flags = {};
+        uint16_t rrcount = 0;
+        uint8_t labelsize = 0;
+        uint8_t zonelen = 0;
+        uint16_t ixoffset = 0;
+    };
+
+#pragma pack(0)
+
+
     /*! Non-owning reference to a newly created RR
      *
      * Can be used to get relevant information for
@@ -746,6 +775,19 @@ public:
         return buffer_;
     }
 
+    /*! Call when all rr's are added.
+     */
+    void finish();
+
+    size_t size() const {
+        return buffer_.size();
+    }
+
+    size_t rrCount() const {
+        return index_.size();
+    }
+
+    Header header() const;
 
 private:
     NewRr createDomainNameInRdata(std::string_view fqdn,
@@ -756,9 +798,14 @@ private:
     NewRr finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
     size_t calculateLen(uint16_t labelsLen, size_t rdataLen) const ;
     void prepare();
+    void adding(uint16_t startOffset,  uint16_t type);
+
     buffer_t buffer_;
-    size_t num_rr_ = 0;
     uint16_t name_ptr_ = 0;
+    uint16_t label_len_ = 0;
+    Flags flags_ = {};
+    std::deque<Index> index_;
+    uint16_t index_offset_ = 0;
 };
 
 } // ns

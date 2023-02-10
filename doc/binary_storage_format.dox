@@ -11,11 +11,12 @@
     and pointers in other records in a RrSet must be updated
     accordingly).
 
-    - version     Version of the data frmat
+    - version     Version of the data format
     - flags       Flags to quickly check if a popular type of RR's are present
     - labelsize   Size of the labels buffer (in the first RR)
     - zonelen     Offset to the start of labels that identifies the zone
     - rrcount     Number of RR's in the RRSet
+    - indexoffset Offset to the start of the index.
 
     \verbatim
     0                   1
@@ -27,12 +28,14 @@
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     | labelsize     | zonelen       |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    | IndexOffset                              |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |                               |
-    /            index              /
+    /        RRset entries          /
     |                               |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |                               |
-    / RRset entries                 /
+    /            index              /
     |                               |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     \endverbatim
@@ -48,7 +51,7 @@
     | Type                          |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     + Offset                        +
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+HEADER
     \endverbatim
 
     RR format (from RFC 1035)

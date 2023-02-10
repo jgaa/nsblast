@@ -473,17 +473,17 @@ TEST(Rr, MultipleA) {
 TEST(Rr, parse) {
     StorageBuilder sb;
 
-    string_view fdqn = "www.example.com";
+    string_view fqdn = "www.example.com";
 
     char data[] = "teste";
 
-    auto nr = sb.createRr(fdqn, 123, 1000, data);
+    auto nr = sb.createRr(fqdn, 123, 1000, data);
 
     // This parses the buffert for the RR
     // rr must now equal nr
     Rr rr{sb.buffer(), nr.offset()};
 
-    EXPECT_EQ(rr.labels().string(), fdqn);
+    EXPECT_EQ(rr.labels().string(), fqdn);
     EXPECT_EQ(rr.type(), 123);
     EXPECT_EQ(rr.ttl(), 1000);
     EXPECT_EQ(nr.rdata().size(), rr.rdata().size());
@@ -498,7 +498,7 @@ TEST(Rr, parse) {
 TEST(RrSet, parse) {
     StorageBuilder sb;
 
-    string_view fdqn = "example.com";
+    string_view fqdn = "example.com";
     string_view mname = "ns1.example.com";
     string_view rname = "hostmaster@example.com";
 
@@ -506,10 +506,10 @@ TEST(RrSet, parse) {
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
     auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
-    auto rr1 = sb.createRrA(fdqn, 5000, ip1);
-    auto rr2 = sb.createRrA(fdqn, 5001, ip2);
-    auto rr3 = sb.createRrA(fdqn, 5002, ip3);
-    auto rrs = sb.createSoa(fdqn, 5003, mname, rname,
+    auto rr1 = sb.createRrA(fqdn, 5000, ip1);
+    auto rr2 = sb.createRrA(fqdn, 5001, ip2);
+    auto rr3 = sb.createRrA(fqdn, 5002, ip3);
+    auto rrs = sb.createSoa(fqdn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
     RrSet rs{sb.buffer(), rr1.offset(), 4};
@@ -518,7 +518,7 @@ TEST(RrSet, parse) {
     {
         uint32_t ttl = 5000;
         for(const auto& rr : rs) {
-            EXPECT_EQ(rr.labels().string(), fdqn);
+            EXPECT_EQ(rr.labels().string(), fqdn);
             EXPECT_EQ(rr.ttl(), ttl);
             ++ttl;
         }
@@ -545,12 +545,12 @@ TEST(RrSet, parse) {
     EXPECT_EQ(it->ttl(), 5002);
 
     ++it;
-    EXPECT_EQ(it->labels().string(), fdqn);
+    EXPECT_EQ(it->labels().string(), fqdn);
     EXPECT_EQ(it->type(), nsblast::TYPE_SOA);
     EXPECT_EQ(it->ttl(), 5003);
 
     RrSoa soa{sb.buffer(), it->offset()};
-    EXPECT_EQ(soa.labels().string(), fdqn);
+    EXPECT_EQ(soa.labels().string(), fqdn);
     EXPECT_EQ(soa.type(), nsblast::TYPE_SOA);
     EXPECT_EQ(soa.ttl(), 5003);
 }
@@ -558,16 +558,16 @@ TEST(RrSet, parse) {
 TEST(Rr, Soa) {
     StorageBuilder sb;
 
-    string_view fdqn = "www.example.com";
+    string_view fqdn = "www.example.com";
     string_view mname = "ns1.example.com";
     string_view rname = "hostmaster@example.com";
 
-    auto rr = sb.createSoa(fdqn, 9999, mname, rname,
+    auto rr = sb.createSoa(fqdn, 9999, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
     RrSoa soa{sb.buffer(), rr.offset()};
 
-    EXPECT_EQ(soa.labels().string(), fdqn);
+    EXPECT_EQ(soa.labels().string(), fqdn);
     EXPECT_EQ(soa.type(), nsblast::TYPE_SOA);
     EXPECT_EQ(soa.ttl(), 9999);
 
@@ -583,16 +583,16 @@ TEST(Rr, Soa) {
 TEST(Rr, Cname) {
     StorageBuilder sb;
 
-    string_view fdqn = "example.com";
+    string_view fqdn = "example.com";
     string_view cname = "blogs.example.com";
 
-    auto rr = sb.createCname(fdqn, 1000, cname);
+    auto rr = sb.createCname(fqdn, 1000, cname);
 
-    EXPECT_EQ(rr.labels().string(), fdqn);
+    EXPECT_EQ(rr.labels().string(), fqdn);
 
     RrCname cn{sb.buffer(), rr.offset()};
 
-    EXPECT_EQ(cn.labels().string(), fdqn);
+    EXPECT_EQ(cn.labels().string(), fqdn);
     EXPECT_EQ(cn.type(), nsblast::TYPE_CNAME);
     EXPECT_EQ(cn.ttl(), 1000);
     EXPECT_EQ(cn.cname().string(), cname);
@@ -601,16 +601,16 @@ TEST(Rr, Cname) {
 TEST(Rr, Ns) {
     StorageBuilder sb;
 
-    string_view fdqn = "example.com";
+    string_view fqdn = "example.com";
     string_view ns = "ns1.example.com";
 
-    auto rr = sb.createNs(fdqn, 1000, ns);
+    auto rr = sb.createNs(fqdn, 1000, ns);
 
-    EXPECT_EQ(rr.labels().string(), fdqn);
+    EXPECT_EQ(rr.labels().string(), fqdn);
 
     RrNs dn{sb.buffer(), rr.offset()};
 
-    EXPECT_EQ(dn.labels().string(), fdqn);
+    EXPECT_EQ(dn.labels().string(), fqdn);
     EXPECT_EQ(dn.type(), nsblast::TYPE_NS);
     EXPECT_EQ(dn.ttl(), 1000);
     EXPECT_EQ(dn.ns().string(), ns);
@@ -736,20 +736,37 @@ TEST(Rr, TxtOverflowTotal) {
 TEST(Rr, Mx) {
     StorageBuilder sb;
 
-    string_view fdqn = "example.com";
+    string_view fqdn = "example.com";
     string_view host = "mail.example.com";
 
-    auto rr = sb.createMx(fdqn, 1000, 10, host);
+    auto rr = sb.createMx(fqdn, 1000, 10, host);
 
-    EXPECT_EQ(rr.labels().string(), fdqn);
+    EXPECT_EQ(rr.labels().string(), fqdn);
 
     RrMx dn{sb.buffer(), rr.offset()};
 
-    EXPECT_EQ(dn.labels().string(), fdqn);
+    EXPECT_EQ(dn.labels().string(), fqdn);
     EXPECT_EQ(dn.type(), nsblast::TYPE_MX);
     EXPECT_EQ(dn.ttl(), 1000);
     EXPECT_EQ(dn.host().string(), host);
     EXPECT_EQ(dn.priority(), 10);
+}
+
+TEST(StorageBuilder, SingleA) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+
+    sb.createRrA(fqdn, 1000, ip1);
+    EXPECT_NO_THROW(sb.finish());
+
+    EXPECT_EQ(sb.rrCount(), 1);
+    EXPECT_EQ(sb.header().flags.a, true);
+    EXPECT_EQ(sb.header().flags.aaaa, false);
+    EXPECT_EQ(sb.header().flags.soa, false);
+    EXPECT_EQ(sb.header().flags.ns, false);
+    EXPECT_EQ(sb.header().flags.txt, false);
+    EXPECT_EQ(sb.header().flags.cname, false);
 }
 
 // TODO: Add more tests with pointers

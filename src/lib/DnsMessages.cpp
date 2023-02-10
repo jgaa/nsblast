@@ -16,7 +16,7 @@ namespace {
 
 constexpr int MAX_PTRS_IN_A_ROW = 16;
 constexpr auto START_OF_POINTER_TAG = 0xC0; // Binary: 11000000
-constexpr char CURRENT_STORAGE_VERSION = 1;
+constexpr char BUFFER_HEADER_LEN = 8;
 
 #pragma pack(1)
 struct hdrbits {
@@ -29,6 +29,7 @@ struct hdrbits {
     uint16_t z : 3;
     uint16_t rcode : 4;
 };
+
 #pragma pack(0)
 
 template <typename T, typename I>
@@ -256,6 +257,8 @@ StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
         assert(rlen == labels_len);
     }
 
+    assert(label_len_ == 0);
+    label_len_ = labels_len;
     return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
@@ -354,6 +357,55 @@ StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
     return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
+/* Update the header to it's correct binary value.
+ * Sort and add the index to the buffer
+ */
+void StorageBuilder::finish()
+{
+    assert(BUFFER_HEADER_LEN == sizeof(Header));
+
+    if (buffer_.size() < sizeof(Header)) {
+        throw runtime_error{"StorageBuilder::finish: No room in buffer_ for the header."};
+    }
+
+    sort(index_.begin(), index_.end(), [](const auto& left, const auto& right) {
+        static constexpr array<uint8_t, 30> sorting_table = {
+            9, /* a */ 3, /* ns */ 2, 9, 9, /* cname */ 5, /* soa */ 1, 9, 9, 9, // 0
+            9, 9, 9, 9, 9, /* mx */ 6, /* txt */ 7, 9, 9, 9,                     // 10
+            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 3, 9                              // 20
+        };
+
+        assert(left.type < sorting_table.size());
+        assert(right.type < sorting_table.size());
+        return sorting_table.at(left.type) < sorting_table.at(right.type);
+    });
+
+    boost::span index{reinterpret_cast<const char *>(&index_[0]), index_.size() * sizeof(Index)};
+
+    // Append the sorted index to the buffer.
+    index_offset_ = buffer_.size();
+    buffer_.insert(buffer_.end(), index.begin(), index.end());
+
+    // Commit the header
+    Header *h = reinterpret_cast<Header *>(buffer_.data());
+    *h = {};
+    h->flags = flags_;
+    h->rrcount = htons(static_cast<uint16_t>(index_.size()));
+    h->labelsize = label_len_;
+    h->ixoffset = htons(index_offset_);
+
+    assert(h->version == CURRENT_STORAGE_VERSION);
+}
+
+StorageBuilder::Header StorageBuilder::header() const
+{
+    if (buffer_.size() < sizeof(Header)) {
+        throw runtime_error{"StorageBuilder::finish: No room in buffer_ for the header."};
+    }
+
+    return *reinterpret_cast<const Header *>(buffer_.data());
+}
+
 StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
 {
     vector<char> rdata;
@@ -388,7 +440,7 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
     auto used_bytes = (buffer_.data() + coffset + rdata.size()) - (buffer_.data() + startOffset);
     assert(static_cast<ptrdiff_t>(len) == used_bytes);
 
-    ++num_rr_;
+    adding(startOffset, type);
 
     return {buffer_,
                 static_cast<uint16_t>(startOffset),
@@ -412,8 +464,36 @@ void StorageBuilder::prepare()
     // Create the header
     buffer_.reserve(1024); // TODO: Get some stats to find a reasonamble value here
 
-    buffer_.resize(6); // Header
+    buffer_.resize(BUFFER_HEADER_LEN); // Header
     buffer_[0] = CURRENT_STORAGE_VERSION;
+}
+
+void StorageBuilder::adding(uint16_t startOffset, uint16_t type)
+{
+    index_.push_back({type, startOffset});
+
+    switch(type) {
+    case TYPE_SOA:
+        flags_.soa = true;
+        break;
+    case TYPE_NS:
+        flags_.ns = true;
+        break;
+    case TYPE_A:
+        flags_.a = true;
+        break;
+    case TYPE_AAAA:
+        flags_.aaaa = true;
+        break;
+    case TYPE_CNAME:
+        flags_.cname = true;
+        break;
+    case TYPE_TXT:
+        flags_.txt = true;
+        break;
+    default:
+        ;
+    }
 }
 
 uint16_t Message::Header::id() const
