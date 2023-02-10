@@ -342,6 +342,23 @@ StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, 
     return createTxtRdata(fqdn, ttl, a);
 }
 
+StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
+{
+    auto addr = boost::asio::ip::address::from_string(string{ip});
+    if (addr.is_v4()) {
+        return createA(fqdn, ttl, addr.to_v4());
+    } else if (addr.is_v6()) {
+        return createA(fqdn, ttl, addr.to_v6());
+    }
+
+    throw runtime_error{"StorageBuilder::createA: Failed to convert ip-string to ipv4/ipv6"};
+}
+
+StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, string_view ip)
+{
+    return createA(fqdn, ttl, string{ip});
+}
+
 StorageBuilder::NewRr
 StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
                          uint32_t ttl, boost::span<const char> rdata)

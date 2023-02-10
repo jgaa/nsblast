@@ -797,12 +797,12 @@ public:
      *  (This may be a little too clever to my taste...)
      */
     template <typename T>
-    NewRr createRrA(std::string_view fqdn, uint32_t ttl, T ip) {
+    NewRr createA(std::string_view fqdn, uint32_t ttl, T ip) {
         if constexpr (std::is_same_v<T, boost::asio::ip::address>) {
             if (ip.is_v4()) {
-                return createRrA(fqdn, ttl, ip.to_v4());
+                return createA(fqdn, ttl, ip.to_v4());
             } else if (ip.is_v6()) {
-                return createRrA(fqdn, ttl, ip.to_v6());
+                return createA(fqdn, ttl, ip.to_v6());
             } else {
                 throw std::runtime_error{"createRrA: unsupported boost::asio::ip::address type"};
             }
@@ -822,6 +822,10 @@ public:
             }
         }
     }
+
+    NewRr createA(std::string_view fqdn, uint32_t ttl, std::string_view ip);
+
+    NewRr createA(std::string_view fqdn, uint32_t ttl, const std::string& ip);
 
     /*! Create a new resource record
      *

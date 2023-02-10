@@ -386,7 +386,7 @@ TEST(Rr, A) {
     StorageBuilder sb;
 
     auto ip = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto rr = sb.createRrA("www.example.com", 0, ip);
+    auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
 
@@ -394,17 +394,30 @@ TEST(Rr, A) {
 
     const auto bytes = ip.to_bytes();
     EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 4) == 0);
+}
 
+TEST(Rr, AStr) {
+    StorageBuilder sb;
 
+    const string ip_str = "127.0.0.1";
+    auto ip = boost::asio::ip::address_v4::from_string(ip_str);
+    auto rr = sb.createA("www.example.com", 0, ip_str);
+
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 4);
+
+    const auto bytes = ip.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 4) == 0);
 }
 
 TEST(Rr, AAAA) {
     StorageBuilder sb;
 
     auto ip = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-    auto rr = sb.createRrA("www.example.com", 0, ip);
+    auto rr = sb.createA("www.example.com", 0, ip);
 
-     EXPECT_EQ(rr.labels().string(), "www.example.com");
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
 
     EXPECT_EQ(rr.rdata().size(), 16);
 
@@ -412,11 +425,27 @@ TEST(Rr, AAAA) {
     EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 16) == 0);
 }
 
+TEST(Rr, AAAAStr) {
+    StorageBuilder sb;
+
+    const string ip_str = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
+    auto ip = boost::asio::ip::address_v6::from_string(ip_str);
+    auto rr = sb.createA("www.example.com", 0, ip_str);
+
+    EXPECT_EQ(rr.labels().string(), "www.example.com");
+
+    EXPECT_EQ(rr.rdata().size(), 16);
+
+    const auto bytes = ip.to_bytes();
+    EXPECT_TRUE(memcmp(bytes.data(), rr.rdata().data(), 16) == 0);
+}
+
+
 TEST(Rr, GenericA) {
     StorageBuilder sb;
 
     auto ip = boost::asio::ip::address::from_string("127.0.0.1");
-    auto rr = sb.createRrA("www.example.com", 0, ip);
+    auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
 
@@ -430,7 +459,7 @@ TEST(Rr, GenericAAAA) {
     StorageBuilder sb;
 
     auto ip = boost::asio::ip::address::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-    auto rr = sb.createRrA("www.example.com", 0, ip);
+    auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
 
@@ -446,9 +475,9 @@ TEST(Rr, MultipleA) {
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
     auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
-    auto rr1 = sb.createRrA("www.example.com", 0, ip1);
-    auto rr2 = sb.createRrA("ignored.example.com", 0, ip2);
-    auto rr3 = sb.createRrA("", 0, ip3);
+    auto rr1 = sb.createA("www.example.com", 0, ip1);
+    auto rr2 = sb.createA("ignored.example.com", 0, ip2);
+    auto rr3 = sb.createA("", 0, ip3);
 
     EXPECT_EQ(rr1.labels().string(), "www.example.com");
     EXPECT_EQ(rr2.labels().string(), "www.example.com");
@@ -506,9 +535,9 @@ TEST(RrSet, parse) {
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
     auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
-    auto rr1 = sb.createRrA(fqdn, 5000, ip1);
-    auto rr2 = sb.createRrA(fqdn, 5001, ip2);
-    auto rr3 = sb.createRrA(fqdn, 5002, ip3);
+    auto rr1 = sb.createA(fqdn, 5000, ip1);
+    auto rr2 = sb.createA(fqdn, 5001, ip2);
+    auto rr3 = sb.createA(fqdn, 5002, ip3);
     auto rrs = sb.createSoa(fqdn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
@@ -757,7 +786,7 @@ TEST(StorageBuilder, SingleA) {
     string_view fqdn = "example.com";
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
 
-    sb.createRrA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip1);
     EXPECT_NO_THROW(sb.finish());
 
     EXPECT_EQ(sb.rrCount(), 1);
@@ -774,7 +803,7 @@ TEST(Entry, SingleA) {
     string_view fqdn = "example.com";
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
 
-    sb.createRrA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip1);
     sb.finish();
 
     optional<Entry> e;
@@ -808,8 +837,8 @@ TEST(Entry, DoubleA) {
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
 
-    sb.createRrA(fqdn, 1000, ip1);
-    sb.createRrA(fqdn, 1000, ip2);
+    sb.createA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip2);
     sb.finish();
 
     optional<Entry> e;
@@ -854,9 +883,9 @@ TEST(Entry, TripleA) {
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
     auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.2");
 
-    sb.createRrA(fqdn, 1000, ip1);
-    sb.createRrA(fqdn, 1000, ip2);
-    sb.createRrA(fqdn, 1000, ip3);
+    sb.createA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip2);
+    sb.createA(fqdn, 1000, ip3);
     sb.finish();
 
     optional<Entry> e;
@@ -913,10 +942,10 @@ TEST(Entry, AandAAAASorting) {
     auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
     // Notice order. Sorting the index must work to iterate in the expected order below
-    sb.createRrA(fqdn, 1000, ip1);
-    sb.createRrA(fqdn, 1000, ip3);
-    sb.createRrA(fqdn, 1000, ip2);
-    sb.createRrA(fqdn, 1000, ip4);
+    sb.createA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip3);
+    sb.createA(fqdn, 1000, ip2);
+    sb.createA(fqdn, 1000, ip4);
     sb.finish();
 
     optional<Entry> e;
@@ -1019,10 +1048,10 @@ TEST(Entry, Zone) {
     auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
     // Notice order. Sorting the index must work to iterate in the expected order below
-    sb.createRrA(fqdn, 1000, ip1);
-    sb.createRrA(fqdn, 1000, ip3);
-    sb.createRrA(fqdn, 1000, ip2);
-    sb.createRrA(fqdn, 1000, ip4);
+    sb.createA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip3);
+    sb.createA(fqdn, 1000, ip2);
+    sb.createA(fqdn, 1000, ip4);
     sb.createNs(fqdn, 1000, "ns1.example.com");
     sb.createNs(fqdn, 1000, "ns2.example.com");
     sb.createNs(fqdn, 1000, "ns3.example.com");
