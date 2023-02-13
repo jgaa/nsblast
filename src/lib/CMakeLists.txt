@@ -14,7 +14,9 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
+    ${NSBLAST_ROOT}/include/nsblast/ApiEngine.h
     DnsMessages.cpp
+    ApiEngine.cpp
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -27,7 +29,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
-add_dependencies(${PROJECT_NAME} rocksdb logfault mkres)
+add_dependencies(${PROJECT_NAME} rocksdb logfault mkres yahat)
 
 install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Config
     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

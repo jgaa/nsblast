@@ -20,6 +20,7 @@ add_dependencies(${PROJECT_NAME} logfault rocksdb nsblastlib)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib
+    yahat
     ${ROCKSDB_LIBRARIES}
     ${Boost_LIBRARIES}
     ${ZLIB_LIBRARIES}

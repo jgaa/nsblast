@@ -5,6 +5,8 @@
 #include <optional>
 #include <vector>
 
+#include "yahat/HttpServer.h"
+
 namespace nsblast {
 
 /*! The applications configuration */
@@ -44,28 +46,8 @@ struct Config {
 
     /*! \name HTTP */
     ///@{
-
-    /*! Number of threads for the API and UI.
-     *  Note that db and file access
-     *  is syncronous, so even if the HTTP server is
-     *  asyncroneous, we need some
-     *  extra threads to wait for slow IO to complete.
-     */
-    size_t num_http_threads = 6;
-
-    /*! Ip address or hostname for the REST API endpoint */
-    std::string http_endpoint;
-
-    /*! HTTP port
-     *
-     *  Only required for non-standard ports
-     */
-    std::string http_port;
-
-    /*! Path to the TLS key-file if HTTPS is used */
-    std::string http_tls_key;
-    /*! Path to the TLS cert-file if HTTPS is used */
-    std::string http_tls_cert;
+    /// HTTP configuration
+    yahat::HttpConfig http;
     ///@}
 };
 

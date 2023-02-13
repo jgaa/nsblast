@@ -5,12 +5,12 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
+#include "nsblast/ApiEngine.h"
 
 using namespace std;
 using namespace nsblast;
 
 int main(int argc, char* argv[]) {
-
     try {
         locale loc("");
     } catch (const std::exception&) {
@@ -39,19 +39,19 @@ int main(int argc, char* argv[]) {
     po::options_description http("HTTP/API server");
     http.add_options()
         ("http-endpoint,H",
-            po::value<string>(&config.http_endpoint)->default_value(config.http_endpoint),
+            po::value<string>(&config.http.http_endpoint)->default_value(config.http.http_endpoint),
             "HTTP endpoint. For example [::] to listen to all interfaces")
         ("http-port",
-            po::value<string>(&config.http_port)->default_value(config.http_port),
+            po::value<string>(&config.http.http_port)->default_value(config.http.http_port),
             "HTTP port to listen to. Not required when using port 80 or 443")
         ("http-tls-key",
-            po::value<string>(&config.http_tls_key)->default_value(config.http_tls_key),
+            po::value<string>(&config.http.http_tls_key)->default_value(config.http.http_tls_key),
             "TLS key for the embedded HTTP server")
         ("http-tls-cert",
-            po::value<string>(&config.http_tls_cert)->default_value(config.http_tls_cert),
+            po::value<string>(&config.http.http_tls_cert)->default_value(config.http.http_tls_cert),
             "TLS cert for the embedded HTTP server")
         ("http-num-threads",
-            po::value<size_t>(&config.num_http_threads)->default_value(config.num_http_threads),
+            po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
             "Threads for the embedded HTTP server")
 
         ;
@@ -91,10 +91,9 @@ int main(int argc, char* argv[]) {
 
     LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
 
-    try {
-//        auto engine = DnsEngine::create(config);
-//        engine->init();
-//        engine->run();
+    try {        
+        ApiEngine api{config};
+        api.run();
         ;
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception from engine: " << ex.what();

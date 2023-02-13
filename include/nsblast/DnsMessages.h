@@ -745,7 +745,7 @@ public:
      * \param ttl Time To Live
      * \param txt Text to add.
      *            The text is treated as binary data by the dns server
-     * \param split. A text-segment is up to 255 bytes. If more data is
+     * \param split A text-segment is up to 255 bytes. If more data is
      *            submitted, it must be split into multiple segments of
      *            0 - 255 bytes. If `split` is true, this will be handled
      *            automatically.
