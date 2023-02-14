@@ -16,7 +16,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
-add_dependencies(${PROJECT_NAME} logfault rocksdb nsblastlib)
+add_dependencies(${PROJECT_NAME} logfault rocksdb nsblastlib externalYahat)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib

@@ -53,7 +53,6 @@ int main(int argc, char* argv[]) {
         ("http-num-threads",
             po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
             "Threads for the embedded HTTP server")
-
         ;
 
     po::options_description cmdline_options;

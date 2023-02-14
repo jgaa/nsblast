@@ -17,6 +17,7 @@ ExternalProject_Add(logfault
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 )
 
 ExternalProject_Add(externalYahat
@@ -28,8 +29,9 @@ ExternalProject_Add(externalYahat
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
         -DYAHAT_WITH_EXAMPLES=OFF
-        -DYAHAT_WITH_LOGFAULT=ON
+        -DUSE_LOGFAULT=ON
         -DBOOST_ROOT=${BOOST_ROOT}
         -DUSE_BOOST_VERSION=${USE_BOOST_VERSION}
         -DLOGFAULT_ROOT='${EXTERNAL_PROJECTS_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}'
@@ -74,13 +76,12 @@ endif()
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
-    GIT_TAG "v7.8.3"
+    GIT_TAG "v7.9.2"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DUSE_RTTI=1
         -DPORTABLE=${PORTABLE}
         -DCMAKE_CXX_STANDARD=17
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DWITH_TESTS=OFF
         -DWITH_TOOLS=OFF
         -DWITH_BENCHMARK_TOOLS=OFF
@@ -91,6 +92,7 @@ ExternalProject_Add(rocksdb
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 
      # Required because CMake don't work really well with ninja
      BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
