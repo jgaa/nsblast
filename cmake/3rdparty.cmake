@@ -19,7 +19,7 @@ ExternalProject_Add(logfault
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
 )
 
-ExternalProject_Add(yahat
+ExternalProject_Add(externalYahat
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/yahat-cpp.git"
     GIT_TAG "main"
@@ -32,7 +32,11 @@ ExternalProject_Add(yahat
         -DYAHAT_WITH_LOGFAULT=ON
         -DBOOST_ROOT=${BOOST_ROOT}
         -DUSE_BOOST_VERSION=${USE_BOOST_VERSION}
+        -DLOGFAULT_ROOT='${EXTERNAL_PROJECTS_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}'
 )
+
+add_dependencies(externalYahat logfault)
+
 
 # If we compile the tests; download and install gtest if it's not found on the target
 # On ubuntu and debian, you can install `libgtest-dev` to avoid this step.
