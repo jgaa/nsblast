@@ -1,7 +1,9 @@
 
-#include "RestApi.h"
+#include <boost/json/src.hpp>
 
+#include "RestApi.h"
 #include "nsblast/logging.h"
+#include "nsblast/DnsMessages.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -9,8 +11,182 @@ using namespace yahat;
 
 namespace nsblast::lib {
 
-RestApi::RestApi(const Config &config)
-    : config_{config}
+namespace {
+
+
+boost::json::value parseJson(std::string_view json) {
+    boost::json::error_code ec;
+
+    auto obj = boost::json::parse(json, ec);
+    if (ec) {
+        LOG_DEBUG << "Failed to parse Json object: " << ec;
+        throw Response{400, "Failed to parse json"};
+    }
+
+    return obj;
+}
+
+// TODO: This code is crap! Fix it!
+void validateSoa(const boost::json::value& json) {
+    for (string_view key : {"soa/mname", "soa/rname"}) {
+        try {
+            if (!json.at_pointer(key).is_string()) {
+                throw Response{400, "Not a string: "s + string(key)};
+            }
+        } catch (std::exception& ex) {
+            throw Response{400, "Missing "s + string(key)};
+        }
+    }
+
+    for (string_view key : {"soa/ttl", "soa/refresh", "soa/retry", "soa/version", "soa/expire", "soa/minimum"}) {
+        try {
+            if (json.at_pointer(key).is_int64()) {
+                throw Response{400, "Not a string: "s + string(key)};
+            }
+        } catch (std::exception& ) {
+            ; // OK
+        }
+    }
+}
+
+// TODO: This code is crap! Fix it!
+void validateZone(const boost::json::value& json) {
+    validateSoa(json);
+
+    const auto& primary_ns = json.at_pointer("soa/rname");
+    assert(primary_ns.is_string());
+
+    string_view ckey = "ns";
+    bool has_primary = false;
+    try {
+        auto ns = json.at("ns");
+        if (!ns.is_array()) {
+            throw Response{400, "Json element 'ns' must be an array of string(s)"s};
+        }
+
+        if (ns.as_array().size() < 2) {
+            throw Response{400, "RFC1036 require at least two nameservers (ns records)"s};
+        }
+
+        for(const auto& v : ns.as_array()) {
+            if (!v.if_string()) {
+                throw Response{400, "Json elements in 'ns' must string(s)"s};
+            }
+            if (v.as_string() == primary_ns) {
+                has_primary = true;
+            }
+        }
+    } catch(const exception& ex) {
+        throw Response{400, "Missing Json element "s + string(ckey)};
+    }
+
+    if (!has_primary) {
+        throw Response{400, "soa.rname must be one of the ns entries"};
+    }
+}
+
+// Build a binary storage buffer from the values in the json payload
+void build(string_view fqdn, uint32_t ttl, StorageBuilder sb, const boost::json::value json) {
+
+    static const map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
+        handlers = {
+    {"soa", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        // TODO: Set reasonable defaults
+        uint32_t soattl = ttl, refresh = 1000, retry = 1000, expire = 1000, minimum = 1000,
+                serial = 1;
+        string_view mname, rname;
+
+        map<string_view, uint32_t *> nentries = {
+            {"ttl", &soattl},
+            {"refresh", &refresh},
+            {"retry", &retry},
+            {"expire", &expire},
+            {"minimum", &minimum},
+            {"serial", &serial}
+        };
+
+        for(const auto& a : v.as_object()) {
+            if (auto it = nentries.find(a.key()) ; it != nentries.end()) {
+                assert(it->second);
+                *it->second = v.as_int64();
+            } else if (a.key() == "mname") {
+                mname = v.as_string();
+            } else if (a.key() == "rname") {
+                rname = v.as_string();
+            } else {
+                throw Response{400, "Unknown soa entity: "s + string(a.key())};
+            }
+        }
+
+        sb.createSoa(fqdn, ttl, mname, rname, serial, refresh, retry, expire, minimum);
+    }},
+    { "ns", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        for(const auto& name : v.as_array()) {
+            if (!name.if_string()) {
+                throw Response{400, "Ns entities must be strings"};
+            }
+
+            sb.createNs(fqdn, ttl, name.as_string());
+        }
+    }},
+    { "a", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        for(const auto& name : v.as_array()) {
+            if (!name.if_string()) {
+                throw Response{400, "A entities must be strings"};
+            }
+            sb.createA(fqdn, ttl, string_view{name.as_string()});
+        }
+    }},
+    { "txt", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.if_string()) {
+            throw Response{400, "Txt entities must be strings"};
+        }
+        sb.createTxt(fqdn, ttl, v.as_string());
+    }},
+    { "cname", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.if_string()) {
+            throw Response{400, "Cname entities must be strings"};
+        }
+        sb.createCname(fqdn, ttl, v.as_string());
+    }},
+    { "mx", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        uint16_t priority = 10;
+        string_view host;
+
+        for(const auto& e : v.as_object()) {
+            if (e.key() == "host") {
+                host = e.value().as_string();
+            } else if (e.key() == "priority") {
+                priority = e.value().as_int64();
+            } else {
+                throw Response{400, "Unknown entity in mx: "s + string(e.key())};
+            }
+        }
+
+        if (host.empty()) {
+                throw Response{400, "Mx entry is missing 'host' attribute"};
+        }
+
+        sb.createMx(fqdn, ttl, priority, host);
+    }}
+    };
+
+    for(const auto& obj : json.as_object()) {
+        if (auto it = handlers.find(obj.key()); it != handlers.end()) {
+            it->second(fqdn, ttl, sb, obj.value());
+        } else {
+            throw Response{400, "Unknown entity: "s + string(obj.key())};
+        }
+    }
+}
+
+} // anon ns
+
+RestApi::RestApi(const Config &config, ResourceIf& resource)
+    : config_{config}, resource_{resource}
 {
 
 }
@@ -68,13 +244,38 @@ RestApi::Parsed RestApi::parse(const Request &req)
 
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
-    // Check that the zone don't exist
+    auto trx = resource_.transaction();
 
-    // check that the rrs include soa and 2 ns (and that one is primary in soa)
+    auto exists = trx->zoneExists(parsed.fqdn);
 
-    // Build binary buffer
+    switch(req.type) {
+    case Request::Type::POST: {
+        if (exists) {
+            return {409, "The zone already exists"};
+        }
 
-    // submit
+        auto json = parseJson(req.body);
+
+        // check that the rrs include soa and 2 ns (and that one is primary in soa)
+        validateZone(json);
+
+        // Build binary buffer
+        StorageBuilder sb;
+        uint32_t ttl = 0; // TODO: Set to some supplied or default value
+        build(parsed.fqdn, ttl, sb, json);
+
+        // submit
+    } break;
+    case Request::Type::DELETE: {
+        if (!exists) {
+            return {404, "The zone don't exist"};
+        }
+
+        // Delete it
+    } break;
+    default:
+        return {405, "Only POST and DELETE is valid for 'zone' entries"};
+    }
 }
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)

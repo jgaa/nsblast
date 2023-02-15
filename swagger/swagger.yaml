@@ -799,7 +799,7 @@ definitions:
         $ref: "#/definitions/Ns"
   Rra:
     type: array
-    description: Resource type for A and AA entries
+    description: Resource type for A (ipv4 and ipv6) entries.
     items:
       type: string
       
@@ -818,8 +818,6 @@ definitions:
     type: object
     properties:
       a:
-        $ref: "#/definitions/Rra"
-      aaaa:
         $ref: "#/definitions/Rra"
       txt:
         type: string
