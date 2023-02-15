@@ -3,20 +3,29 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
 # See https://lastviking.eu/code_generator.html
-#add_custom_command(
-#    COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
-#    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
-#    OUTPUT swagger_res.cpp swagger_res.h
-#    COMMENT "Embedding swagger..."
-#    )
+add_custom_command(
+    COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
+    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
+    OUTPUT swagger_res.cpp swagger_res.h
+    COMMENT "Embedding swagger..."
+    )
 
 add_library(${PROJECT_NAME}
-    ${NSBLAST_ROOT}/include/nsblast/nsblast.h
-    ${NSBLAST_ROOT}/include/nsblast/logging.h
-    ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ApiEngine.h
-    DnsMessages.cpp
+    ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
+    ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
+    ${NSBLAST_ROOT}/include/nsblast/logging.h
+    ${NSBLAST_ROOT}/include/nsblast/nsblast.h
+    ${NSBLAST_ROOT}/include/nsblast/util.h
     ApiEngine.cpp
+    DnsMessages.cpp
+    RestApi.cpp
+    RestApi.h
+    RocksDbResource.cpp
+    RocksDbResource.h
+    swagger_res.cpp
+    swagger_res.h
+    util.cpp
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

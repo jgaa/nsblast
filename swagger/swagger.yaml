@@ -34,13 +34,13 @@ paths:
     parameters:
     - in: path
       name: zonename
-      description: "Unique fqdn of a DNS zone, for example: 'examle.com'"
+      description: "Unique fqdn of a DNS zone, for example: 'example.com'"
       required: true
       type: string
     post:
       tags:
       - zone
-      summary: "Add a new zone to the default namespace"
+      summary: "Create a new zone to the default namespace"
       description: "A new zone is added if the fqdn is available (in nsblasts internal database)."
       operationId: "addZone"
       consumes:
@@ -50,64 +50,16 @@ paths:
       parameters:
       - in: "body"
         name: "body"
-        description: "Settings for the Zone"
+        description: "Settings for the Zone. Soa and two ns records *must* be present."
         required: true
         schema:
-          $ref: "#/definitions/Zone"
+          $ref: "#/definitions/Entry"
       responses:
         "400":
           description: "Invalid input"
         "409":
           description: "Zone already exist"
           
-      # security:
-      # - petstore_auth:
-      #   - "write:pets"
-      #   - "read:pets"
-    put:
-      tags:
-      - zone
-      summary: Replace an existing zone
-      description: ""
-      operationId: "putZone"
-      consumes:
-      - "application/json"
-      produces:
-      - "application/json"
-      parameters:
-      - in: "body"
-        name: "body"
-        description: "Settings for the Zone"
-        required: true
-        schema:
-          $ref: "#/definitions/Zone"
-      responses:
-        "400":
-          description: "Invalid input"
-        "404":
-          description: "Zone not found"
-    patch:
-      tags:
-      - zone
-      summary: Create a new zone or update/merge an existing zone
-      description: "Convenience method, like 'upsert' in a database operation"
-      operationId: "PatchZone"
-      consumes:
-      - "application/json"
-      produces:
-      - "application/json"
-      parameters:
-      - in: "body"
-        name: "body"
-        description: "Settings for the Zone"
-        required: true
-        schema:
-          $ref: "#/definitions/Zone"
-      responses:
-        "400":
-          description: "Invalid input"
-        "404":
-          description: "Zone not found"
     delete:
       tags:
       - zone
@@ -845,10 +797,6 @@ definitions:
         $ref: "#/definitions/Soa"
       ns:
         $ref: "#/definitions/Ns"
-      tns:
-        type: string
-        description: Optional name for a namespace to associate the zone with. If unsed, the default namespace is used.
-        
   Rra:
     type: array
     description: Resource type for A and AA entries
@@ -880,6 +828,10 @@ definitions:
         description: Redirect to another fqdn. If used, a and aaaa must be empty
       mx:
         $ref: "#/definitions/Mx"
+      soa:
+        $ref: "#/definitions/Soa"
+      ns:
+        $ref: "#/definitions/Ns"
 
     
   # Pet:

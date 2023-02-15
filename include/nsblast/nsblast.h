@@ -11,6 +11,13 @@ namespace nsblast {
 
 /*! The applications configuration */
 struct Config {
+    /*! \name Options */
+    ///@{
+    /// Enable the swagger interface
+    bool swagger = true;
+
+    ///@}
+
     /*! \name Database */
     ///@{
     /// Path to the database directory
