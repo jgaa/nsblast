@@ -641,12 +641,12 @@ const Message::Header Message::header() const
 
 RrSet Message::getQuestions() const
 {
-
+    assert(false);
 }
 
 RrSet Message::getAnswers() const
 {
-
+    assert(false);
 }
 
 const Message::buffer_t &Message::buffer() const
@@ -992,7 +992,9 @@ void RrSet::parse()
     }
 }
 
-RrSet::Iterator::Iterator(boost::span<const char> buffer, uint16_t offset, const RrSet::index_t &index)
+RrSet::Iterator::Iterator(boost::span<const char> buffer,
+                          uint16_t /*offset*/,
+                          const RrSet::index_t &index)
     : index_{index}, buffer_{buffer}
 {
     if (buffer.empty()) { // end() iterator
@@ -1152,6 +1154,7 @@ Entry::Iterator& Entry::Iterator::operator++()
 {
     increment();
     update();
+    return *this;
 }
 
 void Entry::Iterator::update()

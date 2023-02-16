@@ -4,6 +4,7 @@
 #include "RestApi.h"
 #include "nsblast/logging.h"
 #include "nsblast/DnsMessages.h"
+#include "nsblast/util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -246,7 +247,9 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
     auto trx = resource_.transaction();
 
-    auto exists = trx->zoneExists(parsed.fqdn);
+    auto lowercaseFqdn = toLower(parsed.fqdn);
+
+    auto exists = trx->zoneExists(lowercaseFqdn);
 
     switch(req.type) {
     case Request::Type::POST: {
@@ -264,18 +267,20 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         uint32_t ttl = 0; // TODO: Set to some supplied or default value
         build(parsed.fqdn, ttl, sb, json);
 
-        // submit
+        trx->write(lowercaseFqdn, sb.buffer(), true);
     } break;
     case Request::Type::DELETE: {
         if (!exists) {
             return {404, "The zone don't exist"};
         }
-
-        // Delete it
+        trx->remove(lowercaseFqdn, true);
     } break;
     default:
         return {405, "Only POST and DELETE is valid for 'zone' entries"};
     }
+
+    trx->commit();
+    return {};
 }
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)

@@ -21,6 +21,15 @@ using ROCKSDB_NAMESPACE::TransactionDBOptions;
 
 namespace nsblast::lib {
 
+namespace {
+
+template <typename T>
+auto toSlice(const T& v) {
+    return  rocksdb::Slice{v.data(), v.size()};
+}
+
+} // anon ns
+
 RocksDbResource::Transaction::Transaction(RocksDbResource &owner)
     : owner_{owner}
 {
@@ -45,10 +54,106 @@ RocksDbResource::Transaction::~Transaction()
     }
 }
 
+bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key)
+{
+    rocksdb::PinnableSlice ps;
+
+    const auto status = trx_->Get({}, owner_.entryHandle(), toSlice(key), &ps);
+
+    if (status.ok()) {
+        return true;
+    }
+
+    if (status.IsNotFound()) {
+        return false;
+    }
+
+    LOG_WARN << "RocksDbResource::Transaction::keyExists: " << status.ToString();
+
+    throw runtime_error{status.ToString()};
+}
+
 bool RocksDbResource::Transaction::exists(string_view fqdn, uint16_t type)
 {
-    // TODO: Implement
+    try {
+        auto b = read(fqdn);
+        Entry entry{b->data()};
+
+        if (type == TYPE_SOA) {
+            return entry.flags().soa;
+        }
+
+        for(auto it : entry) {
+            if (it.type() == type) {
+                return true;
+            }
+        }
+
+    }  catch (const ResourceIf::NotFoundException&) {
+        ;
+    }
+
     return false;
+}
+
+void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
+                                         ResourceIf::TransactionIf::data_t data,
+                                         bool isNew)
+{
+    if (isNew && keyExists(key)) {
+        throw AlreadyExistException{"Key exists"};
+    }
+    const auto status = trx_->Put(owner_.entryHandle(), toSlice(key), toSlice(data));
+
+    if (!status.ok()) {
+        throw runtime_error{"Rocksdn write failed: "s + status.ToString()};
+    }
+
+    if (isNew && status.IsOkOverwritten()) { // TODO: don't actually work...
+        throw AlreadyExistException{"Key exists"};
+    }
+}
+
+ResourceIf::TransactionIf::read_ptr_t RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key)
+{
+    auto rval = make_unique<BufferImpl>();
+
+    const auto status = trx_->Get({}, owner_.entryHandle(), toSlice(key), &rval->ps_);
+
+    if (status.ok()) {
+        rval->prepare();
+        return rval;
+    }
+
+    if (status.IsNotFound()) {
+        throw NotFoundException{"Key not found"};
+    }
+
+    LOG_WARN << "RocksDbResource::Transaction::read: " << status.ToString();
+
+    throw runtime_error{status.ToString()};
+}
+
+void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key, bool recursive)
+{
+    if (recursive) {
+        // Assumption: The iterator starts at key, and we can do a memcmp to
+        // figure out if we are still iterating the same zone
+        //
+        // Note that DeleteRange is probably a better option for large zones.
+        // Unfortunately, it's not yet available in transactions
+        rocksdb::ReadOptions options = {};
+        auto it = trx_->GetIterator(options, owner_.entryHandle());
+        for(it->Seek(toSlice(key)); it->Valid() ; it->Next()) {
+            const auto ck = it->key();
+            if (ck.size() < key.size() || memcmp(ck.data(), key.data(), key.size()) != 0) {
+                break;
+            }
+            trx_->Delete(owner_.entryHandle(), it->key());
+        }
+    } else {
+        trx_->Delete(owner_.entryHandle(), toSlice(key));
+    }
 }
 
 void RocksDbResource::Transaction::commit()

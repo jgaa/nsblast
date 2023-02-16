@@ -47,3 +47,44 @@ target_link_libraries(dns_messages_tests
 
 add_test(NAME dns_messages_tests COMMAND dns_messages_tests)
 
+
+####### db_tests
+
+add_executable(db_tests
+    db_tests.cpp
+    TmpDb.h
+    test_res.cpp test_res.h
+    )
+
+set_property(TARGET db_tests PROPERTY CXX_STANDARD 17)
+
+add_dependencies(db_tests
+    nsblastlib
+     ${DEPENDS_GTEST}
+    )
+
+target_include_directories(db_tests
+    PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/include
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+target_link_libraries(db_tests
+    ${GTEST_LIBRARIES}
+    nsblastlib
+    ${Protobuf_LIBRARIES}
+    ${SNAPPY_LIBRARIES} # Not working
+    ${ROCKSDB_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    stdc++fs
+    lz4
+    snappy
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
+add_test(NAME db_tests COMMAND db_tests)

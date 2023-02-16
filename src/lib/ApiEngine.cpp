@@ -2,6 +2,8 @@
 
 
 #include "nsblast/ApiEngine.h"
+#include "RocksDbResource.h"
+#include "RestApi.h"
 #include "nsblast/logging.h"
 
 #include "swagger_res.h"
@@ -15,11 +17,24 @@ using namespace yahat;
 ApiEngine::ApiEngine(const Config& config)
     : config_{config}
 {
+}
 
+void ApiEngine::initRocksdb()
+{
+    auto rdb = make_shared<lib::RocksDbResource>(config_);
+
+    LOG_DEBUG << "Initializing RocksDB";
+    rdb->init();
+
+    resource_ = move(rdb);
 }
 
 void ApiEngine::run()
 {
+    if (!resource_) {
+        initRocksdb();
+    }
+
     // TODO: Add actual authentication
     yahat::HttpServer httpServer{config_.http, [](const AuthReq& ar) {
             Auth auth;
@@ -29,7 +44,7 @@ void ApiEngine::run()
             return auth;
         }};
 
-
+    httpServer.addRoute("/api/v1", make_shared<lib::RestApi>(config_, *resource_));
 
     if (config_.swagger) {
         const string_view swagger_path = "/api/swagger";

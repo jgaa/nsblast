@@ -13,11 +13,24 @@ class RocksDbResource : public ResourceIf {
 public:
     class Transaction : public ResourceIf::TransactionIf {
     public:
+        struct BufferImpl : public BufferBase {
+
+            void prepare() {
+                data_ = {ps_.data(), ps_.size()};
+            }
+
+            rocksdb::PinnableSlice ps_;
+        };
+
         Transaction(RocksDbResource& owner);
         ~Transaction();
 
         // TransactionIf interface
+        bool keyExists(key_t key) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
+        void write(key_t key, data_t data, bool isNew) override;
+        read_ptr_t read(key_t key) override;
+        void remove(key_t key, bool recursive) override;
         void commit() override;
         void rollback() override;
 
@@ -54,6 +67,18 @@ private:
     void bootstrap();
     bool needBootstrap() const;
     std::string getDbPath() const;
+
+    auto zoneHandle() noexcept {
+        return cfh_[ZONE];
+    }
+
+    auto entryHandle() noexcept {
+        return cfh_[ENTRY];
+    }
+
+    auto accountHandle() noexcept {
+        return cfh_[ACCOUNT];
+    }
 
     const Config& config_;
     rocksdb::TransactionDB *db_ = {};

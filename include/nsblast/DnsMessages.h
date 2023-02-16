@@ -596,8 +596,8 @@ public:
         void update();
         void increment();
 
-        index_t::const_iterator ix_;
         const Entry *entry_ = {};
+        index_t::const_iterator ix_;
         Rr crr_;
     };
 

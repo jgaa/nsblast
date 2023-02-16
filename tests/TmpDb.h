@@ -7,9 +7,9 @@
 
 #include <filesystem>
 #include "nsblast/logging.h"
-#include "Db.h"
+#include "RocksDbResource.h"
 
-#include "test_res.h"
+//#include "test_res.h"
 
 using ROCKSDB_NAMESPACE::DB;
 using ROCKSDB_NAMESPACE::Options;
@@ -31,13 +31,11 @@ string getUuid() {
     return boost::lexical_cast<string>(uuid_gen_());
 }
 
-
-
 class TmpDb {
 public:
     TmpDb()
         : path_{filesystem::temp_directory_path() /= getUuid()}
-        , c_{path_}
+        , c_{false, path_}
         , db_{c_}
     {
         filesystem::create_directories(path_);
@@ -49,7 +47,7 @@ public:
         return &db_;
     }
 
-    Db& operator * () {
+    RocksDbResource& operator * () {
         return db_;
     }
 
@@ -60,7 +58,7 @@ public:
 private:
     filesystem::path path_;
     Config c_;
-    Db db_;
+    RocksDbResource db_;
 };
 
 } // ns
