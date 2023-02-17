@@ -14,8 +14,90 @@ namespace nsblast::lib {
 
 namespace {
 
+} // anon ns
 
-boost::json::value parseJson(std::string_view json) {
+RestApi::RestApi(const Config &config, ResourceIf& resource)
+    : config_{config}, resource_{resource}
+{
+}
+
+Response RestApi::onReqest(const Request &req, const Auth &auth)
+{
+    const auto p = parse(req);
+
+    if (p.what == "rr") {
+        return onResourceRecord(req, p);
+    }
+
+    if (p.what == "zone") {
+        return onZone(req, p);
+    }
+
+
+    LOG_DEBUG << "Unknown subpath: " << p.what;
+    return {404, "Unknown subpath"};
+}
+
+RestApi::Parsed RestApi::parse(const Request &req)
+{
+    // target syntax: /api/v1/zone|rr/{fqdn}[/verb]
+    //                        ^
+    //                        +------               = what
+    //                        |        -----        = fqdn
+    //                        |               ----  = operation
+    //                        +-------------------- = base
+
+    Parsed p;
+    p.base = req.target;
+    p.base = p.base.substr(req.route.size());
+    while(!p.base.empty() && p.base.at(0) == '/') {
+        p.base = p.base.substr(1);
+    }
+
+    if (auto pos = p.base.find('/'); pos != string_view::npos) {
+        p.what = p.base.substr(0, pos);
+
+        if (p.base.size() > pos) {
+            p.fqdn = p.base.substr(pos + 1);
+
+            if (auto end = p.fqdn.find('/') ; end != string_view::npos) {
+                if (p.fqdn.size() > end) {
+                    p.operation = p.fqdn.substr(end + 1);
+                }
+                p.fqdn = p.fqdn.substr(0, end);
+            }
+        }
+    }
+
+    return p;
+}
+
+void RestApi::validateSoa(const boost::json::value &json)
+{
+    auto soa = json.at("soa");
+    for (string_view key : {"mname", "rname"}) {
+        try {
+            if (!soa.at(key).is_string()) {
+                throw Response{400, "Not a string: "s + string(key)};
+            }
+        } catch (std::exception& ex) {
+            throw Response{400, "Missing "s + string(key)};
+        }
+    }
+
+    for (string_view key : {"ttl", "refresh", "retry", "version", "expire", "minimum"}) {
+        try {
+            if (!soa.at(key).is_int64()) {
+                throw Response{400, "Not a number: "s + string(key)};
+            }
+        } catch (std::exception& ) {
+            ; // OK
+        }
+    }
+}
+
+boost::json::value RestApi::parseJson(string_view json)
+{
     boost::json::error_code ec;
 
     auto obj = boost::json::parse(json, ec);
@@ -27,40 +109,18 @@ boost::json::value parseJson(std::string_view json) {
     return obj;
 }
 
-// TODO: This code is crap! Fix it!
-void validateSoa(const boost::json::value& json) {
-    for (string_view key : {"soa/mname", "soa/rname"}) {
-        try {
-            if (!json.at_pointer(key).is_string()) {
-                throw Response{400, "Not a string: "s + string(key)};
-            }
-        } catch (std::exception& ex) {
-            throw Response{400, "Missing "s + string(key)};
-        }
-    }
-
-    for (string_view key : {"soa/ttl", "soa/refresh", "soa/retry", "soa/version", "soa/expire", "soa/minimum"}) {
-        try {
-            if (json.at_pointer(key).is_int64()) {
-                throw Response{400, "Not a string: "s + string(key)};
-            }
-        } catch (std::exception& ) {
-            ; // OK
-        }
-    }
-}
-
-// TODO: This code is crap! Fix it!
-void validateZone(const boost::json::value& json) {
+void RestApi::validateZone(const boost::json::value &json)
+{
     validateSoa(json);
 
-    const auto& primary_ns = json.at_pointer("soa/rname");
+    const auto& primary_ns = json.at_pointer("/soa/rname");
     assert(primary_ns.is_string());
 
     string_view ckey = "ns";
     bool has_primary = false;
     try {
         auto ns = json.at("ns");
+
         if (!ns.is_array()) {
             throw Response{400, "Json element 'ns' must be an array of string(s)"s};
         }
@@ -70,8 +130,8 @@ void validateZone(const boost::json::value& json) {
         }
 
         for(const auto& v : ns.as_array()) {
-            if (!v.if_string()) {
-                throw Response{400, "Json elements in 'ns' must string(s)"s};
+            if (!v.is_string()) {
+                throw Response{400, "Json elements in 'ns' must be string(s)"s};
             }
             if (v.as_string() == primary_ns) {
                 has_primary = true;
@@ -86,9 +146,8 @@ void validateZone(const boost::json::value& json) {
     }
 }
 
-// Build a binary storage buffer from the values in the json payload
-void build(string_view fqdn, uint32_t ttl, StorageBuilder sb, const boost::json::value json) {
-
+void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value json)
+{
     static const map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
     {"soa", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
@@ -110,11 +169,11 @@ void build(string_view fqdn, uint32_t ttl, StorageBuilder sb, const boost::json:
         for(const auto& a : v.as_object()) {
             if (auto it = nentries.find(a.key()) ; it != nentries.end()) {
                 assert(it->second);
-                *it->second = v.as_int64();
+                *it->second = a.value().as_int64();
             } else if (a.key() == "mname") {
-                mname = v.as_string();
+                mname = a.value().as_string();
             } else if (a.key() == "rname") {
-                rname = v.as_string();
+                rname = a.value().as_string();
             } else {
                 throw Response{400, "Unknown soa entity: "s + string(a.key())};
             }
@@ -184,65 +243,6 @@ void build(string_view fqdn, uint32_t ttl, StorageBuilder sb, const boost::json:
     }
 }
 
-} // anon ns
-
-RestApi::RestApi(const Config &config, ResourceIf& resource)
-    : config_{config}, resource_{resource}
-{
-
-}
-
-Response RestApi::onReqest(const Request &req, const Auth &auth)
-{
-    const auto p = parse(req);
-
-    if (p.what == "rr") {
-        return onResourceRecord(req, p);
-    }
-
-    if (p.what == "zone") {
-        return onZone(req, p);
-    }
-
-
-    LOG_DEBUG << "Unknown subpath: " << p.what;
-    return {404, "Unknown subpath"};
-}
-
-RestApi::Parsed RestApi::parse(const Request &req)
-{
-    // target syntax: /api/v1/zone|rr/{fqdn}[/verb]
-    //                        ^
-    //                        +------               = what
-    //                        |        -----        = fqdn
-    //                        |               ----  = operation
-    //                        +-------------------- = base
-
-    Parsed p;
-    p.base = req.target;
-    p.base = p.base.substr(req.route.size());
-    while(!p.base.empty() && p.base.at(0) == '/') {
-        p.base = p.base.substr(1);
-    }
-
-    if (auto pos = p.base.find('/'); pos != string_view::npos) {
-        p.what = p.base.substr(0, pos);
-
-        if (p.base.size() > pos) {
-            p.fqdn = p.base.substr(pos + 1);
-
-            if (auto end = p.fqdn.find('/') ; end != string_view::npos) {
-                if (p.fqdn.size() > end) {
-                    p.operation = p.fqdn.substr(end + 1);
-                }
-                p.fqdn = p.fqdn.substr(0, end);
-            }
-        }
-    }
-
-    return p;
-}
-
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
     auto trx = resource_.transaction();
@@ -267,13 +267,21 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         uint32_t ttl = 0; // TODO: Set to some supplied or default value
         build(parsed.fqdn, ttl, sb, json);
 
-        trx->write(lowercaseFqdn, sb.buffer(), true);
+        try {
+            trx->write(lowercaseFqdn, sb.buffer(), true);
+        } catch(const ResourceIf::AlreadyExistException&) {
+            return {409, "The zone already exists"};
+        }
     } break;
     case Request::Type::DELETE: {
         if (!exists) {
             return {404, "The zone don't exist"};
         }
-        trx->remove(lowercaseFqdn, true);
+        try {
+            trx->remove(lowercaseFqdn, true);
+        } catch(const ResourceIf::NotFoundException&) {
+            return {404, "The zone don't exist"};
+        }
     } break;
     default:
         return {405, "Only POST and DELETE is valid for 'zone' entries"};

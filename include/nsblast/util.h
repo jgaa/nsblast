@@ -27,4 +27,6 @@ std::string toLower(const T& v) {
         }
         ++p;
     }
+
+    return out;
 }

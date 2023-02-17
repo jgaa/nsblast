@@ -49,7 +49,6 @@ public:
     // ResourceIf interface
     std::unique_ptr<TransactionIf> transaction() override;
 
-
     void init();
 
     auto& db() {

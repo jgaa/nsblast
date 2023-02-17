@@ -131,6 +131,14 @@ uint16_t resolvePtr(const T& buffer, uint16_t offset) {
     return ptr;
 }
 
+template <typename T, typename B>
+boost::asio::ip::address bufferToAddr(const B& buffer) {
+    typename T::bytes_type bytes;
+
+    assert(buffer.size() == bytes.size());
+    copy(buffer.begin(), buffer.end(), bytes.begin());
+    return T{bytes};
+}
 
 } // anon ns
 
@@ -1172,7 +1180,22 @@ void Entry::Iterator::update()
 
 void Entry::Iterator::increment()
 {
-   ++ix_;
+    ++ix_;
+}
+
+
+boost::asio::ip::address RrA::address()
+{
+    if (rdata().size() == 4) {
+        return bufferToAddr<boost::asio::ip::address_v4>(rdata());
+    }
+
+    return bufferToAddr<boost::asio::ip::address_v6>(rdata());
+}
+
+string RrA::string()
+{
+    return address().to_string();
 }
 
 

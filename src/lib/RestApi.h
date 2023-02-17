@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/json.hpp>
+
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
 #include "yahat/HttpServer.h"
@@ -22,9 +24,16 @@ public:
 
 
     Parsed parse(const yahat::Request &req);
-private:
+
+    // Internal methods.
+    static void validateSoa(const boost::json::value& json);
+    static boost::json::value parseJson(std::string_view json);
+    static void validateZone(const boost::json::value& json);
+    static void build(std::string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value json);
+
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
+private:
 
     const Config& config_;
     ResourceIf& resource_;

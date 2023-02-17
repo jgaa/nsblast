@@ -313,6 +313,21 @@ public:
     uint32_t minimum() const;
 };
 
+/*! Wrapper over a RR A instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrA : public Rr {
+public:
+    RrA(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    boost::asio::ip::address address();
+
+    std::string string();
+};
+
+
 /*! Wrapper over a RR CNAME instance.
  *
  *  Can be used to simply obtain data from the record.

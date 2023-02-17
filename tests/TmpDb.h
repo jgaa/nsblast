@@ -55,6 +55,14 @@ public:
         filesystem::remove_all(path_);
     }
 
+    const auto& config() const {
+        return c_;
+    }
+
+    ResourceIf& resource() {
+        return db_;
+    }
+
 private:
     filesystem::path path_;
     Config c_;
