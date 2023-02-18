@@ -54,6 +54,68 @@ RocksDbResource::Transaction::~Transaction()
     }
 }
 
+ResourceIf::TransactionIf::RrAndSoa RocksDbResource::Transaction::lookupEntryAndSoa(ResourceIf::TransactionIf::key_t fqdn)
+{
+    EntryWithBuffer rr;
+    string_view key = {fqdn.data(), fqdn.size()};
+    bool first = true;
+    while(!key.empty()) {
+        LOG_TRACE << "lookupEntryAndSoa: key=" << key;
+        if (auto e = lookup(key)) {
+            if (e.flags().soa) {
+                if (first) {
+                    // This is an exact match. RR and Soa is the same
+                    assert(rr.empty());
+
+                    return {move(e)};
+                }
+
+                return {move(rr), move(e)};
+            }
+
+            const auto zlen = e.header().zonelen;
+            assert(zlen > 0);
+            assert(zlen <= key.size());
+
+            // Deduce the key to the zone/soa from the zonelen in the RR's header
+            key = key.substr(key.size() - zlen);
+
+            if (first) {
+                assert(rr.empty());
+                // Remember rr, we need to return it when the soa is found.
+                rr = move(e);
+            }
+        } else if (auto pos = key.find('.'); pos != string_view::npos) {
+            // Try the next level
+            assert(!key.empty());
+            key = key.substr(pos + 1);
+        } else {
+            break; // Nowhere left to go...
+        }
+        first = false;
+    } // while key
+
+    LOG_TRACE << "lookupEntryAndSoa: Not found";
+    return {}; // Not found
+}
+
+ResourceIf::TransactionIf::EntryWithBuffer RocksDbResource::Transaction::lookup(ResourceIf::TransactionIf::key_t fqdn)
+{
+    try {
+        auto buffer = read(fqdn);
+        return {move(buffer)};
+    }  catch (const ResourceIf::NotFoundException&) {
+        ;
+    }
+
+    return {}; // Not found
+}
+
+uint32_t RocksDbResource::Transaction::incrementVersionInSoa(ResourceIf::TransactionIf::key_t zoneFqdn)
+{
+    return 0;
+}
+
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key)
 {
     rocksdb::PinnableSlice ps;

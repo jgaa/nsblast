@@ -539,7 +539,6 @@ public:
 
 
 struct StorageTypes {
-    using buffer_t = std::vector<char>;
 
 #pragma pack(1)
     struct Flags {
@@ -570,8 +569,14 @@ struct StorageTypes {
 
 };
 
+/*! Wrapper over a storage buffer
+ *
+ *
+ * The instance don't own it's buffer
+ */
 class Entry : public StorageTypes {
 public:
+    using span_t = boost::span<const char>;
     using index_t = boost::span<const Index>;
 
     /*! Simple forward iterator to allow us to iterate over the rr's */
@@ -616,7 +621,18 @@ public:
         Rr crr_;
     };
 
+    Entry() = default;
+    Entry(const Entry&) = default;
+    Entry(Entry&&) = default;
+
+    Entry& operator = (const Entry&) = default;
+    Entry& operator = (Entry&&) = default;
+
     Entry(boost::span<const char> buffer);
+
+    bool empty() const noexcept{
+        return span_.empty();
+    }
 
     Flags flags() const noexcept {
         return header_->flags;
@@ -639,7 +655,7 @@ public:
     }
 
     boost::span<const char> buffer() const noexcept {
-        return buffer_;
+        return span_;
     }
 
     const index_t& index() const noexcept {
@@ -647,14 +663,14 @@ public:
     }
 
 private:
-    static index_t mkIndex(buffer_t b, const Header& h, size_t count) {
+    static index_t mkIndex(span_t b, const Header& h, size_t count) {
          const auto p = b.data() + ntohs(h.ixoffset);
          return {reinterpret_cast<const Index *>(p), count};
     }
 
-    buffer_t buffer_;
+    span_t span_;
     const Header *header_ = {};
-    const size_t count_ = {};
+    size_t count_ = {};
     index_t index_;
 };
 
@@ -665,7 +681,7 @@ private:
  */
 class StorageBuilder : public StorageTypes {
 public:
-
+    using buffer_t = std::vector<char>;
 
     /*! Non-owning reference to a newly created RR
      *
@@ -901,6 +917,8 @@ public:
 
     Header header() const;
 
+    void setZoneLen(size_t len);
+
 private:
     NewRr createDomainNameInRdata(std::string_view fqdn,
                                   uint16_t type,
@@ -918,6 +936,7 @@ private:
     Flags flags_ = {};
     std::deque<Index> index_;
     uint16_t index_offset_ = 0;
+    uint8_t zonelen_ = 0;
 };
 
 } // ns

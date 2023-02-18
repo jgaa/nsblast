@@ -18,6 +18,7 @@ public:
         using key_t = boost::span<const char>;
         using data_t = boost::span<const char>;
 
+        /// Buffer that can be specialized by derived classes to reduce memcpy's
         struct BufferBase
         {
             data_t data() {
@@ -30,8 +31,107 @@ public:
 
         using read_ptr_t = std::unique_ptr<BufferBase>;
 
+        /*! Entries retrieved by the Resource
+         *
+         *  Assume that it owns the underlaying buffer.
+         */
+        struct EntryWithBuffer : public lib::Entry {
+            EntryWithBuffer() = default;
+            EntryWithBuffer(const EntryWithBuffer&) = delete;
+            EntryWithBuffer(EntryWithBuffer&&) = default;
+
+            EntryWithBuffer& operator = (const EntryWithBuffer&) = delete;
+            EntryWithBuffer& operator = (EntryWithBuffer&&) = default;
+
+            EntryWithBuffer(read_ptr_t && buffer)
+                : Entry{buffer->data()} {
+                buffer_ptr_ = {std::move(buffer)};
+            }
+
+            /// Allow if (instance) { }
+            explicit operator bool () const noexcept {
+                return !Entry::empty();
+            }
+
+        protected:
+            read_ptr_t  buffer_ptr_;
+        };
+
+        /*! Object containing Entry's for the RR matching a key and the entry for the zone
+         *
+         *  If the RR is the RR for the zone, soa() and rr() will return the same instance.
+         */
+        struct RrAndSoa {
+            RrAndSoa() = default;
+            RrAndSoa(const RrAndSoa&) = delete;
+            RrAndSoa(RrAndSoa &&) = default;
+
+            RrAndSoa& operator = (const RrAndSoa&) = delete;
+            RrAndSoa& operator = (RrAndSoa&&) = default;
+
+            RrAndSoa(EntryWithBuffer && soa)
+                : rr_{std::move(soa)} {}
+
+            RrAndSoa(EntryWithBuffer && rr, EntryWithBuffer && soa)
+                : rr_{std::move(rr)}, soa_{std::move(soa)} {}
+
+            const lib::Entry& soa() const {
+                return soa_.empty() ? rr_ : soa_;
+            }
+
+            const lib::Entry& rr() const {
+                return rr_;
+            }
+
+            /*! True if rr()) and soa() will return the same Entry */
+            bool isSame() const noexcept {
+                return soa_.empty();
+            }
+
+            /*! The key was not found */
+            bool empty() const noexcept {
+                return rr_.empty();
+            }
+
+            /*! The key was not found */
+            operator bool() const noexcept {
+                return !empty();
+            }
+
+        private:
+            EntryWithBuffer rr_;
+            EntryWithBuffer soa_;
+        };
+
         TransactionIf() = default;
         virtual ~TransactionIf() = default;
+
+        /*! Get the Entry with the soa (zone) for a key.
+         *
+         *  \param fqdn name to query about. For zone "example.com", this may be
+         *         "example.com" or "www.example.com". In both cases, the Entry for
+         *         "ewxample.com" is returned.
+         *
+         *  \return RrAndSoa that may or may not be empty. If it is empty,
+         *          the zone was not found.
+         *
+         */
+        virtual RrAndSoa lookupEntryAndSoa(key_t fqdn) = 0;
+
+        /*! Get the entry for a fqdn
+         *
+         *  \return EntryWithBuffer that may or may not be empty. If it is empty,
+         *          the key was not found.
+         */
+        virtual EntryWithBuffer lookup(key_t fqdn) = 0;
+
+        /*! Increment the version in the soa
+         *
+         *  \param zoneFqdn fqdn to the soa
+         *
+         *  \return The new version
+         */
+        virtual uint32_t incrementVersionInSoa(key_t zoneFqdn) = 0;
 
         /*! Check if an RR exists */
         virtual bool exists(std::string_view fqdn, uint16_t type = QTYPE_ALL) = 0;
@@ -65,6 +165,7 @@ public:
          */
         virtual void remove(key_t key, bool recursive = false) = 0;
 
+        /*! Low level read */
         virtual read_ptr_t read(key_t key) = 0;
 
         virtual void commit() = 0;

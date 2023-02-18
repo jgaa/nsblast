@@ -293,7 +293,19 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
+    // Validate the request
 
+    auto trx = resource_.transaction();
+    auto lowercaseFqdn = toLower(parsed.fqdn);
+    // Get the zone
+
+    // Apply changes
+
+    // Increment soa.version
+
+    // Commit
+
+    return  {};
 }
 
 

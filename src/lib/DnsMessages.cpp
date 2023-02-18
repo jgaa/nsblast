@@ -423,6 +423,7 @@ void StorageBuilder::finish()
     h->flags = flags_;
     h->rrcount = htons(static_cast<uint16_t>(index_.size()));
     h->labelsize = label_len_;
+    h->zonelen = zonelen_;
     h->ixoffset = htons(index_offset_);
 
     assert(h->version == CURRENT_STORAGE_VERSION);
@@ -435,6 +436,13 @@ StorageBuilder::Header StorageBuilder::header() const
     }
 
     return *reinterpret_cast<const Header *>(buffer_.data());
+}
+
+void StorageBuilder::setZoneLen(size_t len) {
+    if (len > 255) {
+        throw std::runtime_error{"setZoneLen: too long!"};
+    }
+    zonelen_ = static_cast<uint8_t>(len);
 }
 
 StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
@@ -965,6 +973,8 @@ void Rr::parse()
     const auto rdlen = get16bValueAt(buffer_view_,  rdlenSizeOffset);
     const auto len = labelLen + (2 + 2 + 4 + 2 + rdlen);
 
+    LOG_DEBUG << "Rr::parse: len=" << len << ", max_window_size=" << max_window_size
+              << ", rdlen=" << rdlen << ", rdlenSizeOffset=" << rdlenSizeOffset;
     if (len > max_window_size) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold the full RR!"};
     }
@@ -1136,10 +1146,10 @@ uint32_t RrMx::priority() const
 }
 
 Entry::Entry(boost::span<const char> buffer)
-    : buffer_(buffer.begin(), buffer.end())
-    , header_{reinterpret_cast<const Header *>(buffer_.data())}
+    : span_(buffer)
+    , header_{reinterpret_cast<const Header *>(span_.data())}
     , count_{ntohs(header_->rrcount)}
-    , index_{mkIndex(buffer_, *header_, count_)}
+    , index_{mkIndex(span_, *header_, count_)}
 {
 }
 
