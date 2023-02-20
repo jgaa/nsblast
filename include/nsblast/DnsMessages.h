@@ -311,6 +311,9 @@ public:
     uint32_t retry() const;
     uint32_t expire() const;
     uint32_t minimum() const;
+
+    /*! Offset of serial from the start of the original buffer */
+    uint16_t serialOffset() const;
 };
 
 /*! Wrapper over a RR A instance.
@@ -919,6 +922,9 @@ public:
 
     void setZoneLen(size_t len);
 
+    /*! Convenience method to increment the soa version from the version in the original soa */
+    uint32_t incrementSoaVersion(const Entry& entry);
+
 private:
     NewRr createDomainNameInRdata(std::string_view fqdn,
                                   uint16_t type,
@@ -937,6 +943,7 @@ private:
     std::deque<Index> index_;
     uint16_t index_offset_ = 0;
     uint8_t zonelen_ = 0;
+    uint16_t soa_offset_ = 0;
 };
 
 } // ns

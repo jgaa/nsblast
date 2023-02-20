@@ -303,6 +303,9 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
         offset += sizeof(uint32_t);
     }
 
+    soa_offset_ = buffer_.size();
+    assert(soa_offset_ > 0);
+
     return createRr(fqdn, TYPE_SOA, ttl, rdata);
 }
 
@@ -443,6 +446,32 @@ void StorageBuilder::setZoneLen(size_t len) {
         throw std::runtime_error{"setZoneLen: too long!"};
     }
     zonelen_ = static_cast<uint8_t>(len);
+}
+
+uint32_t StorageBuilder::incrementSoaVersion(const Entry &entry)
+{
+    if (!soa_offset_) {
+        throw runtime_error{"incrementSoaVersion: No soa_offset_"};
+    }
+
+    auto oldSoa = find_if(entry.begin(), entry.end(), [](const auto &v) {
+        return v.type() == TYPE_SOA;
+    });
+
+    if (oldSoa == entry.end()) {
+        throw runtime_error{"incrementSoaVersion: No soa in entry"};
+    }
+
+    RrSoa rrOldSoa{entry.buffer(), oldSoa->offset()};
+    const auto oldSerial = rrOldSoa.serial();
+
+    RrSoa newSoa{buffer_, soa_offset_};
+    const auto offset = newSoa.serialOffset();
+
+    const auto new_version = oldSerial + 1;
+    setValueAt(buffer_, offset, new_version);
+
+    return new_version;
 }
 
 StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
@@ -1108,6 +1137,18 @@ uint32_t RrSoa::minimum() const
     const auto rd = rdata();
     assert(rd.size() >= 24);
     return get32bValueAt(rd, rd.size() - 4);
+}
+
+uint16_t RrSoa::serialOffset() const
+{
+    const auto diff = rdata().data() - buffer_view_.data();
+    assert(diff >= 0);
+    assert(diff < buffer_view_.size());
+
+    int offset = diff + rdata().size() - 20;
+    assert(offset < buffer_view_.size());
+    assert(offset > 0);
+    return static_cast<uint16_t>(offset);
 }
 
 Labels RrCname::cname() const

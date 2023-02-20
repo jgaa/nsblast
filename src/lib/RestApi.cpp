@@ -1,4 +1,6 @@
 
+#include <set>
+
 #include <boost/json/src.hpp>
 
 #include "RestApi.h"
@@ -294,14 +296,116 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
     // Validate the request
+    StorageBuilder sb;
+
+    uint32_t ttl = 0; // TODO: Set to some supplied or default value
+    build(parsed.fqdn, ttl, sb, parseJson(req.body));
+    sb.finish();
 
     auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.fqdn);
     // Get the zone
+    auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
-    // Apply changes
+    if (existing.isSame()) {
+        assert(existing.soa().header().flags.soa);
+        assert(existing.rr().header().flags.soa);
 
-    // Increment soa.version
+        if (req.type == Request::Type::POST || req.type == Request::Type::DELETE) {
+            return {409, "Please use the 'zone' rather than the 'rr' endpoint to create or delete zones."};
+        }
+    }
+
+    bool need_version_increment = false;
+
+    // Apply change
+    switch(req.type) {
+    case Request::Type::POST: {
+        if (existing.hasRr()) {
+            return {409, "The rr already exists"};
+        }
+
+        try {
+            trx->write(lowercaseFqdn, sb.buffer(), true);
+        } catch(const ResourceIf::AlreadyExistException&) {
+            return {409, "The rr already exists"};
+        }
+    } break;
+
+    case Request::Type::PUT: {
+put:
+        if (existing.isSame()) {
+            sb.incrementSoaVersion(existing.soa());
+        } else {
+            need_version_increment = true;
+        }
+        trx->write(lowercaseFqdn, sb.buffer(), false);
+    } break;
+
+    case Request::Type::PATCH: {
+        if (!existing.hasRr()) {
+            // No existing data to patch. Just write the new rr's.
+            goto put;
+        }
+
+        // Merge old and newq rr's. All new rr types are replaced.
+        // The rest of the old types remains.
+        Entry newRrs{sb.buffer()};
+
+        set<uint16_t> new_types;
+        StorageBuilder merged;
+
+        // Add the new rr's to the merged buffer
+        for(const auto& rr : newRrs) {
+            merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+            new_types.insert(rr.type());
+        }
+
+        // Add the relevant old rr's to the merged buffer
+        for(const auto& rr : existing.rr()) {
+            if (new_types.find(rr.type()) == new_types.end()) {
+                merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+            }
+        }
+
+        if (existing.isSame()) {
+            merged.incrementSoaVersion(existing.soa());
+        } else {
+            need_version_increment = true;
+        }
+        trx->write(lowercaseFqdn, merged.buffer(), false);
+    } break;
+
+    case Request::Type::DELETE: {
+        if (!existing.hasRr()) {
+            return {404, "The rr don't exist"};
+        }
+        try {
+            trx->remove(lowercaseFqdn, false);
+        } catch(const ResourceIf::NotFoundException&) {
+            return {404, "The rr don't exist"};
+        }
+    } break;
+    default:
+        return {405, "Operation is not implemented"};
+    }
+
+    if (need_version_increment) {
+        assert(!existing.isSame());
+
+        // We need to copy the Entry containing the soa and then increment the version
+        StorageBuilder soaSb;
+        for(const auto& rr : existing.soa()) {
+            soaSb.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+        }
+        soaSb.incrementSoaVersion(existing.soa());
+        soaSb.finish();
+
+        auto lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
+
+        LOG_TRACE << "Invrementing soa version for " << lowercaseSoaFqdn;
+        trx->write(lowercaseSoaFqdn, soaSb.buffer(), false);
+    }
 
     // Commit
 

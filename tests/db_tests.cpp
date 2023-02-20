@@ -338,6 +338,43 @@ TEST(lookupEntryAndSoa, notSameOk) {
     EXPECT_EQ(entry.rr().begin()->type(), TYPE_A);
 }
 
+TEST(lookupEntryAndSoa, noRrOk) {
+    TmpDb db;
+
+    // Setup
+    const string_view fqdn = "example.com";
+    const string_view www = "www.example.com";
+    {
+        StorageBuilder sb;
+        sb.createSoa(fqdn, 1000, "hostmaster.example.com", "ns1.example.com", 1,
+                     1001, 1002, 1003, 1004);
+        sb.createNs(fqdn, 1000, "ns1.example.com");
+        sb.createNs(fqdn, 1000, "ns2.example.com");
+        sb.finish();
+
+        auto tx = db->transaction();
+        tx->write(fqdn, sb.buffer(), true);
+        tx->commit();
+    }
+
+    // Test
+    auto tx = db->transaction();
+    auto entry = tx->lookupEntryAndSoa(www);
+
+    EXPECT_TRUE(entry);
+    EXPECT_FALSE(entry.empty());
+    EXPECT_FALSE(entry.soa().begin() == entry.soa().end());
+    EXPECT_TRUE(entry.rr().begin() == entry.rr().end());
+    EXPECT_FALSE(entry.isSame());
+
+    EXPECT_EQ(entry.soa().count(), 3);
+    EXPECT_EQ(entry.soa().begin()->labels().string(), fqdn);
+    EXPECT_EQ(entry.soa().begin()->type(), TYPE_SOA);
+    EXPECT_EQ(entry.rr().count(), 0);
+    EXPECT_TRUE(entry.hasSoa());
+    EXPECT_FALSE(entry.hasRr());
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

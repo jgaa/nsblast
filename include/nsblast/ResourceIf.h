@@ -18,7 +18,7 @@ public:
         using key_t = boost::span<const char>;
         using data_t = boost::span<const char>;
 
-        /// Buffer that can be specialized by derived classes to reduce memcpy's
+        /// Buffer that can be specialized by derived classes to reduce memory allocations and memcpy's
         struct BufferBase
         {
             data_t data() {
@@ -85,17 +85,25 @@ public:
 
             /*! True if rr()) and soa() will return the same Entry */
             bool isSame() const noexcept {
-                return soa_.empty();
+                return soa_.empty() && !rr_.empty();
             }
 
             /*! The key was not found */
             bool empty() const noexcept {
-                return rr_.empty();
+                return soa_.empty() && rr_.empty();
             }
 
             /*! The key was not found */
             operator bool() const noexcept {
                 return !empty();
+            }
+
+            bool hasRr() const noexcept {
+                return !rr_.empty();
+            }
+
+            bool hasSoa() const noexcept {
+                return !soa_.empty();
             }
 
         private:
@@ -110,7 +118,7 @@ public:
          *
          *  \param fqdn name to query about. For zone "example.com", this may be
          *         "example.com" or "www.example.com". In both cases, the Entry for
-         *         "ewxample.com" is returned.
+         *         "ewxample.com" is returned as soa.
          *
          *  \return RrAndSoa that may or may not be empty. If it is empty,
          *          the zone was not found.

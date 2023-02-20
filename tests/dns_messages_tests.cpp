@@ -1118,6 +1118,61 @@ TEST(Entry, Zone) {
     }
 }
 
+TEST(StorageBuilder, incrementSoaVersionOk) {
+
+    string_view fqdn = "example.com";
+    string_view nsname = "ns1.example.com";
+    string_view rname = "hostmaster@example.com";
+
+    StorageBuilder sb;
+    // Notice order. Sorting the index must work to iterate in the expected order below
+    sb.createNs(fqdn, 1000, "ns1.example.com");
+    sb.createNs(fqdn, 1000, "ns2.example.com");
+    sb.createSoa(fqdn, 5003, nsname, rname, 1000, 1001, 1002, 1003, 1004);
+    sb.finish();
+
+    Entry entry{sb.buffer()};
+
+    EXPECT_EQ(entry.begin()->type(), nsblast::TYPE_SOA);
+
+    {
+        RrSoa soa{sb.buffer(), entry.begin()->offset()};
+        EXPECT_EQ(soa.serial(), 1000);
+    }
+
+    sb.incrementSoaVersion(entry);
+
+    {
+        RrSoa soa{sb.buffer(), entry.begin()->offset()};
+        EXPECT_EQ(soa.serial(), 1001);
+    }
+
+    sb.incrementSoaVersion(entry);
+
+    {
+        RrSoa soa{sb.buffer(), entry.begin()->offset()};
+        EXPECT_EQ(soa.serial(), 1002);
+    }
+}
+
+TEST(StorageBuilder, incrementSoaVersionNoSoa) {
+
+    string_view fqdn = "example.com";
+
+    StorageBuilder sb;
+    // Notice order. Sorting the index must work to iterate in the expected order below
+    sb.createNs(fqdn, 1000, "ns1.example.com");
+    sb.createNs(fqdn, 1000, "ns2.example.com");
+    sb.finish();
+
+    Entry entry{sb.buffer()};
+
+    EXPECT_NE(entry.begin()->type(), nsblast::TYPE_SOA);
+
+    EXPECT_THROW(sb.incrementSoaVersion(entry), runtime_error);
+}
+
+
 // TODO: Add more tests with pointers
 
 int main(int argc, char **argv) {
