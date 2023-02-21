@@ -35,8 +35,12 @@
 -[ ] Web signup
 -[ ] Web CRUD for own zones
 
-# Tests
--[ ] Merge (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
+# Unit tests
+-[ ] Merge - PATCH rr: (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
+
+# Functional tests
+-[ ] Functional tests for the API (python?)
+-[ ] Functional tests for the DNS interface (see if we can re-use tests for other open source DNS servers)
 
 # Design
 -[ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
