@@ -303,9 +303,6 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
         offset += sizeof(uint32_t);
     }
 
-    soa_offset_ = buffer_.size();
-    assert(soa_offset_ > 0);
-
     return createRr(fqdn, TYPE_SOA, ttl, rdata);
 }
 
@@ -468,8 +465,12 @@ uint32_t StorageBuilder::incrementSoaVersion(const Entry &entry)
     RrSoa newSoa{buffer_, soa_offset_};
     const auto offset = newSoa.serialOffset();
 
+    LOG_TRACE << "New soa version before increment: " << newSoa.serial();
+
     const auto new_version = oldSerial + 1;
     setValueAt(buffer_, offset, new_version);
+
+    LOG_TRACE << "New soa version after increment: " << newSoa.serial();
 
     return new_version;
 }
@@ -487,6 +488,12 @@ StorageBuilder::NewRr
 StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
                          uint32_t ttl, boost::span<const char> rdata)
 {
+    if (type == TYPE_SOA) {
+        assert(soa_offset_ == 0);
+        soa_offset_ = startOffset;
+        assert(soa_offset_ > 0);
+    }
+
     const auto len = calculateLen(labelLen, rdata.size());
     size_t coffset = startOffset + labelLen;
 
@@ -563,6 +570,7 @@ void StorageBuilder::adding(uint16_t startOffset, uint16_t type)
         ;
     }
 }
+
 
 uint16_t Message::Header::id() const
 {
@@ -1145,7 +1153,7 @@ uint16_t RrSoa::serialOffset() const
     assert(diff >= 0);
     assert(diff < buffer_view_.size());
 
-    int offset = diff + rdata().size() - 20;
+    int offset = diff + (rdata().size() - 20);
     assert(offset < buffer_view_.size());
     assert(offset > 0);
     return static_cast<uint16_t>(offset);

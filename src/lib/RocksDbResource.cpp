@@ -113,7 +113,9 @@ ResourceIf::TransactionIf::EntryWithBuffer RocksDbResource::Transaction::lookup(
 
 uint32_t RocksDbResource::Transaction::incrementVersionInSoa(ResourceIf::TransactionIf::key_t zoneFqdn)
 {
-    return 0;
+    LOG_TRACE << "Increment version in soa" << uuid() << " key: " << string_view{zoneFqdn.data(), zoneFqdn.size()} ;
+
+    assert(false);
 }
 
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key)
@@ -162,6 +164,8 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
                                          ResourceIf::TransactionIf::data_t data,
                                          bool isNew)
 {
+    LOG_TRACE << "Write to transaction " << uuid() << " key: " << string_view{key.data(), key.size()} ;
+
     if (isNew && keyExists(key)) {
         throw AlreadyExistException{"Key exists"};
     }
@@ -178,6 +182,8 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
 
 ResourceIf::TransactionIf::read_ptr_t RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key)
 {
+    LOG_TRACE << "Read from transaction " << uuid() << " key: " << string_view{key.data(), key.size()} ;
+
     auto rval = make_unique<BufferImpl>();
 
     const auto status = trx_->Get({}, owner_.entryHandle(), toSlice(key), &rval->ps_);
@@ -233,10 +239,10 @@ void RocksDbResource::Transaction::commit()
 void RocksDbResource::Transaction::rollback()
 {
     call_once(once_, [&] {
-        LOG_TRACE << "Rolling back transaction";
+        LOG_TRACE << "Rolling back transaction " << uuid();
         auto status = trx_->Rollback();
         if (!status.ok()) {
-            LOG_ERROR << "Transaction rollback failed: " << status.ToString();
+            LOG_ERROR << "Transaction rollback failed " << uuid() << " : " << status.ToString();
             throw runtime_error{"Failed to rollback transaction"};
         }
     });

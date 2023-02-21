@@ -15,6 +15,8 @@ using namespace nsblast::lib;
 
 namespace {
 
+static constexpr auto DEFAULT_SOA_SERIAL = 1000;
+
 auto getZoneJson() {
     static const auto soa = boost::json::parse(R"({
     "soa": {
@@ -22,6 +24,7 @@ auto getZoneJson() {
     "refresh": 1001,
     "retry": 1002,
     "expire": 1003,
+    "serial": 1000,
     "minimum": 1004,
     "mname": "hostmaster.example.com",
     "rname": "ns1.example.com"
@@ -33,6 +36,64 @@ auto getZoneJson() {
     })");
 
     return soa;
+}
+
+auto getAJson() {
+   boost::json::object json;
+   json["a"] = {"127.0.0.1", "127.0.0.2"};
+   return boost::json::serialize(json);
+}
+
+auto makeRequest(const string& what, string_view fqdn, string json, yahat::Request::Type type) {
+    static const string base = "/api/v1";
+
+    LOG_DEBUG << "makeRequest fqdn=" << fqdn << ", what=" << what
+              << ", json=" << json;
+
+    std::string full_target = base + "/" + what + "/" + string{fqdn};
+
+    return yahat::Request{nullptr, full_target, "/api/v1", "", "", move(json), type};
+}
+
+uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {
+
+    auto trx = db.transaction();
+    auto res = trx->lookupEntryAndSoa(fqdn);
+    if (res.hasSoa()) {
+        RrSoa soa{res.soa().buffer(), res.soa().begin()->offset()};
+        return soa.serial();
+    }
+
+    return 0;
+}
+
+void createTestZone(ResourceIf& db) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    string_view nsname = "ns1.example.com";
+    string_view rname = "hostmaster@example.com";
+    string_view mxname = "mail.example.com";
+    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+
+    // Notice order. Sorting the index must work to iterate in the expected order below
+    sb.createA(fqdn, 1000, ip1);
+    sb.createA(fqdn, 1000, ip3);
+    sb.createA(fqdn, 1000, ip2);
+    sb.createA(fqdn, 1000, ip4);
+    sb.createNs(fqdn, 1000, "ns1.example.com");
+    sb.createNs(fqdn, 1000, "ns2.example.com");
+    sb.createNs(fqdn, 1000, "ns3.example.com");
+    sb.createNs(fqdn, 1000, "ns4.example.com");
+    sb.createSoa(fqdn, 5003, nsname, rname, 1000, 1001, 1002, 1003, 1004);
+    sb.createMx(fqdn, 9999, 10, mxname);
+    sb.finish();
+
+    auto tx = db.transaction();
+    tx->write(fqdn, sb.buffer(), true);
+    tx->commit();
 }
 
 } // anon ns
@@ -377,13 +438,6 @@ TEST(ApiBuild, unknownEntity) {
     }
 }
 
-auto makeRequest(const string& what, const string& fqdn, string json, yahat::Request::Type type) {
-    static const string base = "/api/v1";
-
-    std::string full_target = base + "/" + what + "/" + fqdn;
-
-    return yahat::Request{nullptr, full_target, "/api/v1", "", "", move(json), type};
-}
 
 TEST(ApiRequest, onZoneOk) {
 
@@ -420,11 +474,191 @@ TEST(ApiRequest, onZoneExists) {
 
 }
 
+TEST(ApiRequest, postRrWithSoa) {
+    const string_view fqdn{"example.com"};
+
+    TmpDb db;
+
+    //EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = boost::json::serialize(getZoneJson());
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 404);
+}
+
+TEST(ApiRequest, postRrOverwriteZone) {
+    const string_view fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+
+    auto json = boost::json::serialize(getZoneJson());
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 409);
+}
+
+TEST(ApiRequest, postSubRr) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+}
+
+TEST(ApiRequest, postSubRrExists) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 409);
+}
+
+TEST(ApiRequest, postSubRrNoZone) {
+    const string_view fqdn{"www.otherexample.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 404);
+}
+
+
+TEST(ApiRequest, putSubRr) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+}
+
+TEST(ApiRequest, putSubRrNoZone) {
+    const string_view fqdn{"www.otherexample.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 404);
+}
+
+TEST(ApiRequest, putSubRrExists) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 200);
+}
+
+
+TEST(ApiRequest, patchSubRr) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+}
+
+TEST(ApiRequest, patchSubRrNoZone) {
+    const string_view fqdn{"www.otherexample.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    createTestZone(*db);
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 404);
+}
+
+// TODO: Make a series of tests to validate PATCH
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::DEBUGGING));
+                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::TRACE));
     return RUN_ALL_TESTS();
 }

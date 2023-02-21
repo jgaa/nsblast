@@ -236,6 +236,12 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const bo
     }}
     };
 
+
+    LOG_DEBUG << "json is_object=" << json.is_object()
+              << ", kind=" << json.kind()
+              << ", json=" << boost::json::serialize(json);
+
+
     for(const auto& obj : json.as_object()) {
         if (auto it = handlers.find(obj.key()); it != handlers.end()) {
             it->second(fqdn, ttl, sb, obj.value());
@@ -298,10 +304,6 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     // Validate the request
     StorageBuilder sb;
 
-    uint32_t ttl = 0; // TODO: Set to some supplied or default value
-    build(parsed.fqdn, ttl, sb, parseJson(req.body));
-    sb.finish();
-
     auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.fqdn);
     // Get the zone
@@ -316,6 +318,19 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         }
     }
 
+    // TODO: Check that the user has write access toi the zone
+    if (!existing.hasSoa()) {
+        return {404, "Not authorative for zone"};
+    }
+
+    uint32_t ttl = 0; // TODO: Set to some supplied or default value
+    build(parsed.fqdn, ttl, sb, parseJson(req.body));
+    if (!existing.isSame()) {
+        assert(existing.soa().begin()->type() == TYPE_SOA);
+        sb.setZoneLen(existing.soa().begin()->labels().size() -1);
+    }
+    sb.finish();
+
     bool need_version_increment = false;
 
     // Apply change
@@ -324,6 +339,10 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         if (existing.hasRr()) {
             return {409, "The rr already exists"};
         }
+
+        need_version_increment = true;
+        assert(existing.hasSoa());
+        assert(!existing.isSame());
 
         try {
             trx->write(lowercaseFqdn, sb.buffer(), true);
@@ -372,7 +391,12 @@ put:
             merged.incrementSoaVersion(existing.soa());
         } else {
             need_version_increment = true;
+            assert(existing.soa().begin()->type() == TYPE_SOA);
+            merged.setZoneLen(existing.soa().begin()->labels().size() -1);
         }
+
+        merged.finish();
+
         trx->write(lowercaseFqdn, merged.buffer(), false);
     } break;
 
@@ -401,13 +425,16 @@ put:
         soaSb.incrementSoaVersion(existing.soa());
         soaSb.finish();
 
-        auto lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
-
-        LOG_TRACE << "Invrementing soa version for " << lowercaseSoaFqdn;
+        const auto lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
+        LOG_TRACE << "Incrementing soa version for " << lowercaseSoaFqdn;
         trx->write(lowercaseSoaFqdn, soaSb.buffer(), false);
     }
 
-    // Commit
+    trx->commit();
+
+    if (!existing.hasRr()) {
+        return {201, "OK"};
+    }
 
     return  {};
 }

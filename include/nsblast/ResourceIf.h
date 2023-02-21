@@ -103,7 +103,7 @@ public:
             }
 
             bool hasSoa() const noexcept {
-                return !soa_.empty();
+                return !empty();
             }
 
         private:
