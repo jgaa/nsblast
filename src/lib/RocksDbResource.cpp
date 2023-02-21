@@ -111,13 +111,6 @@ ResourceIf::TransactionIf::EntryWithBuffer RocksDbResource::Transaction::lookup(
     return {}; // Not found
 }
 
-uint32_t RocksDbResource::Transaction::incrementVersionInSoa(ResourceIf::TransactionIf::key_t zoneFqdn)
-{
-    LOG_TRACE << "Increment version in soa" << uuid() << " key: " << string_view{zoneFqdn.data(), zoneFqdn.size()} ;
-
-    assert(false);
-}
-
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key)
 {
     rocksdb::PinnableSlice ps;

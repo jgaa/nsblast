@@ -28,7 +28,6 @@ public:
         // TransactionIf interface
         RrAndSoa lookupEntryAndSoa(key_t fqdn) override;
         EntryWithBuffer lookup(key_t fqdn) override;
-        uint32_t incrementVersionInSoa(key_t zoneFqdn) override;
         bool keyExists(key_t key) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
         void write(key_t key, data_t data, bool isNew) override;

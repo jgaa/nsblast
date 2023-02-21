@@ -133,14 +133,6 @@ public:
          */
         virtual EntryWithBuffer lookup(key_t fqdn) = 0;
 
-        /*! Increment the version in the soa
-         *
-         *  \param zoneFqdn fqdn to the soa
-         *
-         *  \return The new version
-         */
-        virtual uint32_t incrementVersionInSoa(key_t zoneFqdn) = 0;
-
         /*! Check if an RR exists */
         virtual bool exists(std::string_view fqdn, uint16_t type = QTYPE_ALL) = 0;
 
