@@ -1,66 +1,66 @@
 
 # DNS server
--[ ] Sockets / UDP
--[ ] Sockets / TCP
--[ ] Parse incoming messages
--[ ] Compose replies to queries
--[ ] Reply
--[ ] Logging of all or relevant requests
+- [ ] Sockets / UDP
+- [ ] Sockets / TCP
+- [ ] Parse incoming messages
+- [ ] Compose replies to queries
+- [ ] Reply
+- [ ] Logging of all or relevant requests
 
 # Internals
--[ ] See if a cache in front of rocksdb significantly speeds the server up.
+- [ ] See if a cache in front of rocksdb significantly speeds the server up.
 
 # Master DNS configuration
--[ ] Redirect API requests from slaves to master
--[ ] Write transaction log to rocksdb
--[ ] Allow slaves to subscribe to SSE for zones that change
--[ ] Allow zone transfers to slaves
--[ ] Allow slaves to query for a list of all zones and their soa version
--[ ] Call slave servers hat are on-line to get noitificatiosn when zones are up to date after a change. 
+- [ ] Redirect API requests from slaves to master
+- [ ] Write transaction log to rocksdb
+- [ ] Allow slaves to subscribe to SSE for zones that change
+- [ ] Allow zone transfers to slaves
+- [ ] Allow slaves to query for a list of all zones and their soa version
+- [ ] Call slave servers hat are on-line to get noitificatiosn when zones are up to date after a change. 
 
 # Slave DNS configuration
--[ ] Startup procedure 
-    -[ ] Subscribe to zone changes
-    -[ ] Get a list of all zones and their current version (bootstrap)
-    -[ ] Add optimization so we only get zones that have changed since we went off-line. 
-    -[ ] Get all zones that are not up to date from the master
-    -[ ] Make sure we have the latest soa version fro all zones
-    -[ ] Tell the master server that we are ready and willing to provide SSE updates for zones we have updated.
-    -[ ] Start answering requests
--[ ] Reconnect to the master server when we lose the connection.
+- [ ] Startup procedure 
+    - [ ] Subscribe to zone changes
+    - [ ] Get a list of all zones and their current version (bootstrap)
+    - [ ] Add optimization so we only get zones that have changed since we went off-line. 
+    - [ ] Get all zones that are not up to date from the master
+    - [ ] Make sure we have the latest soa version fro all zones
+    - [ ] Tell the master server that we are ready and willing to provide SSE updates for zones we have updated.
+    - [ ] Start answering requests
+- [ ] Reconnect to the master server when we lose the connection.
 
 # API
--[ ] Delete a RR type from a fqdn
--[ ] DDNS service to allow users to use the DNS for their home networks
+- [ ] Delete a RR type from a fqdn
+- [ ] DDNS service to allow users to use the DNS for their home networks
 
 # System
--[ ] Backup (user rocksdb's built-in backup)
--[ ] Restore (user rocksdb's built-in restore)
--[ ] Make sure rocksdb's performance analytics works
--[ ] Statistics. 
-    -[ ] Define what to measure
-    -[ ] Measure the required metrics internally.
-    -[ ] Interface with Grafana (if it's still dominating when we get to this)
+- [ ] Backup (user rocksdb's built-in backup)
+- [ ] Restore (user rocksdb's built-in restore)
+- [ ] Make sure rocksdb's performance analytics works
+- [ ] Statistics. 
+    - [ ] Define what to measure
+    - [ ] Measure the required metrics internally.
+    - [ ] Interface with Grafana (if it's still dominating when we get to this)
 
 # Advanced clustering
--[ ] Add support for Apache Pulsar (or similar) to send changes and confirmations between servers
--[ ] Allow servers to be masters for some zones and slaves for others. (Sharding and faster access for regional users). 
--[ ] Allow transparent sharding with master/slave selection based on for example zone. 
--[ ] Caching server that use the notifications the stream to instantly invalidate zones that have changed.
+- [ ] Add support for Apache Pulsar (or similar) to send changes and confirmations between servers
+- [ ] Allow servers to be masters for some zones and slaves for others. (Sharding and faster access for regional users). 
+- [ ] Allow transparent sharding with master/slave selection based on for example zone. 
+- [ ] Caching server that use the notifications the stream to instantly invalidate zones that have changed.
 
 # UI
--[ ] Web signup
--[ ] Web CRUD for own zones
+- [ ] Web signup
+- [ ] Web CRUD for own zones
 
 # Unit tests
--[ ] Merge - PATCH rr: (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
+- [ ] Merge - PATCH rr: (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
 
 # Functional tests
--[ ] Functional tests for the API (python?)
--[ ] Functional tests for the DNS interface (see if we can re-use tests for other open source DNS servers)
+- [ ] Functional tests for the API (python?)
+- [ ] Functional tests for the DNS interface (see if we can re-use tests for other open source DNS servers)
 
 # Performance tests
--[ ] See what other open source DNS servers use/do
+- [ ] See what other open source DNS servers use/do
 
 # Design
--[ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
+- [ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
