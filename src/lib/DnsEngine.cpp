@@ -42,7 +42,7 @@ public:
 
         socket_.async_receive_from(mb, req->sender_endpoint,
                                    [this, req=move(req)](const boost::system::error_code& error,
-                                   std::size_t bytes) {
+                                   std::size_t bytes) mutable {
 
             // Get ready to receive the next request
             // TODO: Add some logic to prevent us from queuing an infinite number of requests
@@ -53,6 +53,7 @@ public:
             if (error) {
                 LOG_WARN << "DNS request from " << socket_.local_endpoint()
                          << " on UDP " << socket_.local_endpoint()
+                         << " for request id " << req->uuid
                          << " failed to receive data: " << error.message();
                 return;
             }
@@ -66,12 +67,31 @@ public:
 
             try {
                 auto message = parent().processRequest(*req);
+
+                boost::asio::const_buffer cb{message.span().data(), message.span().size()};
+                socket_.async_send_to(cb,
+                                      req->sender_endpoint, [this, req=move(req)](const boost::system::error_code& error,
+                                                                                     std::size_t bytes) mutable {
+                    if (error) {
+                        LOG_WARN << "DNS request from " << socket_.local_endpoint()
+                                 << " on UDP " << socket_.local_endpoint()
+                                 << " for request id " << req->uuid
+                                 << " failed to send reply: " << error.message();
+                        return;
+                    }
+
+                    LOG_DEBUG << "Successfully replied to UDP message from "
+                              << req->sender_endpoint.address()
+                              << " on UDP " << socket_.local_endpoint()
+                              << " for request id " << req->uuid;
+                });
             } catch (const std::exception& ex) {
-                // TODO: deal with it
-                assert(false);
+                LOG_ERROR << "DNS request from " << socket_.local_endpoint()
+                         << " on UDP " << socket_.local_endpoint()
+                         << " for request id " << req->uuid
+                         << " failed processing: " << ex.what();
             }
         });
-
     }
 
 private:
@@ -122,30 +142,7 @@ DnsEngine::~DnsEngine()
 void DnsEngine::start()
 {
     startEndpoints();
-
-    // Start IO threads
-    for(size_t i = 0; i < config_.num_dns_threads; ++i) {
-        workers_.emplace_back([this, i] {
-                LOG_DEBUG << "DNS worker thread #" << i << " starting up.";
-                try {
-                    ctx_.run();
-                } catch(const exception& ex) {
-                    LOG_ERROR << "DNS worker #" << i
-                              << " caught exception: "
-                              << ex.what();
-                } catch(...) {
-                    ostringstream estr;
-#ifdef __unix__
-                    estr << " of type : " << __cxxabiv1::__cxa_current_exception_type()->name();
-
-#endif
-                    LOG_ERROR << "DNS worker #" << i
-                              << " caught unknow exception" << estr.str();
-                }
-                LOG_DEBUG << "DND worker thread #" << i << " done.";
-        });
-    }
-
+    startIoThreads();
 }
 
 void DnsEngine::stop()
@@ -159,12 +156,47 @@ Message DnsEngine::processRequest(const DnsEngine::Request &request)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
 
+    Message message{request.span}; // Throws if the message is malformed
+
+    // Iterate over the queries and add our answers
+    for(const auto& query : message.getQuestions()) {
+
+    }
+
+    // Should we add nameservers in the auth section?
+
+    // Add additional information as appropriate
+
     return {};
 }
 
 void DnsEngine::startEndpoints()
 {
     doStartEndpoints<udp_t>(*this, config_.dns_endpoint, config_.dns_udp_port);
+}
+
+void DnsEngine::startIoThreads()
+{
+    for(size_t i = 0; i < config_.num_dns_threads; ++i) {
+        workers_.emplace_back([this, i] {
+                LOG_DEBUG << "DNS worker thread #" << i << " starting up.";
+                try {
+                    ctx_.run();
+                } catch(const exception& ex) {
+                    LOG_ERROR << "DNS worker #" << i
+                              << " caught exception: "
+                              << ex.what();
+                } catch(...) {
+                    ostringstream estr;
+#ifdef __unix__
+                    estr << " of type : " << __cxxabiv1::__cxa_current_exception_type()->name();
+#endif
+                    LOG_ERROR << "DNS worker #" << i
+                              << " caught unknow exception" << estr.str();
+                }
+                LOG_DEBUG << "DND worker thread #" << i << " done.";
+        });
+    }
 }
 
 

@@ -15,106 +15,117 @@ using span_t = boost::span<const char>;
 
 class RrSet;
 
-/*! RFC 1035 message
- *
- *  - Header
- *  - RR sections:
- *      - Question
- *      - Answer
- *      - Authority
- *      - Additional
- */
-class Message {
-public:
-    static constexpr std::uint16_t CLASS_IN = 1;
+///*! RFC 1035 message
+// *
+// *  - Header
+// *  - RR sections:
+// *      - Question
+// *      - Answer
+// *      - Authority
+// *      - Additional
+// */
+//class Message {
+//public:
+//    static constexpr std::uint16_t CLASS_IN = 1;
 
-    // The buffer-type we present to the world.
-    using buffer_t = std::vector<char>;
+//    class Header {
+//    public:
+//        constexpr static size_t SIZE = 12;
 
-    class Header {
-    public:
-        constexpr static size_t SIZE = 12;
+//        Header(span_t b)
+//            : span_{b} {
 
-        Header(const buffer_t& b)
-            : buffer_{b} {}
+//        }
 
-        /*! Randomly generated query ID (from request) */
-        uint16_t id() const;
+//        /*! Randomly generated query ID (from request) */
+//        uint16_t id() const;
 
-        /*! query or response */
-        bool qr() const;
+//        /*! query or response */
+//        bool qr() const;
 
-        /*! Query type */
-        enum class OPCODE {
-            QUERY,
-            IQUERY,
-            STATUS,
-            RESERVED_
-        };
+//        /*! Query type */
+//        enum class OPCODE {
+//            QUERY,
+//            IQUERY,
+//            STATUS,
+//            RESERVED_
+//        };
 
-        /*! Query type */
-        OPCODE opcode() const;
+//        /*! Query type */
+//        OPCODE opcode() const;
 
-        /*! Authoritive answer flag */
-        bool aa() const;
+//        /*! Authoritive answer flag */
+//        bool aa() const;
 
-        /*! Truncation flag */
-        bool tc() const;
+//        /*! Truncation flag */
+//        bool tc() const;
 
-        /*! Recursion desired flag (from request) */
-        bool rd() const;
+//        /*! Recursion desired flag (from request) */
+//        bool rd() const;
 
-        /*! Recursion available (currently not!) */
-        bool ra() const;
+//        /*! Recursion available (currently not!) */
+//        bool ra() const;
 
-        /*! Reserved - must be zero */
-        bool z() const;
+//        /*! Reserved - must be zero */
+//        bool z() const;
 
-        enum class RCODE {
-            OK,
-            SERVER_FAILURE,
-            NAME_ERROR,
-            NOT_IMPLEMENTED,
-            REFUSED,
-            RESERVED_
-        };
+//        enum class RCODE {
+//            OK,
+//            SERVER_FAILURE,
+//            NAME_ERROR,
+//            NOT_IMPLEMENTED,
+//            REFUSED,
+//            RESERVED_
+//        };
 
-        /*! Reply code from server */
-        RCODE rcode() const;
+//        /*! Reply code from server */
+//        RCODE rcode() const;
 
-        /*! Number of questions */
-        uint16_t qdcount() const;
+//        /*! Number of questions */
+//        uint16_t qdcount() const;
 
-        /*! Number of answers */
-        uint16_t ancount() const;
+//        /*! Number of answers */
+//        uint16_t ancount() const;
 
-        /*! Number of name servers */
-        uint16_t nscount() const;
+//        /*! Number of name servers */
+//        uint16_t nscount() const;
 
-        /*! Number of additional records */
-        uint16_t arcount() const;
+//        /*! Number of additional records */
+//        uint16_t arcount() const;
 
-    private:
-        const buffer_t& buffer_;
-    };
+//        bool validate() const;
 
-    const Header header() const;
+//    private:
+//        const span_t span_;
+//    };
 
-    RrSet getQuestions() const;
-    RrSet getAnswers() const;
+//    Message() = default;
+
+//    /*! Construct from an existing buffer.
+//     *
+//     *  This may be a binary buffer received from the Internet, so we have to
+//     *  parse and validate it carefully.
+//     */
+//    Message(span_t span);
+
+//    const Header header() const;
+
+//    RrSet getQuestions() const;
+//    RrSet getAnswers() const;
 
 
-    /*! Get the raw data buffer for the message
-     *
-     *  This is the data in the message, ready to be sent over the wire.
-     *
-     */
-    const buffer_t& buffer() const;
+//    /*! Get the raw data buffer for the message
+//     *
+//     *  This is the data in the message, ready to be sent over the wire.
+//     *
+//     */
+//    const span_t& span() const;
 
-protected:
-    // The data-buffer for a complete message.
-    buffer_t buffer_;
-};
+//protected:
+//    // The data-storage for a complete message.
+//    span_t span_;
+//    std::array<std::vector<uint16_t /* Offset for the start of the rr */>, 4> index_;
+//};
 
 /*! Representation of RFC1035 labels
  *
@@ -248,9 +259,14 @@ private:
     boost::span<const char> buffer_view_; // A span over the full buffer
 };
 
-/*! Representation for a Resource Record.
+/*! Representation for a query or Resource Record.
  *
  *  The rr does not own it's buffer.
+ *
+ *  Queries contains a sub-set of the ResourceRecord, and the
+ *  irrelevant methods will return 0/empty for query entries.
+ *
+ *  Only the buffer for acrtual Rr's can be used to instaiatye Rr* objects
  *
  */
 class Rr {
@@ -259,9 +275,9 @@ public:
 
     Rr() = default;
     Rr(const Rr&) = default;
-    Rr(buffer_t bufferView, uint32_t offset)
+    Rr(buffer_t bufferView, uint32_t offset, bool isQuery = false)
         : buffer_view_{bufferView}, offset_{offset} {
-        parse();
+        parse(isQuery);
     }
 
     Rr& operator = (const Rr&) = default;
@@ -286,8 +302,12 @@ public:
         return self_view_;
     }
 
+    auto isQuery() const noexcept {
+        return self_view_.size() - offset_to_type_ == 4;
+    }
+
 protected:
-    void parse();
+    void parse(bool isQuery);
 
     mutable std::optional<Labels> labels_;
     buffer_t buffer_view_;
@@ -491,6 +511,13 @@ public:
         return count_;
     }
 
+    /*! The number of bytes used by this RrSet.
+     *
+     */
+    size_t bytes() const {
+        return bytes_;
+    }
+
     auto buffer() const {
         return view_;
     }
@@ -506,13 +533,151 @@ private:
     const uint16_t offset_ = 0;
     const uint16_t count_ = 0;
     index_t index_;
+    uint16_t bytes_ = 0;
 };
+
+
+/*! RFC 1035 message
+ *
+ *  - Header
+ *  - RR sections:
+ *      - Question
+ *      - Answer
+ *      - Authority
+ *      - Additional
+ */
+class Message {
+public:
+    static constexpr std::uint16_t CLASS_IN = 1;
+
+    class Header {
+    public:
+        constexpr static size_t SIZE = 12;
+
+        Header(span_t b)
+            : span_{b} {
+
+        }
+
+        /*! Randomly generated query ID (from request) */
+        uint16_t id() const;
+
+        /*! query or response */
+        bool qr() const;
+
+        /*! Query type */
+        enum class OPCODE {
+            QUERY,
+            IQUERY,
+            STATUS,
+            RESERVED_
+        };
+
+        /*! Query type */
+        OPCODE opcode() const;
+
+        /*! Authoritive answer flag */
+        bool aa() const;
+
+        /*! Truncation flag */
+        bool tc() const;
+
+        /*! Recursion desired flag (from request) */
+        bool rd() const;
+
+        /*! Recursion available (currently not!) */
+        bool ra() const;
+
+        /*! Reserved - must be zero */
+        bool z() const;
+
+        enum class RCODE {
+            OK,
+            SERVER_FAILURE,
+            NAME_ERROR,
+            NOT_IMPLEMENTED,
+            REFUSED,
+            RESERVED_
+        };
+
+        /*! Reply code from server */
+        RCODE rcode() const;
+
+        /*! Number of questions */
+        uint16_t qdcount() const;
+
+        /*! Number of answers */
+        uint16_t ancount() const;
+
+        /*! Number of name servers */
+        uint16_t nscount() const;
+
+        /*! Number of additional records */
+        uint16_t arcount() const;
+
+        bool validate() const;
+
+    private:
+        const span_t span_;
+    };
+
+    Message() = default;
+
+    /*! Construct from an existing buffer.
+     *
+     *  This may be a binary buffer received from the Internet, so we have to
+     *  parse and validate it carefully.
+     */
+    Message(span_t span);
+
+    const Header header() const;
+
+    RrSet& getQuestions() const {
+        return getRrSet(0);
+    }
+
+    RrSet& getAnswers() const {
+        return getRrSet(1);
+    }
+
+    RrSet& getAuthority() const {
+        return getRrSet(2);
+    }
+
+    RrSet& getAdditional() const {
+        return getRrSet(3);
+    }
+
+    RrSet& getRrSet(size_t index) const {
+        auto& rrs = rrsets_.at(index);
+        if (!rrs) {
+            rrs.emplace(span_t{}, 0, 0);
+        }
+        return *rrs;
+    }
+
+
+    /*! Get the raw data buffer for the message
+     *
+     *  This is the data in the message, ready to be sent over the wire.
+     *
+     */
+    const span_t& span() const;
+
+protected:
+
+    // The data-storage for a complete message.
+    span_t span_;
+    mutable std::array<std::optional<RrSet>, 4> rrsets_;
+};
+
 
 /*! Means to build a new message
  *
  */
 class MessageBuilder : public Message {
 public:
+    using buffer_t = std::vector<char>;
     /*! Allocates space in the buffer for the header
      *
      *  \returns Mutable header where some properties can be updated.
@@ -539,6 +704,14 @@ public:
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
     //NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+
+protected:
+    void increaseBuffer(size_t bytes) {
+        buffer_.resize(buffer_.size() + bytes);
+        span_ = buffer_;
+    }
+
+    buffer_t buffer_;
 };
 
 

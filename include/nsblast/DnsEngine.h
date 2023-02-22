@@ -64,6 +64,7 @@ private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;
 
     void startEndpoints();
+    void startIoThreads();
 
     boost::asio::io_context ctx_;
     const Config config_;

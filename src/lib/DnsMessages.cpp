@@ -147,7 +147,7 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
 {
     assert(buffer_.empty());
 
-    buffer_.resize(Header::SIZE); // Sets all bytes to 0
+    increaseBuffer(Header::SIZE);
 
     auto *v = reinterpret_cast<uint16_t *>(buffer_.data());
     *v = htons(id);
@@ -574,68 +574,129 @@ void StorageBuilder::adding(uint16_t startOffset, uint16_t type)
 
 uint16_t Message::Header::id() const
 {
-    boost::span b{buffer_.data(), 100};
-    return get16bValueAt(boost::span{buffer_.data(), buffer_.size()}, 0);
+    boost::span b{span_.data(), 100};
+    return get16bValueAt(boost::span{span_.data(), span_.size()}, 0);
 }
 
 bool Message::Header::qr() const
 {
-    return getHdrFlags(buffer_).qr;
+    return getHdrFlags(span_).qr;
 }
 
 Message::Header::OPCODE Message::Header::opcode() const
 {
-    return static_cast<OPCODE>(getHdrFlags(buffer_).opcode);
+    return static_cast<OPCODE>(getHdrFlags(span_).opcode);
 }
 
 bool Message::Header::aa() const
 {
-    return getHdrFlags(buffer_).aa;
+    return getHdrFlags(span_).aa;
 }
 
 bool Message::Header::tc() const
 {
-    return getHdrFlags(buffer_).tc;
+    return getHdrFlags(span_).tc;
 }
 
 bool Message::Header::rd() const
 {
-    return getHdrFlags(buffer_).rd;
+    return getHdrFlags(span_).rd;
 }
 
 bool Message::Header::ra() const
 {
-    return getHdrFlags(buffer_).ra;
+    return getHdrFlags(span_).ra;
 }
 
 bool Message::Header::z() const
 {
-    return getHdrFlags(buffer_).z;
+    return getHdrFlags(span_).z;
 }
 
 Message::Header::RCODE Message::Header::rcode() const
 {
-    return static_cast<RCODE>(getHdrFlags(buffer_).rcode);
+    return static_cast<RCODE>(getHdrFlags(span_).rcode);
 }
 
 uint16_t Message::Header::qdcount() const
 {
-    return get16bValueAt(buffer_, 4);
+    return get16bValueAt(span_, 4);
 }
 
 uint16_t Message::Header::ancount() const
 {
-    return get16bValueAt(buffer_, 6);
+    return get16bValueAt(span_, 6);
 }
 
 uint16_t Message::Header::nscount() const
 {
-    return get16bValueAt(buffer_, 8);
+    return get16bValueAt(span_, 8);
 }
 
 uint16_t Message::Header::arcount() const
 {
-    return get16bValueAt(buffer_, 10);
+    return get16bValueAt(span_, 10);
+}
+
+bool Message::Header::validate() const
+{
+    auto flags = getHdrFlags(span_);
+
+    if (flags.opcode >= static_cast<uint8_t>(OPCODE::RESERVED_)) {
+        LOG_TRACE << "Message::Header::validate(): Invalid opcode";
+        return false;
+    }
+
+    if (flags.aa && !flags.qr) {
+        LOG_TRACE << "Message::Header::validate(): aa flag set in query";
+        return false;
+    }
+
+    if (flags.tc && !flags.qr) {
+        LOG_TRACE << "Message::Header::validate(): tc flag set in query";
+        return false;
+    }
+
+    if (flags.ra && !flags.qr) {
+        LOG_TRACE << "Message::Header::validate(): ra flag set in query";
+        return false;
+    }
+
+    if (flags.z) {
+        LOG_TRACE << "Message::Header::validate(): z (reserved) must be 0";
+        return false;
+    }
+
+    if (flags.rcode) {
+        if (!flags.qr) {
+            LOG_TRACE << "Message::Header::validate(): rcode set in query";
+            return false;
+        }
+
+        if (flags.rcode > static_cast<uint8_t>(Header::RCODE::RESERVED_)) {
+            LOG_TRACE << "Message::Header::validate(): Invalid rcode";
+            return false;
+        }
+    }
+
+    if (!flags.qr) {
+        if (ancount()) {
+            LOG_TRACE << "Message::Header::validate(): ancount in query";
+            return false;
+        }
+
+        if (nscount()) {
+            LOG_TRACE << "Message::Header::validate(): nscount in query";
+            return false;
+        }
+
+        if (arcount()) {
+            LOG_TRACE << "Message::Header::validate(): arcount in query";
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void MessageBuilder::NewHeader::incQdcount()
@@ -685,31 +746,38 @@ void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
     setHdrFlags(mutable_buffer_, bits);
 }
 
+Message::Message(span_t span)
+    : span_{span}
+{
+    Header hdr{span};
+
+    if (!hdr.validate()) {
+        throw runtime_error{"Invalid message header"};
+    }
+
+    // Now, go trough each RR section.
+    size_t offset = hdr.SIZE;
+    size_t sectionIndex = 0;
+    for(auto sectionCount : {hdr.qdcount(), hdr.ancount(), hdr.nscount(), hdr.arcount()}) {
+        if (sectionCount) {
+            rrsets_.at(sectionIndex).emplace(span, offset, sectionCount);
+        }
+        ++sectionIndex;
+    }
+}
+
 const Message::Header Message::header() const
 {
-    auto b = boost::span{buffer_};
-
-    return Header{buffer_};
+    return Header{span_};
 }
 
-RrSet Message::getQuestions() const
+const span_t &Message::span() const
 {
-    assert(false);
-}
-
-RrSet Message::getAnswers() const
-{
-    assert(false);
-}
-
-const Message::buffer_t &Message::buffer() const
-{
-    return buffer_;
+    return span_;
 }
 
 Labels::Labels(boost::span<const char> buffer, size_t startOffset)
 {
-
     parse(buffer, startOffset);
 }
 
@@ -956,16 +1024,25 @@ uint16_t Rr::clas() const
 
 uint32_t Rr::ttl() const
 {
+    if (isQuery()) {
+        return 0;
+    }
     return get32bValueAt(self_view_, offset_to_type_ + 4);
 }
 
 uint16_t Rr::rdlength() const
 {
+    if (isQuery()) {
+        return 0;
+    }
     return get32bValueAt(self_view_, offset_to_type_ + 8);
 }
 
 Rr::buffer_t Rr::rdata() const
 {
+    if (isQuery()) {
+        return {};
+    }
     const auto start_of_rdata = offset_to_type_ + 10;
     return self_view_.subspan(start_of_rdata);
             //{self_view_.data() + start_of_rdata, self_view_.size() - start_of_rdata};
@@ -980,7 +1057,7 @@ Labels Rr::labels() const
     return *labels_;
 }
 
-void Rr::parse()
+void Rr::parse(bool isQuery)
 {
     const auto max_window_size = buffer_view_.size() - offset_;
     if (max_window_size < 2) {
@@ -1001,6 +1078,13 @@ void Rr::parse()
 
     // Get the start of the buffer after the labels (in self_view_)
     offset_to_type_ = labelLen;
+
+    if (isQuery) {
+        // Th query has only labels, qtype and qclass.
+         self_view_ =  buffer_view_.subspan(offset_, offset_to_type_ + 4);
+         return;
+    }
+
     const auto rdlenSizeOffset = offset_ + offset_to_type_ + 2 +  2 + 4;
 
     if ((rdlenSizeOffset + 2) >= buffer_view_.size()) {
@@ -1044,6 +1128,7 @@ void RrSet::parse()
         Rr rr{view_, coffset};
         index_.emplace_back(rr.type(), coffset);
         coffset += rr.size();
+        bytes_ += rr.size();
     }
 }
 
