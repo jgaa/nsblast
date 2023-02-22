@@ -39,15 +39,22 @@ struct Config {
 
     /*! endpoint to the DNS interface.
      *
-     *  Can be a hostname or an IP address.
+     *  Can be a hostname or an IP address (ipv4 or IPv6).
+     *
      *  If a hostname is provided and it resolves to multiple IP
      *  addresses, nsblast will try to listen to all of them.
      *
+     *  If you need to listen to both ipv4 and ipv6, you can specify
+     *  a hostname, and add all the ip numbers ipv4 and ipv6 in /etc/hosts
+     *  for that hostname.
      */
-    std::string dns_endpoint;
+    std::string dns_endpoint = "localhost";
 
-    /*! The port to listen to */
-    std::string dns_port; // Only required for non-standard ports
+    /*! The UDP port to listen to */
+    std::string dns_udp_port = "domain";
+
+    /*! The TCP port to listen to */
+    std::string dns_tcp_port = "domain";
 
     ///@}
 
@@ -85,5 +92,7 @@ static constexpr size_t TXT_SEGMENT_MAX = 255;
 static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
 
 constexpr char CURRENT_STORAGE_VERSION = 1;
+
+static constexpr size_t MAX_UDP_QUERY_BUFFER = 512;
 
 } // ns

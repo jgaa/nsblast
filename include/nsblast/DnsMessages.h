@@ -11,6 +11,7 @@
 
 namespace nsblast::lib {
 
+using span_t = boost::span<const char>;
 
 class RrSet;
 

@@ -12,12 +12,14 @@ add_custom_command(
 
 add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/ApiEngine.h
+    ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
     ApiEngine.cpp
+    DnsEngine.cpp
     DnsMessages.cpp
     RestApi.cpp
     RestApi.h
