@@ -22,17 +22,30 @@ struct UdpRequest : public DnsEngine::Request {
 
 class UdpEndpoint : public DnsEngine::Endpoint {
 public:
-public:
     UdpEndpoint(DnsEngine& parent, DnsEngine::udp_t::endpoint ep)
         : DnsEngine::Endpoint(parent), socket_{parent.ctx()}
     {
+        if (ep.address().is_v4()) {
+            socket_.open(boost::asio::ip::udp::v4());
+            LOG_TRACE << "Binding on ipv4 to " << ep;
+        } else if (ep.address().is_v6()) {
+            socket_.open(boost::asio::ip::udp::v6());
+            LOG_TRACE << "Binding on ipv6 to " << ep;
+        } else {
+            assert(false);
+        }
+
+        socket_.set_option(boost::asio::socket_base::reuse_address(true));
         socket_.bind(ep);
     }
 
     // Endpoint interface
     void next() override {
         // TODO: Use a pool of requests to speed it up...
-        auto req = make_unique<UdpRequest>();
+
+        // We have to use shared ptr to pass ownership to the callback.
+        // A unique_ptr woun't make it trough all the asio composed trickery
+        auto req = make_shared<UdpRequest>();
 
         boost::asio::mutable_buffer mb{req->buffer_in.data(), req->buffer_in.size()};
 
@@ -41,7 +54,8 @@ public:
                   << " as " << req->uuid;
 
         socket_.async_receive_from(mb, req->sender_endpoint,
-                                   [this, req=move(req)](const boost::system::error_code& error,
+                                   [this, req=req]
+                                   (const boost::system::error_code& error,
                                    std::size_t bytes) mutable {
 
             // Get ready to receive the next request
@@ -51,7 +65,7 @@ public:
             });
 
             if (error) {
-                LOG_WARN << "DNS request from " << socket_.local_endpoint()
+                LOG_WARN << "DNS request from " << req->sender_endpoint
                          << " on UDP " << socket_.local_endpoint()
                          << " for request id " << req->uuid
                          << " failed to receive data: " << error.message();
@@ -68,10 +82,18 @@ public:
             try {
                 auto message = parent().processRequest(*req);
 
+                if (message.empty()) {
+                    LOG_DEBUG << "processRequest for request id " << req->uuid
+                              << " came back empty. Will not reply.";
+                    return;
+                }
+
                 boost::asio::const_buffer cb{message.span().data(), message.span().size()};
                 socket_.async_send_to(cb,
-                                      req->sender_endpoint, [this, req=move(req)](const boost::system::error_code& error,
-                                                                                     std::size_t bytes) mutable {
+                                      req->sender_endpoint,
+                                      [this, req=move(req), message=move(message)]
+                                      (const boost::system::error_code& error,
+                                      std::size_t bytes) mutable {
                     if (error) {
                         LOG_WARN << "DNS request from " << socket_.local_endpoint()
                                  << " on UDP " << socket_.local_endpoint()
@@ -111,7 +133,7 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
         std::shared_ptr<DnsEngine::Endpoint> ep;
         if constexpr (std::is_same_v<ip_t, DnsEngine::udp_t>) {
             LOG_INFO << "Starting DNS/UDP endpoint: " << addr.endpoint();
-            auto ep = make_shared<UdpEndpoint>(engine, addr);
+            ep = make_shared<UdpEndpoint>(engine, addr);
         }
 
         assert(ep);
@@ -126,6 +148,12 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
 
 
 } // anon ns
+
+DnsEngine::DnsEngine(const Config &config, ResourceIf &resource)
+    : resource_{resource}, config_{config}
+{
+
+}
 
 DnsEngine::~DnsEngine()
 {
@@ -152,15 +180,122 @@ void DnsEngine::stop()
     });
 }
 
-Message DnsEngine::processRequest(const DnsEngine::Request &request)
+MessageBuilder DnsEngine::processRequest(const DnsEngine::Request &request)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
 
+    MessageBuilder mb;
+    mb.setMaxBufferSize(request.maxReplyBytes);
+
     Message message{request.span}; // Throws if the message is malformed
+    auto org_hdr = message.header();
+    auto hdr = mb.createHeader(org_hdr.id(), true, org_hdr.opcode(), org_hdr.rd());
+    hdr.setAa(true);
+
+    // Copy the questions section to the reply
+    for(const auto& query : message.getQuestions()) {
+        if (query.clas() != CLASS_IN) {
+            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            return mb;
+        }
+
+        if (!mb.addRr(query, hdr, MessageBuilder::Segment::QUESTION)) {
+            return mb; // Truncated
+        }
+    }
+
+    auto trx = resource_.transaction();
 
     // Iterate over the queries and add our answers
     for(const auto& query : message.getQuestions()) {
+        assert(query.clas() == CLASS_IN);
+        const auto qtype = query.type();
+        const auto orig_fqdn = query.labels();
+        bool persuing_cname = false;
 
+        auto key = labelsToFqdnKey(orig_fqdn);
+
+again:
+        auto rr_set = trx->lookup(key);
+        if (!rr_set.empty()) {
+            const auto& rr_hdr = rr_set.header();
+
+            if (rr_hdr.flags.cname && qtype != TYPE_CNAME) {
+
+                // RFC 1034 4.2.3 - step 3 a // store CNAME and pursue CNAME
+
+                auto rr_cname = find_if(rr_set.begin(), rr_set.end(), [](const auto& r) {
+                    return r.type() == TYPE_CNAME;
+                });
+
+                if (rr_cname == rr_set.end()) {
+                    throw runtime_error{" DnsEngine::processRequest Internal error: rr_cname == rr.end()"};
+                }
+
+                if (!mb.addRr(*rr_cname, hdr, MessageBuilder::Segment::ANSWER)) {
+                    return mb; // Truncated
+                }
+
+                persuing_cname = true;
+                key = labelsToFqdnKey(rr_cname->labels());
+                goto again;
+            }
+
+            // Copy all matching entries
+            for(const auto& rr : rr_set) {
+                if (qtype == QTYPE_ALL || qtype == rr.type()) {
+                    if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
+                        return mb; // Truncated
+                    }
+                }
+            }
+        } else {
+            // key not found.
+            bool is_referral = false;
+            if (auto prev = getNextKey(key); !prev.empty()) {
+                // Is it a referral?
+                if (auto entry = trx->lookup(prev); !entry.empty()) {
+                    const auto& e_hdr = entry.header();
+                    if (e_hdr.flags.ns && !e_hdr.flags.soa) {
+                        // Yap, it's a referral
+                        is_referral = true;
+                        vector<string> ns_list;
+                        for(const auto& rr : entry) {
+                            if (rr.type() == TYPE_NS) {
+                                if (!mb.addRr(rr, hdr, MessageBuilder::Segment::AUTHORITY)) {
+                                    return mb; // Truncated
+                                }
+                                ns_list.push_back(rr.labels().string());
+                            }
+                        }
+
+                        // See if we can resolve the NS servers.
+                        for(const auto& ns : ns_list) {
+                            if (auto ns_rrset = trx->lookup(toFqdnKey(ns)); !ns_rrset.empty()) {
+                                for(const auto& rr : ns_rrset) {
+                                    const auto type = rr.type();
+                                    if (type == TYPE_CNAME || type == TYPE_A || type == TYPE_AAAA) {
+                                        if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ADDITIONAL)) {
+                                            return mb; // Truncated
+                                        }
+                                    } // relevant type
+                                } // for ns_rrset
+                            } // ns loouup
+                        } // nslist
+                    } // is referral
+                } // if referral lookup block
+            } // Next level block
+
+            if (!is_referral && !persuing_cname) {
+                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                return mb;
+            }
+
+            return {};
+
+        } // fqdn not found with direct lookup
+
+        return mb;
     }
 
     // Should we add nameservers in the auth section?

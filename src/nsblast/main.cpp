@@ -6,6 +6,7 @@
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
 #include "nsblast/ApiEngine.h"
+#include "nsblast/DnsEngine.h"
 
 using namespace std;
 using namespace nsblast;
@@ -54,9 +55,24 @@ int main(int argc, char* argv[]) {
             po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
             "Threads for the embedded HTTP server")
         ;
+    po::options_description odns("DNS server");
+    odns.add_options()
+        ("dns-endpoint",
+            po::value<string>(&config.dns_endpoint)->default_value(config.dns_endpoint),
+            "DNS endpoint. For example [::] to listen to all interfaces")
+        ("dns-udp-port",
+            po::value<string>(&config.dns_udp_port)->default_value(config.dns_udp_port),
+            "DNS port to listen to on UDP")
+        ("dns-tcp-port",
+            po::value<string>(&config.dns_tcp_port)->default_value(config.dns_tcp_port),
+            "DNS port to listen to on TCP")
+        ("dns-num-threads",
+            po::value<size_t>(&config.num_dns_threads)->default_value(config.num_dns_threads),
+            "Threads for the DNS server")
+        ;
 
     po::options_description cmdline_options;
-    cmdline_options.add(general).add(http);
+    cmdline_options.add(general).add(odns).add(http);
     po::positional_options_description kfo;
     kfo.add("kubeconfig", -1);
     po::variables_map vm;
@@ -92,6 +108,9 @@ int main(int argc, char* argv[]) {
 
     try {        
         ApiEngine api{config};
+        api.initRocksdb();
+        lib::DnsEngine dns{config, api.getResource()};
+        dns.start();
         api.run();
         ;
     } catch (const exception& ex) {

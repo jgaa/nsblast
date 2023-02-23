@@ -1,10 +1,12 @@
 #pragma once
 
-#include <locale>
-
+#include <variant>
+#include <boost/core/span.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_serialize.hpp>
+
+#include "nsblast/DnsMessages.h"
 
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
@@ -29,4 +31,82 @@ namespace nsblast::lib {
 
         return out;
     }
+
+    // Simple return value that may or may not own it's buffer.
+    // The caller must assume that it owns the buffer, unless
+    // it's constructed with a r-value reference string
+    struct FqdnKey {
+        using data_t = std::variant<span_t, std::string>;
+
+        FqdnKey()
+            : d_{span_t{}} {}
+
+
+        explicit FqdnKey(const std::string& s)
+            : d_{span_t{s}} {}
+
+        explicit FqdnKey(std::string&& s)
+            : d_{std::move(s)} {}
+
+        explicit FqdnKey(std::string_view s)
+            : d_{span_t{s}} {}
+
+        explicit FqdnKey(span_t s)
+            : d_{s} {}
+
+        FqdnKey(const FqdnKey&) = default;
+        FqdnKey(FqdnKey&&) = default;
+
+        FqdnKey& operator = (const FqdnKey&) = default;
+        FqdnKey& operator = (FqdnKey&&) = default;
+
+        span_t key() const noexcept {
+            if (std::holds_alternative<span_t>(d_)) {
+                return std::get<span_t>(d_);
+            }
+
+            assert(std::holds_alternative<std::string>(d_));
+            return std::get<std::string>(d_);
+        }
+
+        operator span_t () const noexcept {
+            return key();
+        }
+
+        bool ownsBuffer() const noexcept {
+            return std::holds_alternative<std::string>(d_);
+        }
+
+    private:
+        data_t d_;
+    };
+
+    template <typename T>
+    bool hasUppercase(const T& str) noexcept {
+        for(char ch : str) {
+            if (ch >= 'A' && ch <= 'Z') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Get a key for a fqdn
+    template <typename T>
+    FqdnKey toFqdnKey(T && w) {
+        if (hasUppercase(w)) {
+            return FqdnKey{toLower(w)};
+        }
+        return FqdnKey{std::move(w)};
+    }
+
+    FqdnKey labelsToFqdnKey(const Labels& labels);
+
+    /*! Get the next level down a fqdn path
+     *
+     *  For example
+     *     getNextKey("www.example.com") returns "example.com"
+     */
+    span_t getNextKey(span_t fqdn) noexcept;
+
 } // ns

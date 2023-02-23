@@ -140,40 +140,6 @@ boost::asio::ip::address bufferToAddr(const B& buffer) {
     return T{bytes};
 }
 
-} // anon ns
-
-MessageBuilder::NewHeader
-MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcode, bool rd)
-{
-    assert(buffer_.empty());
-
-    increaseBuffer(Header::SIZE);
-
-    auto *v = reinterpret_cast<uint16_t *>(buffer_.data());
-    *v = htons(id);
-    ++v; // Now points to the flags section at offset 2
-
-    uint16_t bits = {};
-
-    // We use hdrbits to address small unsigned integers and bits inside a 2 octets memory location.
-    assert(sizeof(hdrbits) == 2);
-    assert(sizeof(hdrbits) == sizeof(bits));
-
-    auto opcodeValue = static_cast<uint8_t>(opcode);
-    if (opcodeValue >= static_cast<char>(Header::OPCODE::RESERVED_)) {
-        throw runtime_error{"createHeader: Invalid opcode "s + to_string(opcodeValue)};
-    }
-
-    auto *b = reinterpret_cast<hdrbits *>(&bits);
-    b->qr = qr;
-    b->rd = rd;
-    b->opcode = static_cast<uint8_t>(opcode);
-
-    *v = bits;
-
-    return NewHeader{buffer_};
-}
-
 // Write a fdqn in text representation as a RFC1035 name (array of labels)
 template <typename T>
 uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn, bool commit = true) {
@@ -233,7 +199,181 @@ void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
     buffer[offset] |= START_OF_POINTER_TAG;
 }
 
-StorageBuilder::        NewRr
+//template <typename P>
+//auto findBestMatch(const Labels::Iterator begin, const Labels::Iterator end, P& existing) {
+
+//    auto next = begin;
+//    ++next;
+
+//    if (next != end) {
+//        auto sub = findBestMatch(next, end, existing);
+//    }
+//}
+
+// Try to compress and add the labels from `fqdn` to buffer. Update existing if we write anything but a pointer.
+// returns 0 if we needed to exeed maxLen.
+template <typename P, typename B>
+uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) {
+
+    // We need to search from the end, while Labels only provide forward iterators
+
+    vector<Labels::Iterator> needle;
+
+    uint16_t best_match = 0;
+    size_t best_count = 0;
+
+    needle.reserve(fqdn.count());
+    for(auto it = fqdn.begin(); it != fqdn.end(); ++ it) {
+        needle.emplace_back(it);
+    }
+
+    for(const auto& e : existing) {
+        if (e.count() <= best_count) {
+            // irrelevant
+            continue;
+        }
+
+        vector<Labels::Iterator> haystack;
+        needle.reserve(e.count());
+        for(auto it = e.begin(); it != e.end(); ++ it) {
+            haystack.emplace_back(it);
+        }
+
+        auto count = 0;
+        auto h = haystack.rbegin();
+        for(auto n = needle.rbegin(); n != needle.rend() && *n == *h; ++n, ++h) {
+            if (++count > best_count) {
+                best_match = h->location();
+                best_count = count;
+            }
+        }
+
+        if (best_count == fqdn.count()) {
+            // Full match
+            break;
+        }
+    }
+
+    // Now, if we have a best_match, that's the pointer we will use for compression.
+    const size_t orig_buffer_size = buffer.size();
+    size_t len = 0;
+
+    if (best_match) {
+        len += 2; // Pointer
+    }
+
+    std::vector<span_t> segments;
+    segments.reserve(fqdn.count() - best_count);
+
+    auto it = fqdn.begin();
+    for(auto i = best_count; i < fqdn.count(); ++i, ++it) {
+        len += it->size();
+        segments.emplace_back(*it);
+    }
+
+    if (maxLen && (len >= maxLen)) {
+        LOG_TRACE << "writeLabels: Exeeded mexLen";
+        return 0;
+    }
+
+    buffer.reserve(orig_buffer_size + len);
+    for(auto segment: segments) {
+        copy(segment.begin(), segment.end(), back_inserter(buffer));
+    }
+
+    if (best_match) {
+        buffer.resize(buffer.size() + 2);
+        writeNamePtr(buffer, buffer.size() - 2, best_match);
+    }
+
+    existing.emplace_back(buffer, orig_buffer_size);
+    return len;
+}
+
+} // anon ns
+
+MessageBuilder::NewHeader
+MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcode, bool rd)
+{
+    assert(buffer_.empty());
+
+    increaseBuffer(Header::SIZE);
+
+    auto *v = reinterpret_cast<uint16_t *>(buffer_.data());
+    *v = htons(id);
+    ++v; // Now points to the flags section at offset 2
+
+    uint16_t bits = {};
+
+    // We use hdrbits to address small unsigned integers and bits inside a 2 octets memory location.
+    assert(sizeof(hdrbits) == 2);
+    assert(sizeof(hdrbits) == sizeof(bits));
+
+    auto opcodeValue = static_cast<uint8_t>(opcode);
+    if (opcodeValue >= static_cast<char>(Header::OPCODE::RESERVED_)) {
+        throw runtime_error{"createHeader: Invalid opcode "s + to_string(opcodeValue)};
+    }
+
+    auto *b = reinterpret_cast<hdrbits *>(&bits);
+    b->qr = qr;
+    b->rd = rd;
+    b->opcode = static_cast<uint8_t>(opcode);
+
+    *v = bits;
+
+    return NewHeader{buffer_};
+}
+
+bool MessageBuilder::addRr(const Rr &rr, NewHeader& hdr, MessageBuilder::Segment segment)
+{
+    bool set_ttl = false;
+    if (!currentSegment_ || *currentSegment_ != segment) {
+        currentSegment_ = segment;
+        currentTtl_ = rr.ttl();
+    } else if (rr.ttl() != currentTtl_) {
+        set_ttl = true;
+    }
+
+    if (maxBufferSize_ && buffer_.size() + rr.size() >= maxBufferSize_) {
+truncate:
+        LOG_TRACE << "MessageBuilder::addRr: Out of buffer-space";
+        increaseBuffer(0); // Sync Message::span to the new buffer-size in case it reallocated
+        hdr.setTc(true);
+        return false;
+    }
+
+    auto start_buffer_len = buffer_.size();
+
+    auto label_len = writeLabels(rr.labels(), labels_, buffer_, maxBufferSize_);
+    if (!label_len) {
+        assert(start_buffer_len == buffer_.size());
+        goto truncate;
+    }
+
+    const auto data_len = rr.dataLen() ;
+    if (maxBufferSize_ && (buffer_.size() + data_len) >= maxBufferSize_) {
+        // We don't want the labels from the start of this segment in the buffer
+        buffer_.resize(start_buffer_len);
+        goto truncate;
+    }
+
+    uint16_t offset = buffer_.size();
+    buffer_.reserve(buffer_.size() + data_len);
+
+    auto data = rr.dataSpanAfterLabel();
+    copy(data.begin(), data.end(), back_inserter(buffer_));
+
+    if (set_ttl) {
+        setValueAt(buffer_, offset + 4, currentTtl_);
+    }
+
+    increaseBuffer(0); // Sync Message::span to the new buffer-size
+    return true;
+}
+
+
+
+StorageBuilder::NewRr
 StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
 {
     if (name_ptr_) {
@@ -717,6 +857,18 @@ void MessageBuilder::NewHeader::incNscount()
 void MessageBuilder::NewHeader::incArcount()
 {
     inc16BitValueAt(mutable_buffer_, 10);
+}
+
+void MessageBuilder::NewHeader::increment(MessageBuilder::Segment segment)
+{
+    inc16BitValueAt(mutable_buffer_, 4 + (static_cast<uint16_t>(segment) * 2));
+}
+
+void MessageBuilder::NewHeader::setAa(bool flag)
+{
+    auto bits = getHdrFlags(mutable_buffer_);
+    bits.aa = flag;
+    setHdrFlags(mutable_buffer_, bits);
 }
 
 void MessageBuilder::NewHeader::setTc(bool flag)

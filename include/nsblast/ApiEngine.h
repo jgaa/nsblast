@@ -19,6 +19,11 @@ public:
 
     void run();
 
+    auto& getResource() {
+        assert(resource_);
+        return *resource_;
+    }
+
 private:
     const Config config_;
     std::shared_ptr<ResourceIf> resource_;

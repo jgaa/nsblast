@@ -8,6 +8,28 @@ boost::uuids::uuid newUuid()
     return uuid_gen_();
 }
 
+FqdnKey labelsToFqdnKey(const Labels &labels) {
+    return toFqdnKey(labels.string());
+}
+
+span_t getNextKey(span_t fqdn) noexcept {
+    bool bs = false;
+    size_t pos = 0;
+    for(auto& ch : fqdn) {
+        if (bs) {
+            ; // Ignore this character
+        } else {
+            if (ch == '.') {
+                return {fqdn.subspan(pos + 1)};
+            }
+            bs = ch == '\\';
+        }
+        ++pos;
+    }
+
+    return {};
+}
+
 
 
 }

@@ -13,120 +13,6 @@ namespace nsblast::lib {
 
 using span_t = boost::span<const char>;
 
-class RrSet;
-
-///*! RFC 1035 message
-// *
-// *  - Header
-// *  - RR sections:
-// *      - Question
-// *      - Answer
-// *      - Authority
-// *      - Additional
-// */
-//class Message {
-//public:
-//    static constexpr std::uint16_t CLASS_IN = 1;
-
-//    class Header {
-//    public:
-//        constexpr static size_t SIZE = 12;
-
-//        Header(span_t b)
-//            : span_{b} {
-
-//        }
-
-//        /*! Randomly generated query ID (from request) */
-//        uint16_t id() const;
-
-//        /*! query or response */
-//        bool qr() const;
-
-//        /*! Query type */
-//        enum class OPCODE {
-//            QUERY,
-//            IQUERY,
-//            STATUS,
-//            RESERVED_
-//        };
-
-//        /*! Query type */
-//        OPCODE opcode() const;
-
-//        /*! Authoritive answer flag */
-//        bool aa() const;
-
-//        /*! Truncation flag */
-//        bool tc() const;
-
-//        /*! Recursion desired flag (from request) */
-//        bool rd() const;
-
-//        /*! Recursion available (currently not!) */
-//        bool ra() const;
-
-//        /*! Reserved - must be zero */
-//        bool z() const;
-
-//        enum class RCODE {
-//            OK,
-//            SERVER_FAILURE,
-//            NAME_ERROR,
-//            NOT_IMPLEMENTED,
-//            REFUSED,
-//            RESERVED_
-//        };
-
-//        /*! Reply code from server */
-//        RCODE rcode() const;
-
-//        /*! Number of questions */
-//        uint16_t qdcount() const;
-
-//        /*! Number of answers */
-//        uint16_t ancount() const;
-
-//        /*! Number of name servers */
-//        uint16_t nscount() const;
-
-//        /*! Number of additional records */
-//        uint16_t arcount() const;
-
-//        bool validate() const;
-
-//    private:
-//        const span_t span_;
-//    };
-
-//    Message() = default;
-
-//    /*! Construct from an existing buffer.
-//     *
-//     *  This may be a binary buffer received from the Internet, so we have to
-//     *  parse and validate it carefully.
-//     */
-//    Message(span_t span);
-
-//    const Header header() const;
-
-//    RrSet getQuestions() const;
-//    RrSet getAnswers() const;
-
-
-//    /*! Get the raw data buffer for the message
-//     *
-//     *  This is the data in the message, ready to be sent over the wire.
-//     *
-//     */
-//    const span_t& span() const;
-
-//protected:
-//    // The data-storage for a complete message.
-//    span_t span_;
-//    std::array<std::vector<uint16_t /* Offset for the start of the rr */>, 4> index_;
-//};
-
 /*! Representation of RFC1035 labels
  *
  *  A label is a single node in the name-tree.
@@ -175,6 +61,10 @@ public:
             return !equals(a.buffer_, b.buffer_) || a.current_loc_ != b.current_loc_;
         }
 
+        auto location() const {
+            return current_loc_;
+        }
+
     private:
         static bool equals(const boost::span<const char> a, const boost::span<const char> b);
         void update();
@@ -204,6 +94,12 @@ public:
      *  Note: This object does not own any buffers.
      */
     Labels(boost::span<const char> buffer, size_t startOffset);
+
+    Labels(const Labels&) = default;
+    Labels(Labels&&) = default;
+
+    Labels& operator = (const Labels&) = default;
+    Labels& operator = (Labels&&) = default;
 
     /*! Returns the size of the labels
      *
@@ -304,6 +200,26 @@ public:
 
     auto isQuery() const noexcept {
         return self_view_.size() - offset_to_type_ == 4;
+    }
+
+    uint16_t staticDataLen() const noexcept {
+        return isQuery() ? 4 : 10;
+    }
+
+    /*! Length of the segment excluding the labels part */
+    uint32_t dataLen() const noexcept {
+        return staticDataLen() + rdlength();
+    }
+
+    span_t selfSpan() const noexcept {
+        return self_view_;
+    }
+
+    /*! The buffer after label and until (including) rdata) */
+    span_t dataSpanAfterLabel() const noexcept {
+        const auto llen = labels().bytes();
+        const uint16_t dlen = dataLen();
+        return {self_view_.data() + llen, dlen};
     }
 
 protected:
@@ -664,6 +580,10 @@ public:
      */
     const span_t& span() const;
 
+    bool empty() const noexcept {
+        return span_.empty();
+    }
+
 protected:
 
     // The data-storage for a complete message.
@@ -682,6 +602,15 @@ public:
      *
      *  \returns Mutable header where some properties can be updated.
      */
+
+    // The segments of a message
+    enum class Segment {
+        QUESTION,
+        ANSWER,
+        AUTHORITY,
+        ADDITIONAL
+    };
+
     class NewHeader {
     public:
         NewHeader(buffer_t& b)
@@ -691,7 +620,9 @@ public:
         void incAncount();
         void incNscount();
         void incArcount();
+        void increment(Segment segment);
 
+        void setAa(bool flag);
         void setTc(bool flag);
         void setRa(bool flag);
         void setRcode(Header::RCODE rcode);
@@ -703,15 +634,39 @@ public:
     MessageBuilder() = default;
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
-    //NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+
+    /*! Add a rr to the buffer.
+     *
+     *  Labels are re-aligned to the new buffer and compressed if applicable.
+     *  The ttl is set to the ttl in the first entry in a rrset;
+     *
+     *  Sets the truncate flag in the headfer if the buffer was too small to add the entry.
+     *
+     *  \param rr Resource Record to add.
+     *  \param hdr Mutable Header for the Message.
+     *  \param segment The segment the rr belogns in.
+     *
+     * \return true if the RR was added. False if the available buffer-space was exeeded.
+     */
+    bool addRr(const Rr& rr, NewHeader& hdr, Segment segment);
+
+    void setMaxBufferSize(uint32_t limit) {
+        maxBufferSize_ = limit;
+    }
 
 protected:
     void increaseBuffer(size_t bytes) {
-        buffer_.resize(buffer_.size() + bytes);
+        if (bytes) {
+            buffer_.resize(buffer_.size() + bytes);
+        }
         span_ = buffer_;
     }
 
     buffer_t buffer_;
+    size_t maxBufferSize_ = 0; // Not enforced if zero
+    std::optional<Segment> currentSegment_;
+    uint32_t currentTtl_ = 0;
+    std::deque<Labels> labels_; // Labels in the buffer. For compression.
 };
 
 
@@ -816,6 +771,7 @@ public:
     }
 
     const Header& header() const noexcept {
+        assert(header_);
         return *header_;
     }
 

@@ -17,6 +17,8 @@ public:
     struct Request {
         boost::span<const char> span;
         boost::uuids::uuid uuid = newUuid();
+        // We set the truncate flag if we reach this limit.
+        uint32_t maxReplyBytes = MAX_UDP_QUERY_BUFFER;
     };
 
     class Endpoint {
@@ -43,7 +45,7 @@ public:
     };
 
 
-    DnsEngine(const Config& config);
+    DnsEngine(const Config& config, ResourceIf& resource);
 
     ~DnsEngine();
 
@@ -54,7 +56,7 @@ public:
     void start();
     void stop();
 
-    Message processRequest(const Request& request);
+    MessageBuilder processRequest(const Request& request);
 
     boost::asio::io_context& ctx() {
         return ctx_;
@@ -66,6 +68,7 @@ private:
     void startEndpoints();
     void startIoThreads();
 
+    ResourceIf& resource_;
     boost::asio::io_context ctx_;
     const Config config_;
     endpoints_t endpoints_;
