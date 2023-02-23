@@ -1172,6 +1172,41 @@ TEST(StorageBuilder, incrementSoaVersionNoSoa) {
     EXPECT_THROW(sb.incrementSoaVersion(entry), runtime_error);
 }
 
+TEST(Message, empty) {
+     Message m;
+     EXPECT_TRUE(m.empty());
+}
+
+TEST(MessageBuilder, Empty) {
+     MessageBuilder mb;
+     EXPECT_TRUE(mb.empty());
+}
+
+TEST(Message, singleQueryOk) {
+
+    // UDP package from dig captured by wireshark
+    const char raw[] = "\xd6\x01\x01\x20\x00\x01\x00\x00\x00\x00\x00\x01\x03\x77\x77\x77" \
+"\x07\x65\x78\x61\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00" \
+"\x01\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x0c\x00\x0a\x00\x08" \
+"\x91\x64\xec\x6d\x5e\xc9\x0e\x4e";
+
+    const string_view fqdn = "www.example.com";
+
+    Message msg{raw};
+
+    EXPECT_EQ(msg.header().qdcount(), 1);
+    EXPECT_EQ(msg.header().ancount(), 0);
+    EXPECT_EQ(msg.header().nscount(), 0);
+    EXPECT_EQ(msg.header().arcount(), 1);
+    EXPECT_EQ(msg.header().qr(), 0);
+
+    auto rrset = msg.getQuestions();
+    EXPECT_EQ(rrset.count(), 1);
+    EXPECT_EQ(rrset.begin()->type(), nsblast::TYPE_A);
+    EXPECT_EQ(rrset.begin()->labels().string(), fqdn);
+
+
+}
 
 // TODO: Add more tests with pointers
 

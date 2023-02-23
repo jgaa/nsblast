@@ -20,16 +20,20 @@ constexpr char BUFFER_HEADER_LEN = 8;
 
 #pragma pack(1)
 struct hdrbits {
-    uint16_t qr : 1;
-    uint16_t opcode : 4;
-    uint16_t aa : 1;
-    uint16_t tc : 1;
-    uint16_t rd : 1;
-    uint16_t ra : 1;
-    uint16_t z : 3;
-    uint16_t rcode : 4;
-};
+    // First byte
+    uint8_t rd : 1;
+    uint8_t tc : 1;
+    uint8_t aa : 1;
+    uint8_t opcode : 4;
+    uint8_t qr : 1;
 
+    // Second byte
+    uint8_t rcode : 4;
+    uint8_t z : 1;
+    uint8_t ad : 1;
+    uint8_t nd : 1; // Non-authenticated data
+    uint8_t ra : 1;
+};
 #pragma pack(0)
 
 template <typename T, typename I>
@@ -104,7 +108,8 @@ auto getHdrFlags(const T& b) {
     if (b.size() < Message::Header::SIZE) {
         throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
     }
-    const auto bits = reinterpret_cast<const hdrbits *>(b.data() + 2);
+    const auto hdrptr = b.data() + 2;
+    const auto bits = reinterpret_cast<const hdrbits *>(hdrptr);
     return *bits;
 }
 
@@ -113,7 +118,8 @@ void setHdrFlags(T& b, hdrbits newBits) {
     if (b.size() < Message::Header::SIZE) {
         throw runtime_error{"getValueAt: Cannot set value outside range of buffer!"};
     }
-    auto bits = reinterpret_cast<hdrbits *>(b.data() + 2);
+    auto hdrptr = b.data() + 2;
+    auto bits = reinterpret_cast<hdrbits *>(hdrptr);
     *bits = newBits;
 }
 
@@ -199,17 +205,6 @@ void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
     buffer[offset] |= START_OF_POINTER_TAG;
 }
 
-//template <typename P>
-//auto findBestMatch(const Labels::Iterator begin, const Labels::Iterator end, P& existing) {
-
-//    auto next = begin;
-//    ++next;
-
-//    if (next != end) {
-//        auto sub = findBestMatch(next, end, existing);
-//    }
-//}
-
 // Try to compress and add the labels from `fqdn` to buffer. Update existing if we write anything but a pointer.
 // returns 0 if we needed to exeed maxLen.
 template <typename P, typename B>
@@ -267,7 +262,7 @@ uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) 
 
     auto it = fqdn.begin();
     for(auto i = best_count; i < fqdn.count(); ++i, ++it) {
-        len += it->size();
+        len += it->size() + 1;
         segments.emplace_back(*it);
     }
 
@@ -278,6 +273,7 @@ uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) 
 
     buffer.reserve(orig_buffer_size + len);
     for(auto segment: segments) {
+        buffer.push_back(segment.size());
         copy(segment.begin(), segment.end(), back_inserter(buffer));
     }
 
@@ -793,8 +789,8 @@ bool Message::Header::validate() const
     }
 
     if (flags.tc && !flags.qr) {
-        LOG_TRACE << "Message::Header::validate(): tc flag set in query";
-        return false;
+        LOG_TRACE << "Message::Header::validate(): tc flag set in query. Unusual, but acceptable.";
+        //return false;
     }
 
     if (flags.ra && !flags.qr) {
@@ -827,11 +823,6 @@ bool Message::Header::validate() const
 
         if (nscount()) {
             LOG_TRACE << "Message::Header::validate(): nscount in query";
-            return false;
-        }
-
-        if (arcount()) {
-            LOG_TRACE << "Message::Header::validate(): arcount in query";
             return false;
         }
     }
