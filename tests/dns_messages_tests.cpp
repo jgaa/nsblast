@@ -3,9 +3,174 @@
 #include "gtest/gtest.h"
 
 #include "nsblast/DnsMessages.h"
+#include "nsblast/detail/write_labels.hpp"
 
 using namespace std;
 using namespace nsblast::lib;
+
+namespace {
+
+struct WriteLabelsSetup {
+
+    WriteLabelsSetup() {
+        // Buffer can not be re-allocated, as "existing" maintains pointers into the buffer
+        buffer.reserve(1024);
+    }
+
+    auto add(string_view fqdn) {
+        labels_buffer.resize(255);
+
+        nsblast::lib::detail::writeName(labels_buffer, 0, fqdn);
+        Labels labels{labels_buffer, 0};
+
+        uint16_t start_offset = static_cast<uint16_t>(buffer.size());
+
+        auto len = nsblast::lib::detail::writeLabels(labels, existing, buffer, nsblast::MAX_UDP_QUERY_BUFFER);
+
+        latest = {buffer, start_offset};
+
+        return len;
+    }
+
+    vector<char> labels_buffer;
+    vector<char> buffer;
+    deque<Labels> existing;
+    Labels latest;
+};
+
+bool hasPointer(span_t labels) {
+
+    for(auto it = labels.begin(); it < labels.end(); ++it) {
+        if (*it & nsblast::lib::detail::START_OF_POINTER_TAG) {
+            return true;
+        }
+
+        // Jump to the next label
+        assert(*it <= 64);
+        it += *it;
+    }
+
+    return false;
+}
+
+// Weak validation. Assumes that the data is valid!
+template <typename T>
+size_t numPointers(const T& buffer, uint16_t offset) {
+    size_t count = 0;
+    while(true) {
+        auto ch = buffer.at(offset);
+        if (ch & nsblast::lib::detail::START_OF_POINTER_TAG) {
+            offset = nsblast::lib::detail::resolvePtr(buffer, offset);
+            ++count;
+        } else if (ch) {
+            offset += ch + 1;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+} // anon ns
+
+TEST(WriteLabels, simpleOk) {
+    WriteLabelsSetup wls;
+
+    const string_view fqdn = "example.com";
+
+    auto len = wls.add(fqdn);
+
+    EXPECT_EQ(len, fqdn.size() + 2);
+    EXPECT_EQ(wls.latest.string(), fqdn);
+    EXPECT_EQ(wls.existing.size(), 1);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_FALSE(wls.latest.empty());
+    EXPECT_FALSE(hasPointer(wls.latest.selfView()));
+}
+
+TEST(WriteLabels, compressionOk) {
+    WriteLabelsSetup wls;
+
+    const string_view fqdn = "example.com";
+    const string_view fqdn2 = "ns1.example.com";
+    const string_view fqdn3 = "ns2.example.com";
+    const string_view fqdn4 = "www.a.b.c.example.com";
+    const string_view fqdn5 = "c.example.com";
+    const string_view fqdn6 = "ns1.nsblast.com";
+
+    wls.add(fqdn);
+    EXPECT_EQ(wls.latest.string(), fqdn);
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 0);
+    EXPECT_EQ(wls.existing.size(), 1);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_FALSE(hasPointer(wls.latest.selfView()));
+
+    wls.add(fqdn2);
+    EXPECT_EQ(wls.latest.string(), fqdn2);
+    EXPECT_EQ(wls.latest.bytes(), 6); // "ns1" + len (1) + ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 1);
+    EXPECT_EQ(wls.existing.size(), 2);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+
+    wls.add(fqdn3);
+    EXPECT_EQ(wls.latest.string(), fqdn3);
+    EXPECT_EQ(wls.latest.bytes(), 6); // "ns2" + len (1) + ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 1);
+    EXPECT_EQ(wls.existing.size(), 3);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+    EXPECT_EQ(wls.existing.at(2).string(), fqdn3);
+
+    wls.add(fqdn4);
+    EXPECT_EQ(wls.latest.string(), fqdn4);
+    EXPECT_EQ(wls.latest.bytes(), 12); // "www.a.b.c" + len (1) + ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 1);
+    EXPECT_EQ(wls.existing.size(), 4);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+    EXPECT_EQ(wls.existing.at(2).string(), fqdn3);
+    EXPECT_EQ(wls.existing.at(3).string(), fqdn4);
+
+    wls.add(fqdn5);
+    EXPECT_EQ(wls.latest.string(), fqdn5);
+    EXPECT_EQ(wls.latest.bytes(), 2); // ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 2); // ptr --> c --> example.com
+    EXPECT_EQ(wls.existing.size(), 4); // No new existing entry expected here
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+    EXPECT_EQ(wls.existing.at(2).string(), fqdn3);
+    EXPECT_EQ(wls.existing.at(3).string(), fqdn4);
+
+    wls.add(fqdn6);
+    EXPECT_EQ(wls.latest.string(), fqdn6);
+    EXPECT_EQ(wls.latest.bytes(), 14); // "ns1.nsblast" (11) + len (1) ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 1);
+    EXPECT_EQ(wls.existing.size(), 5);
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+    EXPECT_EQ(wls.existing.at(2).string(), fqdn3);
+    EXPECT_EQ(wls.existing.at(3).string(), fqdn4);
+    EXPECT_EQ(wls.existing.at(4).string(), fqdn6);
+
+    wls.add(fqdn2); // repeat
+    EXPECT_EQ(wls.latest.string(), fqdn2);
+    EXPECT_EQ(wls.latest.bytes(), 2); // ptr (2)
+    EXPECT_TRUE(hasPointer(wls.latest.selfView()));
+    EXPECT_EQ(numPointers(wls.buffer, wls.latest.offset()), 2); // ptr --> ns1 --> example.com
+    EXPECT_EQ(wls.existing.size(), 5); // No new existing entry expected here
+    EXPECT_EQ(wls.existing.at(0).string(), fqdn);
+    EXPECT_EQ(wls.existing.at(1).string(), fqdn2);
+    EXPECT_EQ(wls.existing.at(2).string(), fqdn3);
+    EXPECT_EQ(wls.existing.at(3).string(), fqdn4);
+    EXPECT_EQ(wls.existing.at(4).string(), fqdn6);
+}
+
 
 TEST(CreateMessageHeader, CheckingOpcodeQuery) {
 

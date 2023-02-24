@@ -29,7 +29,7 @@ using span_t = boost::span<const char>;
  *
  */
 class Labels {
-public:
+public: 
     /*! Simple forward iterator to allow labels to looped over */
     class Iterator {
     public:
@@ -94,6 +94,7 @@ public:
      *  Note: This object does not own any buffers.
      */
     Labels(boost::span<const char> buffer, size_t startOffset);
+    Labels() = default;
 
     Labels(const Labels&) = default;
     Labels(Labels&&) = default;
@@ -139,6 +140,22 @@ public:
 
     Iterator end() const {
         return Iterator({}, 0);
+    }
+
+    // Buffer used by these labels. A ending pointer will point outside the selfView
+    span_t selfView() const noexcept {
+        if (buffer_view_.empty()) {
+            return {};
+        }
+        return {buffer_view_.data() + offset_, bytes_};
+    }
+
+    bool empty() const noexcept {
+        return buffer_view_.empty();
+    }
+
+    auto offset() const noexcept {
+        return offset_;
     }
 
 private:

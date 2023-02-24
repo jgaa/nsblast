@@ -18,6 +18,7 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
+    ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ApiEngine.cpp
     DnsEngine.cpp
     DnsMessages.cpp
