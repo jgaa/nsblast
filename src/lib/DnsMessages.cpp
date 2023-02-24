@@ -190,17 +190,23 @@ truncate:
     }
 
     uint16_t offset = buffer_.size();
-    buffer_.reserve(buffer_.size() + data_len);
+    //buffer_.reserve(buffer_.size() + data_len);
 
     auto data = rr.dataSpanAfterLabel();
     copy(data.begin(), data.end(), back_inserter(buffer_));
 
-    if (set_ttl) {
+    if (segment != MessageBuilder::Segment::QUESTION && set_ttl) {
         setValueAt(buffer_, offset + 4, currentTtl_);
     }
 
+    hdr.increment(segment);
     increaseBuffer(0); // Sync Message::span to the new buffer-size
     return true;
+}
+
+void MessageBuilder::finish()
+{
+    createIndex();
 }
 
 
@@ -216,15 +222,15 @@ StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
 
     const auto start_offset = buffer_.size();
 
-    if (fqdn.empty()) {
-        throw runtime_error{"createRr: fqdn is empty"};
-    }
+//    if (fqdn.empty()) {
+//        throw runtime_error{"createRr: fqdn is empty"};
+//    }
 
     if (fqdn.back() == '.') {
         fqdn = fqdn.substr(0, fqdn.size() -1);
     }
 
-    auto labels_len = fqdn.size() + 2;
+    auto labels_len = fqdn.empty() ? 1 : fqdn.size() + 2;
 
     const auto len = calculateLen(labels_len, rdata.size());
     buffer_.resize(buffer_.size() + len);
@@ -728,21 +734,7 @@ void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
 Message::Message(span_t span)
     : span_{span}
 {
-    Header hdr{span};
-
-    if (!hdr.validate()) {
-        throw runtime_error{"Invalid message header"};
-    }
-
-    // Now, go trough each RR section.
-    size_t offset = hdr.SIZE;
-    size_t sectionIndex = 0;
-    for(auto sectionCount : {hdr.qdcount(), hdr.ancount(), hdr.nscount(), hdr.arcount()}) {
-        if (sectionCount) {
-            rrsets_.at(sectionIndex).emplace(span, offset, sectionCount);
-        }
-        ++sectionIndex;
-    }
+    createIndex();
 }
 
 const Message::Header Message::header() const
@@ -753,6 +745,28 @@ const Message::Header Message::header() const
 const span_t &Message::span() const
 {
     return span_;
+}
+
+void Message::createIndex()
+{
+    Header hdr{span_};
+
+    if (!hdr.validate()) {
+        throw runtime_error{"Message::createIndex: Invalid message header"};
+    }
+
+    // Now, go trough each RR section.
+    size_t offset = hdr.SIZE;
+    size_t sectionIndex = 0;
+    for(auto sectionCount : {hdr.qdcount(), hdr.ancount(), hdr.nscount(), hdr.arcount()}) {
+        if (sectionCount) {
+            rrsets_.at(sectionIndex).emplace(span_, offset, sectionCount, sectionIndex == 0);
+            offset += rrsets_[sectionIndex]->bytes();
+        } else {
+            rrsets_.at(sectionIndex).reset();
+        }
+        ++sectionIndex;
+    }
 }
 
 Labels::Labels(boost::span<const char> buffer, size_t startOffset)
@@ -1014,7 +1028,7 @@ uint16_t Rr::rdlength() const
     if (isQuery()) {
         return 0;
     }
-    return get32bValueAt(self_view_, offset_to_type_ + 8);
+    return get16bValueAt(self_view_, offset_to_type_ + 8);
 }
 
 Rr::buffer_t Rr::rdata() const
@@ -1051,8 +1065,6 @@ void Rr::parse(bool isQuery)
     if ((buffer_view_[offset_] & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
         labels_.emplace(buffer_view_, offset_);
         labelLen = labels_->bytes();
-        auto sl = labels_->string().size();
-        assert(labels_->bytes() == (sl + 2 /* first len + root */));
     }
 
     // Get the start of the buffer after the labels (in self_view_)
@@ -1084,27 +1096,27 @@ void Rr::parse(bool isQuery)
     assert(self_view_.size() <= max_window_size);
 }
 
-RrSet::RrSet(RrSet::buffer_t bufferView, uint16_t offset, uint16_t count)
-    : view_{bufferView}, offset_{offset}, count_{count}
+RrSet::RrSet(RrSet::buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion)
+    : view_{bufferView}, offset_{offset}, count_{count}, isQuestion_{isQuestion}
 {
     parse();
 }
 
 RrSet::Iterator RrSet::begin() const
 {
-    return Iterator{view_, offset_, index_};
+    return Iterator{view_, offset_, index_, isQuestion_};
 }
 
 RrSet::Iterator RrSet::end() const
 {
-    return Iterator{{}, {}, index_};
+    return Iterator{{}, {}, index_, isQuestion_};
 }
 
 void RrSet::parse()
 {
     uint16_t coffset = offset_;
     for(size_t i = 0; i < count_; ++i) {
-        Rr rr{view_, coffset};
+        Rr rr{view_, coffset, isQuestion_};
         index_.emplace_back(rr.type(), coffset);
         coffset += rr.size();
         bytes_ += rr.size();
@@ -1113,8 +1125,9 @@ void RrSet::parse()
 
 RrSet::Iterator::Iterator(boost::span<const char> buffer,
                           uint16_t /*offset*/,
-                          const RrSet::index_t &index)
-    : index_{index}, buffer_{buffer}
+                          const RrSet::index_t &index,
+                          bool isQuestion)
+    : index_{index}, buffer_{buffer}, isQuestion_{isQuestion}
 {
     if (buffer.empty()) { // end() iterator
         current_ = index_.end();
@@ -1155,7 +1168,7 @@ void RrSet::Iterator::update()
         return;
     }
 
-    crr_ = {buffer_, current_->offset};
+    crr_ = {buffer_, current_->offset, isQuestion_};
 }
 
 void RrSet::Iterator::increment()

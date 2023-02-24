@@ -1,4 +1,6 @@
 
+#include <boost/scope_exit.hpp>
+
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsEngine.h"
 #include "nsblast/logging.h"
@@ -80,15 +82,22 @@ public:
                       << " as request id " << req->uuid;
 
             try {
-                auto message = parent().processRequest(*req);
+                auto message = make_shared<MessageBuilder>();
+                parent().processRequest(*req, *message);
 
-                if (message.empty()) {
+                if (message->empty() || message->header().ancount() == 0) {
                     LOG_DEBUG << "processRequest for request id " << req->uuid
                               << " came back empty. Will not reply.";
                     return;
                 }
 
-                boost::asio::const_buffer cb{message.span().data(), message.span().size()};
+                boost::asio::const_buffer cb{message->span().data(), message->span().size()};
+
+                LOG_DEBUG << "Sending a UDP message of " << cb.size() << " bytes to "
+                          << req->sender_endpoint.address()
+                          << " from UDP " << socket_.local_endpoint()
+                          << " as a reply to request id " << req->uuid;
+
                 socket_.async_send_to(cb,
                                       req->sender_endpoint,
                                       [this, req=move(req), message=move(message)]
@@ -180,12 +189,15 @@ void DnsEngine::stop()
     });
 }
 
-MessageBuilder DnsEngine::processRequest(const DnsEngine::Request &request)
+void DnsEngine::processRequest(const DnsEngine::Request &request, MessageBuilder& mb)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
 
-    MessageBuilder mb;
     mb.setMaxBufferSize(request.maxReplyBytes);
+
+    BOOST_SCOPE_EXIT(&mb) {
+        mb.finish();
+    } BOOST_SCOPE_EXIT_END
 
     Message message{request.span}; // Throws if the message is malformed
     auto org_hdr = message.header();
@@ -196,11 +208,11 @@ MessageBuilder DnsEngine::processRequest(const DnsEngine::Request &request)
     for(const auto& query : message.getQuestions()) {
         if (query.clas() != CLASS_IN) {
             hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
-            return mb;
+            return;
         }
 
         if (!mb.addRr(query, hdr, MessageBuilder::Segment::QUESTION)) {
-            return mb; // Truncated
+            return; // Truncated
         }
     }
 
@@ -233,7 +245,7 @@ again:
                 }
 
                 if (!mb.addRr(*rr_cname, hdr, MessageBuilder::Segment::ANSWER)) {
-                    return mb; // Truncated
+                    return; // Truncated
                 }
 
                 persuing_cname = true;
@@ -245,7 +257,7 @@ again:
             for(const auto& rr : rr_set) {
                 if (qtype == QTYPE_ALL || qtype == rr.type()) {
                     if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
-                        return mb; // Truncated
+                        return; // Truncated
                     }
                 }
             }
@@ -263,7 +275,7 @@ again:
                         for(const auto& rr : entry) {
                             if (rr.type() == TYPE_NS) {
                                 if (!mb.addRr(rr, hdr, MessageBuilder::Segment::AUTHORITY)) {
-                                    return mb; // Truncated
+                                    return; // Truncated
                                 }
                                 ns_list.push_back(rr.labels().string());
                             }
@@ -276,7 +288,7 @@ again:
                                     const auto type = rr.type();
                                     if (type == TYPE_CNAME || type == TYPE_A || type == TYPE_AAAA) {
                                         if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ADDITIONAL)) {
-                                            return mb; // Truncated
+                                            return; // Truncated
                                         }
                                     } // relevant type
                                 } // for ns_rrset
@@ -288,21 +300,16 @@ again:
 
             if (!is_referral && !persuing_cname) {
                 hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
-                return mb;
+                continue;
             }
-
-            return {};
-
         } // fqdn not found with direct lookup
-
-        return mb;
-    }
+    } // For queries
 
     // Should we add nameservers in the auth section?
 
     // Add additional information as appropriate
 
-    return {};
+    return;
 }
 
 void DnsEngine::startEndpoints()

@@ -67,35 +67,6 @@ uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {
     return 0;
 }
 
-void createTestZone(ResourceIf& db) {
-    StorageBuilder sb;
-    string_view fqdn = "example.com";
-    string_view nsname = "ns1.example.com";
-    string_view rname = "hostmaster@example.com";
-    string_view mxname = "mail.example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
-
-    // Notice order. Sorting the index must work to iterate in the expected order below
-    sb.createA(fqdn, 1000, ip1);
-    sb.createA(fqdn, 1000, ip3);
-    sb.createA(fqdn, 1000, ip2);
-    sb.createA(fqdn, 1000, ip4);
-    sb.createNs(fqdn, 1000, "ns1.example.com");
-    sb.createNs(fqdn, 1000, "ns2.example.com");
-    sb.createNs(fqdn, 1000, "ns3.example.com");
-    sb.createNs(fqdn, 1000, "ns4.example.com");
-    sb.createSoa(fqdn, 5003, nsname, rname, 1000, 1001, 1002, 1003, 1004);
-    sb.createMx(fqdn, 9999, 10, mxname);
-    sb.finish();
-
-    auto tx = db.transaction();
-    tx->write(fqdn, sb.buffer(), true);
-    tx->commit();
-}
-
 } // anon ns
 
 TEST(ApiValidate, soaOk) {
@@ -495,7 +466,7 @@ TEST(ApiRequest, postRrOverwriteZone) {
     const string_view fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
 
     auto json = boost::json::serialize(getZoneJson());
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
@@ -512,7 +483,7 @@ TEST(ApiRequest, postSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
 
     EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
@@ -533,7 +504,7 @@ TEST(ApiRequest, postSubRrExists) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
     auto json = getAJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
@@ -551,7 +522,7 @@ TEST(ApiRequest, postSubRrNoZone) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
     auto json = getAJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
@@ -567,7 +538,7 @@ TEST(ApiRequest, putSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
 
     EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
@@ -588,7 +559,7 @@ TEST(ApiRequest, putSubRrNoZone) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
     auto json = getAJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
@@ -603,7 +574,7 @@ TEST(ApiRequest, putSubRrExists) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
     auto json = getAJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
@@ -622,7 +593,7 @@ TEST(ApiRequest, patchSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
 
     EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
@@ -643,7 +614,7 @@ TEST(ApiRequest, patchSubRrNoZone) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    createTestZone(*db);
+    db.createTestZone();
     auto json = getAJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
 

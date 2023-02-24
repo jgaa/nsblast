@@ -393,6 +393,14 @@ TEST(Labels, CreateSimpleOk) {
     EXPECT_EQ(label->size(), "www.example.com."s.size());
 }
 
+TEST(Labels, CreateOnlyRoot) {
+    char data[] = {"\000"};
+    optional<Labels> label;
+    EXPECT_NO_THROW(label.emplace(data, 0));
+    EXPECT_EQ(label->count(), 1); // root
+    EXPECT_EQ(label->size(), 1); // Trailing dot
+}
+
 TEST(Labels, CreateLabelTooLong) {
     char data[] = {"\003www\100xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\003com"};
     EXPECT_THROW(Labels(data, 0), runtime_error);
@@ -545,6 +553,32 @@ TEST(Rr, CreateGeneral) {
     // Validate labels using the Message's buffer and the rr's offset.
     const Labels mblabel{sb.buffer(), rr->offset()};
     EXPECT_EQ(mblabel.string(), "www.example.com"s);
+}
+
+TEST(Rr, generalOnRootPath) {
+    optional<StorageBuilder::NewRr> rr;
+
+    StorageBuilder sb;
+
+    char fqdn[] = "\000";
+
+    EXPECT_NO_THROW(rr.emplace(sb.createRr(fqdn, 1, 2, {})));
+
+    const auto esize = 1   // root node length field
+                       + 2 // type
+                       + 2 // class
+                       + 4 // ttl
+                       + 2 // rdlength
+                       ;
+    EXPECT_EQ(rr->size(), esize);
+
+    // Validate labels using the RR's internal buffer-window
+    const Labels rrlabel{rr->span(), 0};
+    EXPECT_EQ(rrlabel.string(), ""s);
+
+    // Validate labels using the Message's buffer and the rr's offset.
+    const Labels mblabel{sb.buffer(), rr->offset()};
+    EXPECT_EQ(mblabel.string(), ""s);
 }
 
 TEST(Rr, A) {
@@ -706,7 +740,7 @@ TEST(RrSet, parse) {
     auto rrs = sb.createSoa(fqdn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
-    RrSet rs{sb.buffer(), rr1.offset(), 4};
+    RrSet rs{sb.buffer(), rr1.offset(), 4, false};
     EXPECT_EQ(rs.count(), 4);
 
     {

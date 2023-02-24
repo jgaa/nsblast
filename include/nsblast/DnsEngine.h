@@ -56,7 +56,13 @@ public:
     void start();
     void stop();
 
-    MessageBuilder processRequest(const Request& request);
+    /*! Process a request
+     *
+     *  \param request RFC1035 Message in raw, binary format
+     *  \param mb MessageBuilder instance where the reply will be constructed
+     *
+     */
+    void processRequest(const Request& request, MessageBuilder& mb);
 
     boost::asio::io_context& ctx() {
         return ctx_;

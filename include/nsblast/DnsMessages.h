@@ -405,7 +405,7 @@ public:
         using reference         = const value_type&;
 
         // Empty buffer constructs and end() iterator
-        Iterator(boost::span<const char> buffer, uint16_t offset, const index_t& index);
+        Iterator(boost::span<const char> buffer, uint16_t offset, const index_t& index, bool isQuestion);
 
         Iterator(const Iterator& it) = default;
 
@@ -436,9 +436,10 @@ public:
         boost::span<const char> buffer_;
         index_t::const_iterator current_;
         Rr crr_;
+        bool isQuestion_ = false;
     };
 
-    RrSet(buffer_t bufferView, uint16_t offset, uint16_t count);
+    RrSet(buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion);
 
     size_t count() const {
         return count_;
@@ -467,6 +468,7 @@ private:
     const uint16_t count_ = 0;
     index_t index_;
     uint16_t bytes_ = 0;
+    bool isQuestion_ = false; // Those are shorter
 };
 
 
@@ -584,7 +586,7 @@ public:
     RrSet& getRrSet(size_t index) const {
         auto& rrs = rrsets_.at(index);
         if (!rrs) {
-            rrs.emplace(span_t{}, 0, 0);
+            rrs.emplace(span_t{}, 0, 0, index == 0);
         }
         return *rrs;
     }
@@ -602,7 +604,7 @@ public:
     }
 
 protected:
-
+    void createIndex();
     // The data-storage for a complete message.
     span_t span_;
     mutable std::array<std::optional<RrSet>, 4> rrsets_;
@@ -669,7 +671,10 @@ public:
 
     void setMaxBufferSize(uint32_t limit) {
         maxBufferSize_ = limit;
+        buffer_.reserve(limit);
     }
+
+    void finish();
 
 protected:
     void increaseBuffer(size_t bytes) {
