@@ -158,14 +158,6 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
 
 bool MessageBuilder::addRr(const Rr &rr, NewHeader& hdr, MessageBuilder::Segment segment)
 {
-    bool set_ttl = false;
-    if (!currentSegment_ || *currentSegment_ != segment) {
-        currentSegment_ = segment;
-        currentTtl_ = rr.ttl();
-    } else if (rr.ttl() != currentTtl_) {
-        set_ttl = true;
-    }
-
     if (maxBufferSize_ && buffer_.size() + rr.size() >= maxBufferSize_) {
 truncate:
         LOG_TRACE << "MessageBuilder::addRr: Out of buffer-space";
@@ -189,15 +181,10 @@ truncate:
         goto truncate;
     }
 
-    uint16_t offset = buffer_.size();
     //buffer_.reserve(buffer_.size() + data_len);
 
     auto data = rr.dataSpanAfterLabel();
     copy(data.begin(), data.end(), back_inserter(buffer_));
-
-    if (segment != MessageBuilder::Segment::QUESTION && set_ttl) {
-        setValueAt(buffer_, offset + 4, currentTtl_);
-    }
 
     hdr.increment(segment);
     increaseBuffer(0); // Sync Message::span to the new buffer-size

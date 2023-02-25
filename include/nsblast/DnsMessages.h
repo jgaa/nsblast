@@ -686,8 +686,6 @@ protected:
 
     buffer_t buffer_;
     size_t maxBufferSize_ = 0; // Not enforced if zero
-    std::optional<Segment> currentSegment_;
-    uint32_t currentTtl_ = 0;
     std::deque<Labels> labels_; // Labels in the buffer. For compression.
 };
 
