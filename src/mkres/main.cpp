@@ -55,6 +55,7 @@ int main(int argc, char *argv[]) {
 
         size_t bytes = {};
         size_t col = 1;
+        char prevch = 0;
 
         while(true) {
 
@@ -83,6 +84,8 @@ int main(int argc, char *argv[]) {
                 impl << "\\" << std::oct << std::setw(3) << std::setfill('0')
                     << static_cast<unsigned>(ch)
                     << std::setw(0) << std::dec;
+            } else if (ch == '?' && prevch == '?') {
+                impl << '\\' << ch;
             } else {
                 ++col;
                 impl << ch;
@@ -93,6 +96,7 @@ int main(int argc, char *argv[]) {
                 col = 1;
             }
 
+            prevch = ch;
         }
 
         impl << "\", " << bytes << "}}" << endl;
