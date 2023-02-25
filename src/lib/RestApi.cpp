@@ -77,6 +77,10 @@ RestApi::Parsed RestApi::parse(const Request &req)
 void RestApi::validateSoa(const boost::json::value &json)
 {
     auto soa = json.at("soa");
+    if (!soa.is_object()) {
+        throw Response{400, "'soa' must be a json object"};
+    }
+
     for (string_view key : {"mname", "rname"}) {
         try {
             if (!soa.at(key).is_string()) {
@@ -218,13 +222,15 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const bo
         uint16_t priority = 10;
         string_view host;
 
-        for(const auto& e : v.as_object()) {
-            if (e.key() == "host") {
-                host = e.value().as_string();
-            } else if (e.key() == "priority") {
-                priority = e.value().as_int64();
-            } else {
-                throw Response{400, "Unknown entity in mx: "s + string(e.key())};
+        for(const auto& mx: v.as_array()) {
+            for(const auto& e : mx.as_object()) {
+                if (e.key() == "host") {
+                    host = e.value().as_string();
+                } else if (e.key() == "priority") {
+                    priority = e.value().as_int64();
+                } else {
+                    throw Response{400, "Unknown entity in mx: "s + string(e.key())};
+                }
             }
         }
 
@@ -244,7 +250,13 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const bo
 
     for(const auto& obj : json.as_object()) {
         if (auto it = handlers.find(obj.key()); it != handlers.end()) {
-            it->second(fqdn, ttl, sb, obj.value());
+            try {
+                it->second(fqdn, ttl, sb, obj.value());
+            } catch (const std::exception& ex) {
+                LOG_ERROR << "Json entity " << obj.key() << " of type " << obj.value().kind()
+                          << " failed processing with exception: " << ex.what();
+                throw Response{400, "Failed converting '"s + string{obj.key()} + "' from json payload to internal format."};
+            }
         } else {
             throw Response{400, "Unknown entity: "s + string(obj.key())};
         }

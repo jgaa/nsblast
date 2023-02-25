@@ -372,11 +372,14 @@ public:
 };
 
 
-/*! Wrapper / view over a RrSet
+/*! Wrapper / view over a list of result sets
+ *
+ *  Used for example to represent the rr's in a section of a message,
+ *  or the rr's stored for a key in the database.
  *
  *  The object does not own it's buffer
  */
-class RrSet {
+class RrList {
 public:
     using buffer_t = boost::span<const char>;
 
@@ -439,7 +442,7 @@ public:
         bool isQuestion_ = false;
     };
 
-    RrSet(buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion);
+    RrList(buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion);
 
     size_t count() const {
         return count_;
@@ -567,23 +570,23 @@ public:
 
     const Header header() const;
 
-    RrSet& getQuestions() const {
+    RrList& getQuestions() const {
         return getRrSet(0);
     }
 
-    RrSet& getAnswers() const {
+    RrList& getAnswers() const {
         return getRrSet(1);
     }
 
-    RrSet& getAuthority() const {
+    RrList& getAuthority() const {
         return getRrSet(2);
     }
 
-    RrSet& getAdditional() const {
+    RrList& getAdditional() const {
         return getRrSet(3);
     }
 
-    RrSet& getRrSet(size_t index) const {
+    RrList& getRrSet(size_t index) const {
         auto& rrs = rrsets_.at(index);
         if (!rrs) {
             rrs.emplace(span_t{}, 0, 0, index == 0);
@@ -607,7 +610,7 @@ protected:
     void createIndex();
     // The data-storage for a complete message.
     span_t span_;
-    mutable std::array<std::optional<RrSet>, 4> rrsets_;
+    mutable std::array<std::optional<RrList>, 4> rrsets_;
 };
 
 

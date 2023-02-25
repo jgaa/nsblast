@@ -723,7 +723,7 @@ TEST(Rr, parse) {
     EXPECT_EQ(nr.view().data(), rr.view().data());
 }
 
-TEST(RrSet, parse) {
+TEST(RrList, parse) {
     StorageBuilder sb;
 
     string_view fqdn = "example.com";
@@ -740,7 +740,7 @@ TEST(RrSet, parse) {
     auto rrs = sb.createSoa(fqdn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
-    RrSet rs{sb.buffer(), rr1.offset(), 4, false};
+    RrList rs{sb.buffer(), rr1.offset(), 4, false};
     EXPECT_EQ(rs.count(), 4);
 
     {

@@ -1,10 +1,10 @@
 
 # DNS server
-- [ ] Sockets / UDP
+- [x] Sockets / UDP
 - [ ] Sockets / TCP
-- [ ] Parse incoming messages
-- [ ] Compose replies to queries
-- [ ] Reply
+- [x] Parse incoming messages
+- [x] Compose replies to queries
+- [x] Reply
 - [ ] Logging of all or relevant requests
 
 # Internals

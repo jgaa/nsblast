@@ -1083,23 +1083,23 @@ void Rr::parse(bool isQuery)
     assert(self_view_.size() <= max_window_size);
 }
 
-RrSet::RrSet(RrSet::buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion)
+RrList::RrList(RrList::buffer_t bufferView, uint16_t offset, uint16_t count, bool isQuestion)
     : view_{bufferView}, offset_{offset}, count_{count}, isQuestion_{isQuestion}
 {
     parse();
 }
 
-RrSet::Iterator RrSet::begin() const
+RrList::Iterator RrList::begin() const
 {
     return Iterator{view_, offset_, index_, isQuestion_};
 }
 
-RrSet::Iterator RrSet::end() const
+RrList::Iterator RrList::end() const
 {
     return Iterator{{}, {}, index_, isQuestion_};
 }
 
-void RrSet::parse()
+void RrList::parse()
 {
     uint16_t coffset = offset_;
     for(size_t i = 0; i < count_; ++i) {
@@ -1110,9 +1110,9 @@ void RrSet::parse()
     }
 }
 
-RrSet::Iterator::Iterator(boost::span<const char> buffer,
+RrList::Iterator::Iterator(boost::span<const char> buffer,
                           uint16_t /*offset*/,
-                          const RrSet::index_t &index,
+                          const RrList::index_t &index,
                           bool isQuestion)
     : index_{index}, buffer_{buffer}, isQuestion_{isQuestion}
 {
@@ -1125,13 +1125,13 @@ RrSet::Iterator::Iterator(boost::span<const char> buffer,
     update();
 }
 
-RrSet::Iterator &RrSet::Iterator::operator++()
+RrList::Iterator &RrList::Iterator::operator++()
 {
     increment();
     return *this;
 }
 
-RrSet::Iterator RrSet::Iterator::operator++(int) {
+RrList::Iterator RrList::Iterator::operator++(int) {
     auto self = *this;
     increment();
     return self;
@@ -1143,12 +1143,12 @@ RrSet::Iterator RrSet::Iterator::operator++(int) {
 
 //}
 
-bool RrSet::Iterator::equals(const boost::span<const char> a, const boost::span<const char> b)
+bool RrList::Iterator::equals(const boost::span<const char> a, const boost::span<const char> b)
 {
     return a.data() == b.data() && a.size() == b.size();
 }
 
-void RrSet::Iterator::update()
+void RrList::Iterator::update()
 {
     if (current_ == index_.end()) {
         crr_ = {};
@@ -1158,7 +1158,7 @@ void RrSet::Iterator::update()
     crr_ = {buffer_, current_->offset, isQuestion_};
 }
 
-void RrSet::Iterator::increment()
+void RrList::Iterator::increment()
 {
     assert(current_ != index_.end());
     ++current_;

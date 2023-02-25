@@ -47,10 +47,12 @@ endif()
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
     program_options
-    context
+    date_time
     coroutine
+    context
+    chrono
     regex
-    chrono)
+    )
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY

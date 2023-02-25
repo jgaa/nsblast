@@ -32,3 +32,8 @@
 *.app
 
 *.user
+
+# Misc
+.venv
+build
+.user

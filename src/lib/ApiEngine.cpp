@@ -42,7 +42,7 @@ void ApiEngine::run()
             auth.access = true;
             auth.account = "nobody";
             return auth;
-        }};
+        }, "nsblast "s + NSBLAST_VERSION};
 
     httpServer.addRoute("/api/v1", make_shared<lib::RestApi>(config_, *resource_));
 
