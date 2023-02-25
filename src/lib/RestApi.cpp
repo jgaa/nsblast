@@ -152,7 +152,8 @@ void RestApi::validateZone(const boost::json::value &json)
     }
 }
 
-void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value json)
+void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
+                    const boost::json::value json, bool finish)
 {
     static const map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
@@ -261,6 +262,11 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb, const bo
             throw Response{400, "Unknown entity: "s + string(obj.key())};
         }
     }
+
+    if (finish) {
+        LOG_TRACE << "RestApi::build: " << "finishing sb";
+        sb.finish();
+    }
 }
 
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
@@ -317,7 +323,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     StorageBuilder sb;
 
     auto trx = resource_.transaction();
-    auto lowercaseFqdn = toLower(parsed.fqdn);
+    const auto lowercaseFqdn = toFqdnKey(parsed.fqdn);
     // Get the zone
     auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
@@ -336,12 +342,12 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     }
 
     uint32_t ttl = 0; // TODO: Set to some supplied or default value
-    build(parsed.fqdn, ttl, sb, parseJson(req.body));
+
     if (!existing.isSame()) {
         assert(existing.soa().begin()->type() == TYPE_SOA);
         sb.setZoneLen(existing.soa().begin()->labels().size() -1);
     }
-    sb.finish();
+    build(parsed.fqdn, ttl, sb, parseJson(req.body));
 
     bool need_version_increment = false;
 
@@ -431,8 +437,9 @@ put:
 
         // We need to copy the Entry containing the soa and then increment the version
         StorageBuilder soaSb;
+        auto soa_fqdn = labelsToFqdnKey(existing.soa().begin()->labels());
         for(const auto& rr : existing.soa()) {
-            soaSb.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+            soaSb.createRr(soa_fqdn, rr.type(), rr.ttl(), rr.rdata());
         }
         soaSb.incrementSoaVersion(existing.soa());
         soaSb.finish();

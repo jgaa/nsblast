@@ -38,10 +38,19 @@ public:
         struct EntryWithBuffer : public lib::Entry {
             EntryWithBuffer() = default;
             EntryWithBuffer(const EntryWithBuffer&) = delete;
-            EntryWithBuffer(EntryWithBuffer&&) = default;
+            EntryWithBuffer(EntryWithBuffer&& v)
+                : lib::Entry(std::move(static_cast<lib::Entry&>(v)))
+                , buffer_ptr_{std::move(v.buffer_ptr_)}
+            {
+            }
+
 
             EntryWithBuffer& operator = (const EntryWithBuffer&) = delete;
-            EntryWithBuffer& operator = (EntryWithBuffer&&) = default;
+            EntryWithBuffer& operator = (EntryWithBuffer&& v) {
+                static_cast<lib::Entry&>(*this) = std::move(static_cast<lib::Entry&>(v));
+                buffer_ptr_ = std::move(v.buffer_ptr_);
+                return *this;
+            }
 
             EntryWithBuffer(read_ptr_t && buffer)
                 : Entry{buffer->data()} {

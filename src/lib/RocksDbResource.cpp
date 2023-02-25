@@ -73,6 +73,7 @@ ResourceIf::TransactionIf::RrAndSoa RocksDbResource::Transaction::lookupEntryAnd
                 return {move(rr), move(e)};
             }
 
+            auto flags = e.flags();
             const auto zlen = e.header().zonelen;
             assert(zlen > 0);
             assert(zlen <= key.size());

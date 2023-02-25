@@ -100,7 +100,7 @@ public:
 
                 socket_.async_send_to(cb,
                                       req->sender_endpoint,
-                                      [this, req=move(req), message=move(message)]
+                                      [this, req=req, message=message]
                                       (const boost::system::error_code& error,
                                       std::size_t bytes) mutable {
                     if (error) {

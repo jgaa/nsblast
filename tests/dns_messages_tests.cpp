@@ -560,11 +560,9 @@ TEST(Rr, generalOnRootPath) {
 
     StorageBuilder sb;
 
-    char fqdn[] = "\000";
+    EXPECT_NO_THROW(rr.emplace(sb.createRr(span_t{}, 1, 2, {})));
 
-    EXPECT_NO_THROW(rr.emplace(sb.createRr(fqdn, 1, 2, {})));
-
-    const auto esize = 1   // root node length field
+    const auto esize = 1   // root node
                        + 2 // type
                        + 2 // class
                        + 4 // ttl

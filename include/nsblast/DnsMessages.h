@@ -1031,7 +1031,7 @@ public:
      *  \return An NewRr object referencing the new record.
      *  \exception std::runtime_error and other exceptions thrown by the C++ standard library and asio.
      */
-    NewRr createRr(std::string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+    NewRr createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
 
     /*! Create a new resource record
      *
@@ -1097,6 +1097,7 @@ private:
     uint16_t index_offset_ = 0;
     uint8_t zonelen_ = 0;
     uint16_t soa_offset_ = 0;
+    bool finished_ = false;
 };
 
 } // ns

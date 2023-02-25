@@ -199,8 +199,9 @@ void MessageBuilder::finish()
 
 
 StorageBuilder::NewRr
-StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
+StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
 {
+    assert(!finished_);
     if (name_ptr_) {
         // A list of rr's (RRSet) always contain the same fqdn,
         // so if we already have the name, we re-use it.
@@ -213,17 +214,21 @@ StorageBuilder::createRr(string_view fqdn, uint16_t type, uint32_t ttl, boost::s
 //        throw runtime_error{"createRr: fqdn is empty"};
 //    }
 
-    if (fqdn.back() == '.') {
-        fqdn = fqdn.substr(0, fqdn.size() -1);
+    size_t labels_len = 0;
+    if (!fqdn.empty()) {
+        if (fqdn.back() == '.') {
+            fqdn = fqdn.subspan(0, fqdn.size() -1);
+        }
+        labels_len =  fqdn.size() + 2;
+    } else {
+        labels_len = 1;
     }
-
-    auto labels_len = fqdn.empty() ? 1 : fqdn.size() + 2;
 
     const auto len = calculateLen(labels_len, rdata.size());
     buffer_.resize(buffer_.size() + len);
 
     {
-        const auto rlen = writeName(buffer_, start_offset, fqdn);
+        const auto rlen = writeName(buffer_, start_offset, {fqdn.data(), fqdn.size()});
         assert(name_ptr_ == 0);
         assert(start_offset != 0);
         name_ptr_ = start_offset;
@@ -336,6 +341,7 @@ StorageBuilder::NewRr
 StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
                          uint32_t ttl, boost::span<const char> rdata)
 {
+    assert(!finished_);
     const auto start_offset = buffer_.size();
     auto labels_len =  2;
 
@@ -352,6 +358,7 @@ StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
  */
 void StorageBuilder::finish()
 {
+    assert(!finished_);
     assert(BUFFER_HEADER_LEN == sizeof(Header));
 
     if (buffer_.size() < sizeof(Header)) {
@@ -392,6 +399,7 @@ void StorageBuilder::finish()
     h->ixoffset = htons(index_offset_);
 
     assert(h->version == CURRENT_STORAGE_VERSION);
+    finished_ = true;
 }
 
 StorageBuilder::Header StorageBuilder::header() const
@@ -1072,8 +1080,8 @@ void Rr::parse(bool isQuery)
     const auto rdlen = get16bValueAt(buffer_view_,  rdlenSizeOffset);
     const auto len = labelLen + (2 + 2 + 4 + 2 + rdlen);
 
-    LOG_DEBUG << "Rr::parse: len=" << len << ", max_window_size=" << max_window_size
-              << ", rdlen=" << rdlen << ", rdlenSizeOffset=" << rdlenSizeOffset;
+//    LOG_DEBUG << "Rr::parse: len=" << len << ", max_window_size=" << max_window_size
+//              << ", rdlen=" << rdlen << ", rdlenSizeOffset=" << rdlenSizeOffset;
     if (len > max_window_size) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold the full RR!"};
     }

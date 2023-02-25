@@ -29,7 +29,8 @@ public:
     static void validateSoa(const boost::json::value& json);
     static boost::json::value parseJson(std::string_view json);
     static void validateZone(const boost::json::value& json);
-    static void build(std::string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value json);
+    static void build(std::string_view fqdn, uint32_t ttl, StorageBuilder& sb,
+                      const boost::json::value json, bool finish = true);
 
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);

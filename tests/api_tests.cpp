@@ -180,8 +180,6 @@ TEST(ApiBuild, ZoneOk) {
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
 
-    sb.finish();
-
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
 
@@ -230,8 +228,6 @@ TEST(ApiBuild, aOk) {
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
 
-    sb.finish();
-
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
 
@@ -261,8 +257,6 @@ TEST(ApiBuild, aaaaOk) {
 
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
-
-    sb.finish();
 
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
@@ -294,8 +288,6 @@ TEST(ApiBuild, aAndAaaaOk) {
 
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
-
-    sb.finish();
 
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
@@ -340,7 +332,6 @@ TEST(ApiBuild, txtOk) {
 
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
-    sb.finish();
 
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
@@ -360,7 +351,6 @@ TEST(ApiBuild, cnameOk) {
 
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
-    sb.finish();
 
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());
@@ -375,13 +365,14 @@ TEST(ApiBuild, mxOk) {
     const string_view host = "mail.example.com";
 
     boost::json::object json;
-    json["mx"] = boost::json::object{};
-    json["mx"].as_object()["priority"] = 10;
-    json["mx"].as_object()["host"] = host;
+    auto mx_data = boost::json::object{};
+    mx_data["priority"] = 10;
+    mx_data["host"] = host;
+    json["mx"] = boost::json::array{mx_data};
+
 
     StorageBuilder sb;
     EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
-    sb.finish();
 
     Entry entry{sb.buffer()};
     EXPECT_TRUE(entry.begin() != entry.end());

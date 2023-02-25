@@ -19,6 +19,7 @@ def global_data():
             'url': 'http://127.0.0.1:8080/api/v1'
            }
 
+@pytest.mark.order(1)
 def test_create_zone(global_data):
     zone = """
       soa:
@@ -47,20 +48,22 @@ def test_create_zone(global_data):
     print(r.text)
     assert r.ok
 
-#def test_create_www(global_data):
-#    entry = """
-#      a:
-#        - 127.0.0.3
-#        - 127.0.0.4
-#    """
+@pytest.mark.order(2)
+def test_create_www(global_data):
+    entry = """
+      a:
+        - 127.0.0.3
+        - 127.0.0.4
+    """
 
-#    print('Creating www.example.com A entry')
-#    url = global_data['url'] + '/rr/www.example.com'
-#    body = yaml.load(entry, Loader=yaml.Loader)
-#    r = requests.post(url, json=body)
-#    print(r.text)
-#    assert r.ok
+    print('Creating www.example.com A entry')
+    url = global_data['url'] + '/rr/www.example.com'
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body)
+    print(r.text)
+    assert r.ok
 
+@pytest.mark.order(3)
 def test_query_soa(global_data):
     dns = global_data['dns']
     answers = dns.resolve('example.com', 'SOA')
