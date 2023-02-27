@@ -82,6 +82,9 @@ static constexpr std::uint16_t TYPE_MINFO = 14;
 static constexpr std::uint16_t TYPE_MX = 15;
 static constexpr std::uint16_t TYPE_TXT = 16;
 
+// RFC 6891
+static constexpr std::uint16_t TYPE_OPT = 41;
+
 static constexpr std::uint16_t QTYPE_AXFR = 252;
 //static constexpr std::uint16_t QTYPE_MAILB = 253;
 static constexpr std::uint16_t QTYPE_ALL= 255;

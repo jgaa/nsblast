@@ -6,8 +6,14 @@
 - [x] Compose replies to queries
 - [x] Reply
 - [ ] Logging of all or relevant requests
+- [ ] Pending RR types
+    - [ ] AXFR
+    - [ ] IXFR
+    - [ ] DNSSEC types
 
 # Internals
+- [ ] Otimize the resolver to process related questions in in one loop (for example A and AAAA queries for the same fqdn)
+- [ ] Handle the mname and NS entries for a new zone automatically
 - [ ] See if a cache in front of rocksdb significantly speeds the server up.
 
 # Master DNS configuration
