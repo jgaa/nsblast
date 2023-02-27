@@ -163,7 +163,10 @@ bool MessageBuilder::addRr(const Rr &rr, NewHeader& hdr, MessageBuilder::Segment
 truncate:
         LOG_TRACE << "MessageBuilder::addRr: Out of buffer-space";
         increaseBuffer(0); // Sync Message::span to the new buffer-size in case it reallocated
-        hdr.setTc(true);
+        if (segment == MessageBuilder::Segment::ANSWER) {
+            // RFC 2181 section 9
+            hdr.setTc(true);
+        }
         return false;
     }
 
@@ -467,6 +470,8 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
         soa_offset_ = startOffset;
         assert(soa_offset_ > 0);
     }
+
+    ttl = sanitizeTtl(ttl);
 
     LOG_TRACE << "StorageBuilder::finishRr: ttl=" << ttl;
 

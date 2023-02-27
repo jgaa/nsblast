@@ -24,11 +24,11 @@ uint32_t getTtl(const boost::json::value& json) {
             // to unsinged or signed values, unless the actual value in
             // the json payload is a negative integer!
             if (ttl.is_int64()) {
-                return sanitizeTtl(static_cast<uint32_t>(ttl.as_int64()));
+                return static_cast<uint32_t>(ttl.as_int64());
             }
 
             if (ttl.is_uint64()) {
-                return sanitizeTtl(static_cast<uint32_t>(ttl.as_uint64()));
+                return static_cast<uint32_t>(ttl.as_uint64());
             }
 
             const string kname = boost::json::to_string(ttl.kind());
@@ -145,8 +145,17 @@ void RestApi::validateZone(const boost::json::value &json)
 {
     validateSoa(json);
 
-    const auto& primary_ns = json.at_pointer("/soa/mname");
-    assert(primary_ns.is_string());
+    string mname; // primary dns
+
+    try {
+        mname = json.as_object().at("soa").as_object().at("mname").as_string();
+    }  catch (const exception&) {
+        throw Response{400, "Soa must include 'mname' with the primary NS server for the zone as a string."};
+    }
+
+    if (mname.empty()) {
+        throw Response{400, "'Soa.mname' can not be empty."};
+    }
 
     string_view ckey = "ns";
     bool has_primary = false;
@@ -165,7 +174,7 @@ void RestApi::validateZone(const boost::json::value &json)
             if (!v.is_string()) {
                 throw Response{400, "Json elements in 'ns' must be string(s)"s};
             }
-            if (v.as_string() == primary_ns) {
+            if (v.as_string() == mname) {
                 has_primary = true;
             }
         }

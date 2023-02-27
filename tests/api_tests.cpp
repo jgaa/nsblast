@@ -26,8 +26,8 @@ auto getZoneJson() {
     "expire": 1003,
     "serial": 1000,
     "minimum": 1004,
-    "mname": "hostmaster.example.com",
-    "rname": "ns1.example.com"
+    "mname": "ns1.example.com",
+    "rname": "hostmaster.example.com"
     },
     "ns": [
     "ns1.example.com",
@@ -107,17 +107,17 @@ TEST(ApiValidate, zoneOk) {
     EXPECT_NO_THROW(RestApi::validateZone(getZoneJson()));
 }
 
-TEST(ApiValidate, zoneWrongRname) {
+TEST(ApiValidate, zoneWrongMname) {
 
     auto json = getZoneJson();
-    json.at("soa").at("rname") = "foo.example.com";
+    json.at("soa").at("mname") = "foo.example.com";
 
     EXPECT_THROW(RestApi::validateZone(json), yahat::Response);
     try {
         RestApi::validateZone(json);
     } catch(const yahat::Response& ex) {
         EXPECT_EQ(ex.code, 400);
-        EXPECT_EQ(ex.reason, "soa.rname must be one of the ns entries");
+        EXPECT_EQ(ex.reason, "soa.mname must be one of the ns entries");
     }
 }
 
@@ -194,8 +194,8 @@ TEST(ApiBuild, ZoneOk) {
         EXPECT_EQ(entry.index().size(), 3); // One soa, two ns
         RrSoa soa{sb.buffer(), entry.begin()->offset()};
         EXPECT_EQ(soa.labels().string(), fqdn);
-        EXPECT_EQ(soa.mname().string(), "hostmaster.example.com");
-        EXPECT_EQ(soa.rname().string(), "ns1.example.com");
+        EXPECT_EQ(soa.mname().string(), "ns1.example.com");
+        EXPECT_EQ(soa.rname().string(), "hostmaster.example.com");
         EXPECT_EQ(soa.ttl(), 1000);
     }
 }
