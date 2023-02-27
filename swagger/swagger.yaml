@@ -199,9 +199,6 @@ definitions:
   Soa:
     type: object
     properties:
-      ttl:
-        type: integer
-        description: Time in seconds that DNS servers can cache the zone before they need to refresh their cache
       refresh:
         type: integer
       retry:
@@ -247,6 +244,10 @@ definitions:
   Entry:
     type: object
     properties:
+      ttl:
+        type: integer
+        default: 2592000
+        description: Attribute. Time in seconds that DNS servers can cache the RR(s) before they need to refresh their cache. Applies for all the RR's in the Entry
       a:
         $ref: "#/definitions/Rra"
       txt:

@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <string>
 #include <boost/asio.hpp>
+#include <algorithm>
 
 #include "nsblast/DnsMessages.h"
 #include "nsblast/detail/write_labels.hpp"
@@ -466,6 +467,8 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
         soa_offset_ = startOffset;
         assert(soa_offset_ > 0);
     }
+
+    LOG_TRACE << "StorageBuilder::finishRr: ttl=" << ttl;
 
     const auto len = calculateLen(labelLen, rdata.size());
     size_t coffset = startOffset + labelLen;
@@ -1326,7 +1329,12 @@ boost::asio::ip::address RrA::address()
 
 string RrA::string()
 {
-    return address().to_string();
+                  return address().to_string();
+}
+
+uint32_t sanitizeTtl(uint32_t ttl) noexcept
+{
+    return min(ttl, TTL_MAX);
 }
 
 

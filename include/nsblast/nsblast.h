@@ -9,6 +9,8 @@
 
 namespace nsblast {
 
+static constexpr uint32_t DEFAULT_TTL = 2592000; // 30 days
+
 /*! The applications configuration */
 struct Config {
     /*! \name Options */
@@ -55,6 +57,9 @@ struct Config {
 
     /*! The TCP port to listen to */
     std::string dns_tcp_port = "domain";
+
+    /*! The default tts set on Record Sets (including the SOA) if the ttl is not set in the Json Entry when creating the entry. */
+    uint32_t default_ttl = DEFAULT_TTL;
 
     ///@}
 

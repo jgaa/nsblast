@@ -19,8 +19,8 @@ static constexpr auto DEFAULT_SOA_SERIAL = 1000;
 
 auto getZoneJson() {
     static const auto soa = boost::json::parse(R"({
-    "soa": {
     "ttl": 1000,
+    "soa": {
     "refresh": 1001,
     "retry": 1002,
     "expire": 1003,
@@ -73,10 +73,10 @@ TEST(ApiValidate, soaOk) {
     EXPECT_NO_THROW(RestApi::validateSoa(getZoneJson()));
 }
 
-TEST(ApiValidate, soaTtlIsString) {
+TEST(ApiValidate, soaRefreshIsString) {
 
     auto json = getZoneJson();
-    json.at("soa").at("ttl") = "teste";
+    json.at("soa").at("refresh") = "teste";
 
     EXPECT_THROW(RestApi::validateSoa(json), yahat::Response);
 }

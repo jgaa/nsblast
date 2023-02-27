@@ -16,6 +16,32 @@ namespace nsblast::lib {
 
 namespace {
 
+uint32_t getTtl(const boost::json::value& json) {
+    if (json.is_object()) {
+        try {
+            auto ttl = json.at("ttl");
+            // This is BS! The json library must be able to convert a fucking integer
+            // to unsinged or signed values, unless the actual value in
+            // the json payload is a negative integer!
+            if (ttl.is_int64()) {
+                return sanitizeTtl(static_cast<uint32_t>(ttl.as_int64()));
+            }
+
+            if (ttl.is_uint64()) {
+                return sanitizeTtl(static_cast<uint32_t>(ttl.as_uint64()));
+            }
+
+            const string kname = boost::json::to_string(ttl.kind());
+            throw Response{400, "ttl must be an unsigned integer, not a "s + kname};
+        } catch(const std::exception& ex) {
+            LOG_TRACE << "Caught exception while extracting ttl: " << ex.what();
+        }
+
+    }
+
+    return 0;
+}
+
 } // anon ns
 
 RestApi::RestApi(const Config &config, ResourceIf& resource)
@@ -91,7 +117,7 @@ void RestApi::validateSoa(const boost::json::value &json)
         }
     }
 
-    for (string_view key : {"ttl", "refresh", "retry", "version", "expire", "minimum"}) {
+    for (string_view key : {"refresh", "retry", "version", "expire", "minimum"}) {
         try {
             if (!soa.at(key).is_int64()) {
                 throw Response{400, "Not a number: "s + string(key)};
@@ -119,7 +145,7 @@ void RestApi::validateZone(const boost::json::value &json)
 {
     validateSoa(json);
 
-    const auto& primary_ns = json.at_pointer("/soa/rname");
+    const auto& primary_ns = json.at_pointer("/soa/mname");
     assert(primary_ns.is_string());
 
     string_view ckey = "ns";
@@ -148,7 +174,7 @@ void RestApi::validateZone(const boost::json::value &json)
     }
 
     if (!has_primary) {
-        throw Response{400, "soa.rname must be one of the ns entries"};
+        throw Response{400, "soa.mname must be one of the ns entries"};
     }
 }
 
@@ -157,15 +183,17 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 {
     static const map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
+    { "ttl", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        // Ignore here.
+    }},
     {"soa", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         // TODO: Set reasonable defaults
-        uint32_t soattl = ttl, refresh = 1000, retry = 1000, expire = 1000, minimum = 1000,
+        uint32_t refresh = 1000, retry = 1000, expire = 1000, minimum = 1000,
                 serial = 1;
         string_view mname, rname;
 
         map<string_view, uint32_t *> nentries = {
-            {"ttl", &soattl},
             {"refresh", &refresh},
             {"retry", &retry},
             {"expire", &expire},
@@ -248,6 +276,9 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
               << ", kind=" << json.kind()
               << ", json=" << boost::json::serialize(json);
 
+    if (auto jttl = getTtl(json)) {
+        ttl = jttl;
+    }
 
     for(const auto& obj : json.as_object()) {
         if (auto it = handlers.find(obj.key()); it != handlers.end()) {
@@ -290,7 +321,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
         // Build binary buffer
         StorageBuilder sb;
-        uint32_t ttl = 0; // TODO: Set to some supplied or default value
+        uint32_t ttl = config_.default_ttl;
         build(parsed.fqdn, ttl, sb, json);
 
         try {
@@ -341,13 +372,11 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         return {404, "Not authorative for zone"};
     }
 
-    uint32_t ttl = 0; // TODO: Set to some supplied or default value
-
     if (!existing.isSame()) {
         assert(existing.soa().begin()->type() == TYPE_SOA);
         sb.setZoneLen(existing.soa().begin()->labels().size() -1);
     }
-    build(parsed.fqdn, ttl, sb, parseJson(req.body));
+    build(parsed.fqdn, config_.default_ttl, sb, parseJson(req.body));
 
     bool need_version_increment = false;
 

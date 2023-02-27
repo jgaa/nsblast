@@ -22,14 +22,14 @@ def global_data():
 @pytest.mark.order(1)
 def test_create_zone(global_data):
     zone = """
+      ttl: 1000
       soa:
-        ttl: 1000
         refresh: 2000
         retry: 3000
         expire: 4000
         minimum: 5000
-        mname: hostmaster.example.com
-        rname: ns1.example.com
+        mname: ns1.example.com
+        rname: hostmaster.example.com
       ns:
         - ns1.example.com
         - ns2.example.com
@@ -66,6 +66,9 @@ def test_create_www(global_data):
 @pytest.mark.order(3)
 def test_query_soa(global_data):
     dns = global_data['dns']
-    answers = dns.resolve('example.com', 'SOA')
-    print(answers)
-    assert True
+    answer = dns.resolve('example.com', 'SOA')
+    assert answer.rrset.ttl == 1000
+
+    soa = answer.rrset[0];
+    assert soa.rdtype == 6
+

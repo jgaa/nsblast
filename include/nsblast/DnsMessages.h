@@ -13,6 +13,9 @@ namespace nsblast::lib {
 
 using span_t = boost::span<const char>;
 
+static constexpr uint32_t TTL_MAX = 2147483647; // RFC 2181 8
+uint32_t sanitizeTtl(uint32_t ttl) noexcept;
+
 /*! Representation of RFC1035 labels
  *
  *  A label is a single node in the name-tree.
