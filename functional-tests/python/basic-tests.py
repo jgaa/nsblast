@@ -63,6 +63,22 @@ def test_create_www(global_data):
     print(r.text)
     assert r.ok
 
+@pytest.mark.order(2)
+def test_create_TeSt1(global_data):
+    entry = """
+      ttl: 3600
+      a:
+        - 127.0.0.3
+        - 127.0.0.4
+    """
+
+    print('Creating www.example.com A entry')
+    url = global_data['url'] + '/rr/TeSt1.example.com'
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body)
+    print(r.text)
+    assert r.ok
+
 @pytest.mark.order(3)
 def test_query_soa(global_data):
     dns = global_data['dns']
@@ -72,3 +88,22 @@ def test_query_soa(global_data):
     soa = answer.rrset[0];
     assert soa.rdtype == 6
 
+@pytest.mark.order(3)
+def test_query_soaCase(global_data):
+    dns = global_data['dns']
+    answer = dns.resolve('Example.CoM', 'SOA')
+    assert answer.rrset.ttl == 1000
+
+    soa = answer.rrset[0];
+    assert soa.rdtype == 6 # SOA
+
+@pytest.mark.order(3)
+def test_query_test1Nocase(global_data):
+    dns = global_data['dns']
+    answer = dns.resolve('test1.example.com', 'A')
+    assert answer.rrset.ttl == 3600
+
+    a = answer.rrset[0];
+    assert a.rdtype == 1 # A
+    assert answer.name.to_text(True) == 'TeSt1.example.com'
+    assert answer.name.to_text(True) != 'test1.example.com'
