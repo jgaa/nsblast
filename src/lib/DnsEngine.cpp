@@ -4,6 +4,7 @@
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsEngine.h"
 #include "nsblast/logging.h"
+#include "nsblast/util.h"
 
 
 using namespace std;
@@ -12,13 +13,21 @@ namespace nsblast::lib {
 
 namespace {
 
-
 struct UdpRequest : public DnsEngine::Request {
     boost::asio::ip::udp::endpoint sender_endpoint;
     std::array<char, MAX_UDP_QUERY_BUFFER> buffer_in;
 
     void setBufferLen(size_t bytes) {
         span = {buffer_in.data(), bytes};
+    }
+};
+
+struct TcpRequest : public DnsEngine::Request {
+    std::array<char, 2> size_buffer;
+    std::vector<char> buffer_in;
+
+    void setBufferLen() {
+        span = buffer_in;
     }
 };
 
@@ -41,8 +50,11 @@ public:
         socket_.bind(ep);
     }
 
-    // Endpoint interface
-    void next() override {
+    void start() override {
+        next();
+    }
+
+    void next() {
         // TODO: Use a pool of requests to speed it up...
 
         // We have to use shared ptr to pass ownership to the callback.
@@ -63,7 +75,7 @@ public:
             // Get ready to receive the next request
             // TODO: Add some logic to prevent us from queuing an infinite number of requests
             parent().ctx().post([this] {
-                next();
+                start();
             });
 
             if (error) {
@@ -76,7 +88,7 @@ public:
 
             req->setBufferLen(bytes);
 
-            LOG_DEBUG << "Received a UDP message of " << bytes << " bytes from "
+            LOG_DEBUG << "Received a DNS message of " << bytes << " bytes from "
                       << req->sender_endpoint.address()
                       << " on UDP " << socket_.local_endpoint()
                       << " as request id " << req->uuid;
@@ -93,7 +105,7 @@ public:
 
                 boost::asio::const_buffer cb{message->span().data(), message->span().size()};
 
-                LOG_DEBUG << "Sending a UDP message of " << cb.size() << " bytes to "
+                LOG_DEBUG << "Sending a DNS message of " << cb.size() << " bytes to "
                           << req->sender_endpoint.address()
                           << " from UDP " << socket_.local_endpoint()
                           << " as a reply to request id " << req->uuid;
@@ -129,6 +141,45 @@ private:
     DnsEngine::udp_t::socket socket_;
 };
 
+class TcpEndpoint : public DnsEngine::Endpoint {
+public:
+    class Session {
+        Session();
+
+    private:
+        DnsEngine::tcp_t::socket socket_;
+    };
+
+    TcpEndpoint(DnsEngine& parent, DnsEngine::tcp_t::endpoint ep)
+        : DnsEngine::Endpoint(parent)
+        , acceptor_{parent.ctx(), ep}
+
+    {
+    }
+
+    void start() override {
+        LOG_INFO << "Listening for DNS TCP connections on " << acceptor_.local_endpoint();
+        accept();
+    }
+
+    void accept() {
+        acceptor_.async_accept([this](auto ec, auto socket) {
+           if (ec) {
+               LOG_DEBUG << "Failed to accept TCP connection on " << acceptor_.local_endpoint()
+                         << ": " << ec.message();
+           } else {
+               parent().createTcpSession(move(socket));
+           }
+
+           accept();
+        });
+    }
+
+
+private:
+    boost::asio::ip::tcp::acceptor acceptor_;
+};
+
 
 template<typename T>
 void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std::string& port) {
@@ -148,7 +199,7 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
         assert(ep);
 
         // Start it
-        ep->next();
+        ep->start();
 
         // The engine assumes ownership for the endpoints
         engine.addEndpoint(move(ep));
@@ -157,6 +208,149 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
 
 
 } // anon ns
+
+
+class DnsTcpSession : public std::enable_shared_from_this<DnsTcpSession> {
+public:
+    DnsTcpSession(DnsEngine& parent,  DnsEngine::tcp_t::socket && socket)
+        : parent_{parent}, socket_{move(socket)}
+    {
+    }
+
+    const auto& uuid() const noexcept {
+        return uuid_;
+    }
+
+    void done() {
+        auto self = shared_from_this(); // don't die until we return
+        if (socket_.is_open()) {
+            boost::system::error_code ec; // don't throw
+            socket_.close(ec);
+        }
+        parent_.removeTcpSession(uuid());
+    }
+
+    void next() {
+        if (!socket_.is_open()) {
+            LOG_DEBUG << "DnsTcpSession::next() Socket on request "
+                      << uuid() << " was closed. No next!";
+            return done();
+        }
+
+        // We have to use shared ptr to pass ownership to the callback.
+        // A unique_ptr woun't make it trough all the asio composed trickery
+        auto req = make_shared<TcpRequest>();
+        boost::asio::mutable_buffer mb{req->buffer_in.data(), req->buffer_in.size()};
+
+        // Read message-length
+        socket_.async_receive(mb,
+                              [this, req=req]
+                              (const boost::system::error_code& error,
+                              std::size_t bytes) mutable {
+            if (error) {
+                LOG_DEBUG << "DnsTcpSession::next Failed to read message-length: "
+                          << error;
+                return done();
+            }
+
+            const auto len = get16bValueAt(req->size_buffer, 0);
+            if (!len) {
+                LOG_DEBUG <<  "DnsTcpSession::next Message-length is 0. Saying bibi to client... ";
+                return;
+            }
+            if (len > MAX_TCP_QUERY_LEN) {
+                LOG_DEBUG <<  "DnsTcpSession::next Message-length is " << len
+                         << ". Max allowed query len for this application is "
+                         << MAX_TCP_QUERY_LEN
+                         << ". Saying bibi to client... ";
+                socket_.close();
+                return done();
+            }
+
+            boost::asio::mutable_buffer mb{req->buffer_in.data(), req->buffer_in.size()};
+
+            // Read message
+            socket_.async_receive(mb,
+                                  [this, req=req]
+                                  (const boost::system::error_code& error,
+                                  std::size_t bytes) mutable {
+                if (error) {
+                    LOG_DEBUG << "DnsTcpSession::next Failed to read message-length: "
+                              << error;
+                    return done();
+                }
+
+                assert(req->buffer_in.size() == bytes);
+                req->setBufferLen();
+                req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
+
+                // TODO: Set idle-timer
+
+                LOG_DEBUG << "Received a DNS message of " << bytes << " bytes from "
+                          << socket_.remote_endpoint()
+                          << " on TCP " << socket_.local_endpoint()
+                          << " as request id " << req->uuid;
+
+                try {
+                    auto message = make_shared<MessageBuilder>();
+                    parent_.processRequest(*req, *message);
+
+                    if (message->empty() || message->header().ancount() == 0) {
+                        LOG_DEBUG << "processRequest for request id " << req->uuid
+                                  << " came back empty. Will not reply.";
+                        return done();
+                    }
+
+                    boost::asio::const_buffer cb{message->span().data(), message->span().size()};
+
+                    LOG_DEBUG << "Sending a DNS reply message of " << cb.size() << " bytes to "
+                              << socket_.remote_endpoint()
+                              << " from TCP " << socket_.local_endpoint()
+                              << " as a reply to request id " << req->uuid;
+
+                    socket_.async_send(cb,
+                                       [this, req=req, message=message]
+                                       (const boost::system::error_code& error,
+                                       std::size_t bytes) mutable {
+                        if (error) {
+                            LOG_DEBUG << "DNS request from " << socket_.local_endpoint()
+                                      << " on TCP " << socket_.local_endpoint()
+                                      << " for request id " << req->uuid
+                                      << " failed to send reply: " << error.message();
+                            return done();
+                        }
+
+                        LOG_DEBUG << "Successfully replied to DNS message from "
+                                  << socket_.local_endpoint()
+                                  << " on TCP " << socket_.local_endpoint()
+                                  << " for request id " << req->uuid;
+                    });
+                } catch (const std::exception& ex) {
+                    LOG_ERROR << "DNS request from " << socket_.local_endpoint()
+                             << " on UDP " << socket_.local_endpoint()
+                             << " for request id " << req->uuid
+                             << " failed processing: " << ex.what();
+                }
+            });
+        });
+
+        // Get ready for another message. We do pipelining and parallel things here!
+        weak_ptr wp = weak_from_this();
+        parent_.ctx().post([wp] {
+            if (auto self = wp.lock()) {
+                self->next();
+            }
+        });
+
+        // Queue query
+    }
+
+private:
+    const boost::uuids::uuid uuid_ = newUuid();
+    DnsEngine& parent_;
+    DnsEngine::tcp_t::socket socket_;
+};
+
 
 DnsEngine::DnsEngine(const Config &config, ResourceIf &resource)
     : resource_{resource}, config_{config}
@@ -341,5 +535,57 @@ void DnsEngine::startIoThreads()
     }
 }
 
+DnsEngine::tcp_session_t DnsEngine::createTcpSession(DnsEngine::tcp_t::socket && socket)
+{
+    const auto rep = socket.remote_endpoint();
+    const auto lep = socket.local_endpoint();
+    tcp_session_t session;
+    try {
+        session = make_shared<DnsTcpSession>(*this, move(socket));
+    } catch (const exception& ex) {
+        LOG_WARN << "Failed to start connection from " << rep
+                 << " to " << lep;
+        return {};
+    }
+
+    // TODO: set up configuration for the session; idle time etc.
+
+
+    LOG_DEBUG << "Starting new DNS TCP connection from "
+              << rep << " to (my interface) " << lep << " as session "
+              << session->uuid();
+
+    {
+        lock_guard<mutex> lock{tcp_session_mutex_};
+        tcp_sessions_.emplace(session->uuid(), session);
+    }
+
+    // Since the DnsEngine has ownership of the session, there is
+    // a remote possibility that it will be orphaned before we get a
+    // chance to run the code in the lambda. Therefore, we use
+    // a weak pointer so we can easily detect this corner-case and handle
+    // it correctly.
+    auto w = session->weak_from_this();
+    ctx().post([w] {
+        if (auto self = w.lock()) {
+            // Start the session
+            self->next();
+        } else {
+            LOG_DEBUG << "DnsEngine::createTcpSession / start session lambda: Session was orphaned!";
+        }
+    });
+
+    return session;
+}
+
+void DnsEngine::removeTcpSession(boost::uuids::uuid uuid)
+{
+    LOG_DEBUG << "Removing TCP connection " << uuid;
+
+    {
+        lock_guard<mutex> lock{tcp_session_mutex_};
+        tcp_sessions_.erase(uuid);
+    }
+}
 
 } // ns

@@ -9,12 +9,17 @@
 
 namespace nsblast::lib {
 
+class DnsTcpSession;
+
 class DnsEngine {
 public:
     using udp_t = boost::asio::ip::udp;
     using tcp_t = boost::asio::ip::tcp;
+    using tcp_session_t = std::shared_ptr<DnsTcpSession>;
 
     struct Request {
+        virtual ~Request() = default;
+
         boost::span<const char> span;
         boost::uuids::uuid uuid = newUuid();
         // We set the truncate flag if we reach this limit.
@@ -28,7 +33,7 @@ public:
 
         virtual ~Endpoint() = default;
 
-        virtual void next() = 0;
+        virtual void start() = 0;
 
         auto& parent() {
             return parent_;
@@ -68,6 +73,11 @@ public:
         return ctx_;
     }
 
+    /*! Create and start a TCP session */
+    tcp_session_t createTcpSession(tcp_t::socket && socket);
+
+    void removeTcpSession(boost::uuids::uuid uuid);
+
 private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;
 
@@ -80,6 +90,9 @@ private:
     endpoints_t endpoints_;
     std::vector<std::thread> workers_;
     std::once_flag stop_once_;
+
+    std::map<boost::uuids::uuid, tcp_session_t> tcp_sessions_; // Own the TCP session instances
+    std::mutex tcp_session_mutex_;
 };
 
 

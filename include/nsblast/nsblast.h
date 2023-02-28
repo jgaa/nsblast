@@ -102,5 +102,7 @@ static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
 constexpr char CURRENT_STORAGE_VERSION = 1;
 
 static constexpr size_t MAX_UDP_QUERY_BUFFER = 512;
+static constexpr size_t MAX_TCP_QUERY_LEN = 1024 * 4; // If longer, something smells!
+static constexpr size_t MAX_TCP_MESSAGE_BUFFER = 1024 * 6; // Default for normal queries (not zone transfers)
 
 } // ns

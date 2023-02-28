@@ -1,6 +1,7 @@
 #pragma once
 
 #include <variant>
+#include <boost/asio.hpp>
 #include <boost/core/span.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -10,6 +11,40 @@
 
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
+
+    template <typename T, typename I>
+    I getValueAt(const T& b, size_t loc) {
+        if (loc + (sizeof(I) -1) >= b.size()) {
+            throw std::runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
+        }
+
+        auto *v = reinterpret_cast<const I *>(b.data() + loc);
+
+        auto constexpr ilen = sizeof(I);
+
+        if constexpr (ilen == 1) {
+            return *v;
+        } else if constexpr (ilen == 2) {
+            return ntohs(*v);
+        } else if constexpr (ilen == 4) {
+            return ntohl(*v);
+        } else {
+            static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "getValueAt: Unexpected integer length");
+        }
+
+        throw std::runtime_error{"getValueAt: Something is very, very wrong..."};
+    }
+
+    template <typename T>
+    auto get16bValueAt(const T& b, size_t loc) {
+        return getValueAt<T, uint16_t>(b, loc);
+    }
+
+    template <typename T>
+    auto get32bValueAt(const T& b, size_t loc) {
+        return getValueAt<T, uint32_t>(b, loc);
+    }
+
 
     // ASCII tolower
     template <typename T>
