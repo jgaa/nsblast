@@ -7,6 +7,7 @@
 - [x] Reply
 - [ ] Logging of all or relevant requests
 - [ ] Pending RR types
+    - [ ] OPT
     - [ ] AXFR
     - [ ] IXFR
     - [ ] DNSSEC types
