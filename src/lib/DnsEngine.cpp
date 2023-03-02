@@ -196,6 +196,11 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
             ep = make_shared<UdpEndpoint>(engine, addr);
         }
 
+        if constexpr (std::is_same_v<ip_t, DnsEngine::tcp_t>) {
+            LOG_INFO << "Starting DNS/TCP endpoint: " << addr.endpoint();
+            ep = make_shared<TcpEndpoint>(engine, addr);
+        }
+
         assert(ep);
 
         // Start it
@@ -222,133 +227,187 @@ public:
     }
 
     void done() {
-        auto self = shared_from_this(); // don't die until we return
-        if (socket_.is_open()) {
-            boost::system::error_code ec; // don't throw
-            socket_.close(ec);
+        if (!done_) {
+            auto self = shared_from_this(); // don't die until we return
+            if (socket_.is_open()) {
+                boost::system::error_code ec; // don't throw
+                socket_.close(ec);
+            }
+            parent_.removeTcpSession(uuid());
+            done_ = true;
         }
-        parent_.removeTcpSession(uuid());
+    }
+
+    static std::shared_ptr<DnsTcpSession>
+    validate(std::weak_ptr<DnsTcpSession>&w, const TcpRequest& req, string_view what,
+             boost::system::error_code ec = {}) {
+        if (auto self = w.lock()) {
+            if (self->done_) {
+                LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                          << " for req " << req.uuid << " was done while "
+                          << what;
+                return {};
+            }
+
+            if (self->validate(req, what, ec)) {
+                return self;
+            }
+
+            return {}; // failed validation
+        }
+        LOG_DEBUG << "DnsTcpSession for req " << req.uuid << " was removed while "
+                  << what;
+
+        return {};
+    }
+
+    bool validate(const TcpRequest& req, string_view what,
+             boost::system::error_code ec = {}) {
+        if (done_) {
+            LOG_DEBUG << "DnsTcpSession " << uuid()
+                      << " for req " << req.uuid << " was done while "
+                      << what;
+            return false;
+        }
+
+        if (ec) {
+            LOG_DEBUG << "DnsTcpSession " << uuid()
+                      << " for req " << req.uuid << " failed with error '"
+                      << ec << "' on " << what;
+            done();
+            return false;
+        }
+
+        if (!socket_.is_open()) {
+            LOG_DEBUG << "DnsTcpSession " << uuid()
+                      << " for req " << req.uuid << " has its socked closedwhile "
+                      << what;
+            done();
+            return false;
+        }
+
+        LOG_TRACE << "DnsTcpSession " << uuid()
+                  << " for req " << req.uuid << " proceeding after "
+                  << what;
+
+        return true;
     }
 
     void next() {
-        if (!socket_.is_open()) {
-            LOG_DEBUG << "DnsTcpSession::next() Socket on request "
-                      << uuid() << " was closed. No next!";
-            return done();
+        auto req = make_shared<TcpRequest>();
+        if (!validate(*req, "next")) {
+            return;
         }
 
-        // We have to use shared ptr to pass ownership to the callback.
-        // A unique_ptr woun't make it trough all the asio composed trickery
-        auto req = make_shared<TcpRequest>();
-        boost::asio::mutable_buffer mb{req->buffer_in.data(), req->buffer_in.size()};
-
         // Read message-length
-        socket_.async_receive(mb,
-                              [this, req=req]
-                              (const boost::system::error_code& error,
-                              std::size_t bytes) mutable {
-            if (error) {
-                LOG_DEBUG << "DnsTcpSession::next Failed to read message-length: "
-                          << error;
-                return done();
-            }
-
-            const auto len = get16bValueAt(req->size_buffer, 0);
-            if (!len) {
-                LOG_DEBUG <<  "DnsTcpSession::next Message-length is 0. Saying bibi to client... ";
-                return;
-            }
-            if (len > MAX_TCP_QUERY_LEN) {
-                LOG_DEBUG <<  "DnsTcpSession::next Message-length is " << len
-                         << ". Max allowed query len for this application is "
-                         << MAX_TCP_QUERY_LEN
-                         << ". Saying bibi to client... ";
-                socket_.close();
-                return done();
-            }
-
-            boost::asio::mutable_buffer mb{req->buffer_in.data(), req->buffer_in.size()};
-
-            // Read message
-            socket_.async_receive(mb,
-                                  [this, req=req]
-                                  (const boost::system::error_code& error,
-                                  std::size_t bytes) mutable {
-                if (error) {
-                    LOG_DEBUG << "DnsTcpSession::next Failed to read message-length: "
-                              << error;
-                    return done();
+        auto w = weak_from_this();
+        socket_.async_receive(to_asio_buffer(req->size_buffer),
+                                    [w, req=req]
+                                    (const boost::system::error_code& error,
+                                    std::size_t bytes) mutable {
+            if (auto self = validate(w, *req, "read message-length")) {
+                const auto len = get16bValueAt(req->size_buffer, 0);
+                if (!len) {
+                    LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                              << " for req " << req->uuid
+                              << " contains a 0 bytes DNS query. That's not valid DNS-speak.";
+                    self->done();
+                    return;
+                }
+                if (len > MAX_TCP_QUERY_LEN) {
+                    LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                              << " for req " << req->uuid
+                              << " contains a " << len << " bytes DNS query. "
+                              << "My upper limit is " << MAX_TCP_QUERY_LEN << " bytes!";
+                    self->done();
+                    return;
                 }
 
-                assert(req->buffer_in.size() == bytes);
-                req->setBufferLen();
-                req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
+                req->buffer_in.resize(len);
 
-                // TODO: Set idle-timer
+                // Read message
+                self->socket_.async_receive(to_asio_buffer(req->buffer_in),
+                                      [w, req=req]
+                                      (const boost::system::error_code& error,
+                                      std::size_t bytes) mutable {
 
-                LOG_DEBUG << "Received a DNS message of " << bytes << " bytes from "
-                          << socket_.remote_endpoint()
-                          << " on TCP " << socket_.local_endpoint()
-                          << " as request id " << req->uuid;
+                    if (auto self = validate(w, *req, "read message")) {
+                        assert(req->buffer_in.size() == bytes);
+                        req->setBufferLen();
+                        req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
 
-                try {
-                    auto message = make_shared<MessageBuilder>();
-                    parent_.processRequest(*req, *message);
+                        // TODO: Set idle-timer
 
-                    if (message->empty() || message->header().ancount() == 0) {
-                        LOG_DEBUG << "processRequest for request id " << req->uuid
-                                  << " came back empty. Will not reply.";
-                        return done();
-                    }
+                        LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                                  << " received a DNS message of " << bytes << " bytes from "
+                                  << self->socket_.remote_endpoint()
+                                  << " on TCP " << self->socket_.local_endpoint()
+                                  << " as request id " << req->uuid;
 
-                    boost::asio::const_buffer cb{message->span().data(), message->span().size()};
+                        // Get ready for the next message. We do pipelining and parallel things here!
+                        // TODO: Protect against flooding / DoS attacks
+                        self->parent_.ctx().post([w] {
+                            if (auto self = w.lock()) {
+                                self->next();
+                            }
+                        });
 
-                    LOG_DEBUG << "Sending a DNS reply message of " << cb.size() << " bytes to "
-                              << socket_.remote_endpoint()
-                              << " from TCP " << socket_.local_endpoint()
-                              << " as a reply to request id " << req->uuid;
+                        try {
+                            auto message = make_shared<MessageBuilder>();
+                            self->parent_.processRequest(*req, *message);
 
-                    socket_.async_send(cb,
-                                       [this, req=req, message=message]
-                                       (const boost::system::error_code& error,
-                                       std::size_t bytes) mutable {
-                        if (error) {
-                            LOG_DEBUG << "DNS request from " << socket_.local_endpoint()
-                                      << " on TCP " << socket_.local_endpoint()
-                                      << " for request id " << req->uuid
-                                      << " failed to send reply: " << error.message();
-                            return done();
+                            if (message->empty() || message->header().ancount() == 0) {
+                                LOG_DEBUG << "processRequest for request id " << req->uuid
+                                          << " came back empty. Will not reply.";
+                                return self->done();
+                            }
+
+                            const auto reply_len = static_cast<uint16_t>(message->span().size());
+                            setValueAt(req->size_buffer, 0, reply_len);
+
+                            LOG_DEBUG << "Sending a DNS reply message of "
+                                      << reply_len << " bytes to "
+                                      << self->socket_.remote_endpoint()
+                                      << " from TCP " << self->socket_.local_endpoint()
+                                      << " as a reply to request id " << req->uuid
+                                      << " on TCP session " << self->uuid();
+
+                            array<boost::asio::const_buffer, 2> buffers{
+                                to_asio_buffer(req->size_buffer),
+                                to_asio_buffer(message->span())
+                            };
+
+                            self->socket_.async_send(buffers,
+                                               [w, req=req, message=message]
+                                               (const boost::system::error_code& error,
+                                               std::size_t bytes) mutable {
+
+                                if (auto self = validate(w, *req, "sent reply", error)) {
+                                    LOG_DEBUG << "Successfully replied to DNS message from "
+                                          << self->socket_.local_endpoint()
+                                          << " on TCP " << self->socket_.local_endpoint()
+                                          << " for request id " << req->uuid;
+                                }
+                            });
+                        } catch (const std::exception& ex) {
+                            LOG_ERROR << "DNS request from " << self->socket_.local_endpoint()
+                                     << " on UDP " << self->socket_.local_endpoint()
+                                     << " for request id " << req->uuid
+                                     << " failed with exception: " << ex.what();
+
+                            self->done();
                         }
-
-                        LOG_DEBUG << "Successfully replied to DNS message from "
-                                  << socket_.local_endpoint()
-                                  << " on TCP " << socket_.local_endpoint()
-                                  << " for request id " << req->uuid;
-                    });
-                } catch (const std::exception& ex) {
-                    LOG_ERROR << "DNS request from " << socket_.local_endpoint()
-                             << " on UDP " << socket_.local_endpoint()
-                             << " for request id " << req->uuid
-                             << " failed processing: " << ex.what();
-                }
-            });
-        });
-
-        // Get ready for another message. We do pipelining and parallel things here!
-        weak_ptr wp = weak_from_this();
-        parent_.ctx().post([wp] {
-            if (auto self = wp.lock()) {
-                self->next();
-            }
-        });
-
-        // Queue query
-    }
+                    } // validated message
+                }); // received message
+            } // validated message-length
+        }); // received message-length
+    } // next()
 
 private:
     const boost::uuids::uuid uuid_ = newUuid();
     DnsEngine& parent_;
     DnsEngine::tcp_t::socket socket_;
+    bool done_ = false;
 };
 
 
@@ -509,6 +568,7 @@ again:
 void DnsEngine::startEndpoints()
 {
     doStartEndpoints<udp_t>(*this, config_.dns_endpoint, config_.dns_udp_port);
+    doStartEndpoints<tcp_t>(*this, config_.dns_endpoint, config_.dns_tcp_port);
 }
 
 void DnsEngine::startIoThreads()

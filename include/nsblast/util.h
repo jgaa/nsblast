@@ -14,7 +14,8 @@ namespace nsblast::lib {
 
     template <typename T, typename I>
     I getValueAt(const T& b, size_t loc) {
-        if (loc + (sizeof(I) -1) >= b.size()) {
+        const auto tlen = sizeof(I);
+        if (loc + (tlen -1) >= b.size()) {
             throw std::runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
         }
 
@@ -45,6 +46,26 @@ namespace nsblast::lib {
         return getValueAt<T, uint32_t>(b, loc);
     }
 
+    template <typename T, typename I>
+    void setValueAt(const T& b, size_t loc, I value) {
+        if (loc + (sizeof(I) -1) >= b.size()) {
+            throw std::runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
+        }
+
+        auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
+
+        auto constexpr ilen = sizeof(I);
+
+        if constexpr (ilen == 1) {
+            *v = value;
+        } else if constexpr (ilen == 2) {
+            *v = htons(value);
+        } else if constexpr (ilen == 4) {
+            *v = htonl(value);
+        } else {
+            static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "setValueAt: Unexpected integer length");
+        }
+    }
 
     // ASCII tolower
     template <typename T>
@@ -143,5 +164,14 @@ namespace nsblast::lib {
      *     getNextKey("www.example.com") returns "example.com"
      */
     span_t getNextKey(span_t fqdn) noexcept;
+
+    template <typename T> auto to_asio_buffer(T& b) {
+        return boost::asio::mutable_buffer{b.data(), b.size()};
+    }
+
+    template <typename T> auto to_asio_buffer(const T& b) {
+        return boost::asio::const_buffer{b.data(), b.size()};
+    }
+
 
 } // ns

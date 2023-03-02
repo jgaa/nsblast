@@ -37,59 +37,6 @@ struct hdrbits {
 };
 #pragma pack(0)
 
-//template <typename T, typename I>
-//I getValueAt(const T& b, size_t loc) {
-//    if (loc + (sizeof(I) -1) >= b.size()) {
-//        throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
-//    }
-
-//    auto *v = reinterpret_cast<const I *>(b.data() + loc);
-
-//    auto constexpr ilen = sizeof(I);
-
-//    if constexpr (ilen == 1) {
-//        return *v;
-//    } else if constexpr (ilen == 2) {
-//        return ntohs(*v);
-//    } else if constexpr (ilen == 4) {
-//        return ntohl(*v);
-//    } else {
-//        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "getValueAt: Unexpected integer length");
-//    }
-
-//    throw runtime_error{"getValueAt: Something is very, very wrong..."};
-//}
-
-//template <typename T>
-//auto get16bValueAt(const T& b, size_t loc) {
-//    return getValueAt<T, uint16_t>(b, loc);
-//}
-
-//template <typename T>
-//auto get32bValueAt(const T& b, size_t loc) {
-//    return getValueAt<T, uint32_t>(b, loc);
-//}
-
-template <typename T, typename I>
-void setValueAt(const T& b, size_t loc, I value) {
-    if (loc + (sizeof(I) -1) >= b.size()) {
-        throw runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
-    }
-
-    auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
-
-    auto constexpr ilen = sizeof(I);
-
-    if constexpr (ilen == 1) {
-        *v = value;
-    } else if constexpr (ilen == 2) {
-        *v = htons(value);
-    } else if constexpr (ilen == 4) {
-        *v = htonl(value);
-    } else {
-        static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "setValueAt: Unexpected integer length");
-    }
-}
 
 
 template <typename T>
@@ -107,7 +54,7 @@ void inc16BitValueAt(T& b, size_t loc) {
 template <typename T>
 auto getHdrFlags(const T& b) {
     if (b.size() < Message::Header::SIZE) {
-        throw runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
+        throw runtime_error{"getHdrFlags: Cannot get value outside range of buffer!"};
     }
     const auto hdrptr = b.data() + 2;
     const auto bits = reinterpret_cast<const hdrbits *>(hdrptr);
@@ -117,7 +64,7 @@ auto getHdrFlags(const T& b) {
 template <typename T>
 void setHdrFlags(T& b, hdrbits newBits) {
     if (b.size() < Message::Header::SIZE) {
-        throw runtime_error{"getValueAt: Cannot set value outside range of buffer!"};
+        throw runtime_error{"setHdrFlags: Cannot set value outside range of buffer!"};
     }
     auto hdrptr = b.data() + 2;
     auto bits = reinterpret_cast<hdrbits *>(hdrptr);
@@ -129,7 +76,7 @@ void setHdrFlags(T& b, hdrbits newBits) {
 MessageBuilder::NewHeader
 MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcode, bool rd)
 {
-    assert(buffer_.empty());
+    assert(buffer_.empty() || buffer_.size() == 2);
 
     increaseBuffer(Header::SIZE);
 
