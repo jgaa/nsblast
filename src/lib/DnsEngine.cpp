@@ -1,5 +1,7 @@
 
+
 #include <boost/scope_exit.hpp>
+#include <boost/chrono.hpp>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsEngine.h"
@@ -8,6 +10,7 @@
 
 
 using namespace std;
+using namespace std::chrono_literals;
 
 namespace nsblast::lib {
 
@@ -219,7 +222,13 @@ class DnsTcpSession : public std::enable_shared_from_this<DnsTcpSession> {
 public:
     DnsTcpSession(DnsEngine& parent,  DnsEngine::tcp_t::socket && socket)
         : parent_{parent}, socket_{move(socket)}
+        , idle_timer_{socket_.get_executor()}
     {
+        setIdleTimer();
+    }
+
+    ~DnsTcpSession() {
+        LOG_DEBUG << "DnsTcpSession " << uuid_ << " is history...";
     }
 
     const auto& uuid() const noexcept {
@@ -255,6 +264,7 @@ public:
 
             return {}; // failed validation
         }
+
         LOG_DEBUG << "DnsTcpSession for req " << req.uuid << " was removed while "
                   << what;
 
@@ -280,7 +290,7 @@ public:
 
         if (!socket_.is_open()) {
             LOG_DEBUG << "DnsTcpSession " << uuid()
-                      << " for req " << req.uuid << " has its socked closedwhile "
+                      << " for req " << req.uuid << " has its socked closed while "
                       << what;
             done();
             return false;
@@ -293,6 +303,39 @@ public:
         return true;
     }
 
+    void setIdleTimer() {
+        if (!parent_.config().dns_tcp_idle_time) {
+            LOG_WARN << "DnsTcpSession: 'dns-tcp-idle-time' is set to 0 (disabled)";
+            return;
+        }
+
+        idle_timer_.cancel();
+        idle_timer_.expires_from_now(boost::posix_time::seconds{parent_.config().dns_tcp_idle_time});
+
+        if (!done_) {
+            idle_timer_.async_wait([this] (boost::system::error_code ec) {
+               if (ec) {
+                   if (ec == boost::asio::error::operation_aborted) {
+                       LOG_TRACE << "DnsTcpSession " << uuid()
+                                 << " idle-timer aborted. Ignoring.";
+                       return;
+                   }
+
+                   LOG_WARN << "DnsTcpSession " << uuid()
+                            << " idle-timer - unexpected error " << ec;
+               }
+
+               if (!done_) {
+                   LOG_DEBUG << "DnsTcpSession " << uuid()
+                         << " idle-timer expiered. Closing session.";
+                   done();
+               }
+            });
+        }
+    }
+
+    // Note: Legacy IO with chained callbacks. Not coroutines.
+    // Buffers must be in shard_ptr's passed down the chain.
     void next() {
         auto req = make_shared<TcpRequest>();
         if (!validate(*req, "next")) {
@@ -310,7 +353,7 @@ public:
                 if (!len) {
                     LOG_DEBUG << "DnsTcpSession " << self->uuid()
                               << " for req " << req->uuid
-                              << " contains a 0 bytes DNS query. That's not valid DNS-speak.";
+                              << " contains a 0 bytes DNS query. Assuming other end closed the connection.";
                     self->done();
                     return;
                 }
@@ -336,7 +379,7 @@ public:
                         req->setBufferLen();
                         req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
 
-                        // TODO: Set idle-timer
+                        self->setIdleTimer();
 
                         LOG_DEBUG << "DnsTcpSession " << self->uuid()
                                   << " received a DNS message of " << bytes << " bytes from "
@@ -408,6 +451,7 @@ private:
     DnsEngine& parent_;
     DnsEngine::tcp_t::socket socket_;
     bool done_ = false;
+    boost::asio::deadline_timer idle_timer_;
 };
 
 

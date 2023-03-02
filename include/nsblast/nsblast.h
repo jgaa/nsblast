@@ -61,6 +61,9 @@ struct Config {
     /*! The default tts set on Record Sets (including the SOA) if the ttl is not set in the Json Entry when creating the entry. */
     uint32_t default_ttl = DEFAULT_TTL;
 
+    /*! DNS TCP connection idle time for QUERY sessions in seconds */
+    uint32_t dns_tcp_idle_time = 3;
+
     ///@}
 
     /*! \name HTTP */

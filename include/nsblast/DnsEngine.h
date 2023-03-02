@@ -73,6 +73,10 @@ public:
         return ctx_;
     }
 
+    auto& config() const noexcept {
+        return config_;
+    }
+
     /*! Create and start a TCP session */
     tcp_session_t createTcpSession(tcp_t::socket && socket);
 
