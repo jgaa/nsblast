@@ -1,7 +1,7 @@
 
 # DNS server
 - [x] Sockets / UDP
-- [ ] Sockets / TCP
+- [x] Sockets / TCP
 - [x] Parse incoming messages
 - [x] Compose replies to queries
 - [x] Reply
