@@ -25,6 +25,8 @@ tags:
   description: "Operations about a user"
 - name: "namespace"
   description: "Operations about a namespace"
+- name: "config"
+  description: "Local server configuration (admin access)"
 
 # schemes:
 # - "https"
@@ -187,7 +189,151 @@ paths:
         "404":
           description: Fdqn not found
           
+  /config/{zone}/master:
+    parameters:
+    - in: path
+      name: zone
+      description: fqdn for the zone
+      required: true
+      type: string
+      
+    post:
+      tags:
+      - config
+      summary: "Configure the server as a slave for the zone"
+      description: "The zone is added to the list of zones the server serves as a slave (in nsblasts internal database)."
+      operationId: "configAddMaster"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the configuraytion."
+        required: true
+        schema:
+          $ref: "#/definitions/MasterZone"
+      responses:
+        "400":
+          description: "Invalid input"
+        "409":
+          description: "Already exist"
+          
+    put:
+      tags:
+      - config
+      summary: "Configure or update the server as a slave for the zone."
+      description: "The zone is added to the list of zones the server serves as a slave (in nsblasts internal database). PUT will either create or re-write the config."
+      operationId: "configPutMaster"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the configuraytion."
+        required: true
+        schema:
+          $ref: "#/definitions/MasterZone"
+      responses:
+        "400":
+          description: "Invalid input"
+        "409":
+          description: "Already exist"
+          
+    patch:
+      tags:
+      - config
+      summary: "Configure or update the server as a slave for the zone"
+      description: "The zone is added to the list of zones the server serves as a slave (in nsblasts internal database). PATCH will either create or merge the config, by leaving existing entities that is not mentioed in the json document as is."
+      operationId: "configPatchMaster"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the configuraytion."
+        required: true
+        schema:
+          $ref: "#/definitions/MasterZone"
+      responses:
+        "400":
+          description: "Invalid input"
+        "409":
+          description: "Already exist"
+          
+    delete:
+      tags:
+      - config
+      summary: "Remove the server as a slave for the zone"
+      description: "This command removes the zone from the list of slave-zones on this server. It will not remove the server from the master-servers SOA record."
+      operationId: "configDeleteMaster"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Ok"
+        "400":
+          description: "Invalid input"
+        "404":
+          description: "Config not found"
+        "409":
+          description: "Already exist"
+  
+  
 definitions:
+
+  Master:
+    type: object
+    required:
+      - hostname
+    properties:
+      hostname:
+        type: string
+        description: Hostname or (better) IP to the primary name server to update the zone from.
+      port:
+        type: integer
+        default: 53
+      refresh:
+        type: integer
+        default: 600
+      strategy:
+        type: string
+        default: axfr
+        description: "How to update the local zone-data from the master-server. Can be one of: axfr,  "
+        
+  Contact:
+    type: object
+    properties:
+      name:
+        type: string
+      email:
+        type: string
+      phone:
+        type: string
+      notes:
+        type: string
+
+  MasterZone:
+    type: object
+    required:
+      - master
+    properties:
+      uuid: 
+        type: string
+      master: 
+        $ref: "#/definitions/Master"
+      contact:
+        $ref: "#/definitions/Contact"
+      active:
+        type: boolean
+        default: true
+      notes:
+        type: string
 
   Uuid:
     type: object

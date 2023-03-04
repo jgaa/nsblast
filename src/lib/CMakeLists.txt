@@ -10,6 +10,8 @@ add_custom_command(
     COMMENT "Embedding swagger..."
     )
 
+ADD_SUBDIRECTORY(proto)
+
 add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/ApiEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
@@ -36,12 +38,18 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${NSBLAST_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<BUILD_INTERFACE:${PROTOBUF_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:include>
     PRIVATE $Boost_INCLUDE_DIR
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
 add_dependencies(${PROJECT_NAME} rocksdb logfault mkres externalYahat)
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        $<BUILD_INTERFACE:${Protobuf_LIBRARIES}>
+        $<BUILD_INTERFACE:proto>
+    )
 
 install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Config
     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

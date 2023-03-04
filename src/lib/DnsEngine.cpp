@@ -584,7 +584,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
             // TODO: Check if the caller is allowed to do AXFR!
             out_buffer_len = config_.dns_max_large_tcp_buffer_size;
 
-            auto flush_if = [&mb, &request, &message, &hdr, &send, &out_buffer_len](const Rr& rr) {
+            auto flush_if = [&](const Rr& rr) {
                 if (mb->size() + rr.size() >= mb->maxBufferSize()) {
                     // Flush
                     LOG_TRACE << "DnsEngine::processRequest Flushing full reply-buffer";

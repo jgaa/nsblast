@@ -23,6 +23,7 @@ find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads)
 find_package(BZip2 REQUIRED)
+find_package(Protobuf REQUIRED)
 
 if (NSBLAST_WITH_DOCS)
     find_package(Doxygen REQUIRED)

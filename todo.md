@@ -15,7 +15,7 @@
 - [ ] Otimize the resolver to process related questions in in one loop (for example A and AAAA queries for the same fqdn)
 - [ ] Handle the mname and NS entries for a new zone automatically
 - [ ] See if a cache in front of rocksdb significantly speeds the server up.
-- [ ] Handle child zones during zone-transfers if we happen to own both.
+- [x] Handle child zones during zone-transfers if we happen to own both.
 - [ ] Handle parallel TCP requests. (Use task-based work-flow in stead of connection based?).
 
 # Master DNS configuration

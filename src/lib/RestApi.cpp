@@ -7,6 +7,7 @@
 #include "nsblast/logging.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
+#include "proto/nsblast.pb.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -61,6 +62,11 @@ Response RestApi::onReqest(const Request &req, const Auth &auth)
         return onZone(req, p);
     }
 
+    if (p.what == "config") {
+        if (p.operation == "master") {
+
+        }
+    }
 
     LOG_DEBUG << "Unknown subpath: " << p.what;
     return {404, "Unknown subpath"};
