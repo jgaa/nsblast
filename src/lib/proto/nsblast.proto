@@ -1,0 +1,27 @@
+syntax = "proto2";
+
+package nsblast;
+
+// Master ns for the zone. Only populated on slaves
+message Master {
+    required string hostname = 1; // Hostname or IP to master
+    optional uint32 port = 2; // Optional port fo the master (useful for testing)
+    optional int32 refresh = 3; // Refresh interval in seconds
+    optional string strategy = 4; // Strategy for refresh.
+}
+
+// Contact-person for the zone
+message Contact {
+    required string name = 1;
+    optional string email = 2;
+    optional string phone = 3;
+    optional string notes = 4;
+}
+
+message Zone {
+    required string uuid = 1; // Unique identifier for the zone
+    optional Master master = 2; // If present in a server, this server is a slave for this zone
+    optional Contact contact = 3;
+    required bool active = 4;
+    optional string notes = 5;
+}
