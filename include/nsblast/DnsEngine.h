@@ -24,6 +24,8 @@ public:
         boost::uuids::uuid uuid = newUuid();
         // We set the truncate flag if we reach this limit.
         uint32_t maxReplyBytes = MAX_UDP_QUERY_BUFFER;
+        bool is_tcp = false;
+        mutable bool is_axfr = false;
     };
 
     class Endpoint {
@@ -61,13 +63,22 @@ public:
     void start();
     void stop();
 
+    /*! Functor used to send a DNS reply
+     *
+     *  \param data Contains a message to send
+     *  \param final true if this is the sole or final message in the reply.
+     */
+    using send_t = std::function<void(std::shared_ptr<MessageBuilder>& data, bool final)>;
+
     /*! Process a request
      *
      *  \param request RFC1035 Message in raw, binary format
-     *  \param mb MessageBuilder instance where the reply will be constructed
+     *  \param send Functor that will send the reply. Fort TCP connection, the
+     *              functor may be called several times to send a series with
+     *              replied, for example for an AXFR reply.
      *
      */
-    void processRequest(const Request& request, MessageBuilder& mb);
+    void processRequest(const Request& request, const send_t& send);
 
     boost::asio::io_context& ctx() {
         return ctx_;

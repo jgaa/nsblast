@@ -28,6 +28,7 @@ public:
         // TransactionIf interface
         RrAndSoa lookupEntryAndSoa(key_t fqdn) override;
         EntryWithBuffer lookup(key_t fqdn) override;
+        void iterate(key_t, iterator_fn_t fn) override;
         bool keyExists(key_t key) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
         void write(key_t key, data_t data, bool isNew) override;
@@ -35,6 +36,20 @@ public:
         void remove(key_t key, bool recursive) override;
         void commit() override;
         void rollback() override;
+
+        /*! Search for a key and return the range of keys that match
+         *
+         *  Used for example for zone transfers, where the key would be the
+         *  fqdn to the zone, and the range would be all entries starting
+         *  with that key.
+         *
+         *  Interlally a rocksdb iterator is opened for the key, and the user
+         *  can iterate over the range as it is lazily fetched from the database.
+         *
+         *  The range should be closed or disposed over as quick as possible to
+         *  not keep the rocksdb iterator open longer than required.
+         */
+        //Range search(key_t key);
 
         auto operator -> () {
             return trx_.get();
@@ -44,6 +59,9 @@ public:
         RocksDbResource& owner_;
         std::once_flag once_;
         std::unique_ptr<ROCKSDB_NAMESPACE::Transaction> trx_;
+
+        // TransactionIf interface
+    public:
     };
 
     RocksDbResource(const Config& config);

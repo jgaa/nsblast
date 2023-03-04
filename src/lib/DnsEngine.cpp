@@ -2,6 +2,7 @@
 
 #include <boost/scope_exit.hpp>
 #include <boost/chrono.hpp>
+#include <boost/asio/spawn.hpp>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsEngine.h"
@@ -31,6 +32,7 @@ struct TcpRequest : public DnsEngine::Request {
 
     void setBufferLen() {
         span = buffer_in;
+        is_tcp = true;
     }
 };
 
@@ -97,39 +99,38 @@ public:
                       << " as request id " << req->uuid;
 
             try {
-                auto message = make_shared<MessageBuilder>();
-                parent().processRequest(*req, *message);
-
-                if (message->empty() || message->header().ancount() == 0) {
-                    LOG_DEBUG << "processRequest for request id " << req->uuid
-                              << " came back empty. Will not reply.";
-                    return;
-                }
-
-                boost::asio::const_buffer cb{message->span().data(), message->span().size()};
-
-                LOG_DEBUG << "Sending a DNS message of " << cb.size() << " bytes to "
-                          << req->sender_endpoint.address()
-                          << " from UDP " << socket_.local_endpoint()
-                          << " as a reply to request id " << req->uuid;
-
-                socket_.async_send_to(cb,
-                                      req->sender_endpoint,
-                                      [this, req=req, message=message]
-                                      (const boost::system::error_code& error,
-                                      std::size_t bytes) mutable {
-                    if (error) {
-                        LOG_WARN << "DNS request from " << socket_.local_endpoint()
-                                 << " on UDP " << socket_.local_endpoint()
-                                 << " for request id " << req->uuid
-                                 << " failed to send reply: " << error.message();
+                parent().processRequest(*req, [req, this](std::shared_ptr<MessageBuilder>& message, bool /*final */) {
+                    if (message->empty() || message->header().ancount() == 0) {
+                        LOG_DEBUG << "processRequest for request id " << req->uuid
+                                  << " came back empty. Will not reply.";
                         return;
                     }
 
-                    LOG_DEBUG << "Successfully replied to UDP message from "
+                    boost::asio::const_buffer cb{message->span().data(), message->span().size()};
+
+                    LOG_DEBUG << "Sending a DNS message of " << cb.size() << " bytes to "
                               << req->sender_endpoint.address()
-                              << " on UDP " << socket_.local_endpoint()
-                              << " for request id " << req->uuid;
+                              << " from UDP " << socket_.local_endpoint()
+                              << " as a reply to request id " << req->uuid;
+
+                    socket_.async_send_to(cb,
+                                          req->sender_endpoint,
+                                          [this, req=req, message=message]
+                                          (const boost::system::error_code& error,
+                                          std::size_t /*bytes*/) mutable {
+                        if (error) {
+                            LOG_WARN << "DNS request from " << socket_.local_endpoint()
+                                     << " on UDP " << socket_.local_endpoint()
+                                     << " for request id " << req->uuid
+                                     << " failed to send reply: " << error.message();
+                            return;
+                        }
+
+                        LOG_DEBUG << "Successfully replied to UDP message from "
+                                  << req->sender_endpoint.address()
+                                  << " on UDP " << socket_.local_endpoint()
+                                  << " for request id " << req->uuid;
+                    });
                 });
             } catch (const std::exception& ex) {
                 LOG_ERROR << "DNS request from " << socket_.local_endpoint()
@@ -214,6 +215,49 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
     }
 }
 
+tuple<bool, shared_ptr<MessageBuilder>>
+createBuilder(const DnsEngine::Request &request, const Message message, uint16_t maxBufferSize) {
+    auto mb = make_shared<MessageBuilder>();
+    mb->setMaxBufferSize(maxBufferSize);
+
+    auto org_hdr = message.header();
+    auto hdr = mb->createHeader(org_hdr.id(), true, org_hdr.opcode(), org_hdr.rd());
+    hdr.setAa(true);
+
+    // Copy the questions section to the reply
+    for(const auto& query : message.getQuestions()) {
+        if (query.clas() != CLASS_IN) {
+            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            return {false, mb};
+        }
+
+        if (query.type() == QTYPE_AXFR) {
+            if (message.header().qdcount() != 1) {
+                LOG_WARN << "Refusing AXFR request " << request.uuid
+                         << " because the QUERY section has more than 1 entry. That is not valid DNS!";
+                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                return {false, mb};
+            }
+
+            if (!request.is_tcp) {
+                LOG_WARN << "Refusing AXFR request " << request.uuid
+                         << " because the transport is not TCP.";
+                hdr.setRcode(Message::Header::RCODE::REFUSED);
+                return {false, mb};
+            }
+
+            if (!request.is_axfr) {
+                request.is_axfr = true;
+            }
+        }
+
+        if (!mb->addRr(query, hdr, MessageBuilder::Segment::QUESTION)) {
+            return {false, mb}; // Truncated
+        }
+    }
+
+    return {true, mb};
+}
 
 } // anon ns
 
@@ -247,30 +291,6 @@ public:
         }
     }
 
-    static std::shared_ptr<DnsTcpSession>
-    validate(std::weak_ptr<DnsTcpSession>&w, const TcpRequest& req, string_view what,
-             boost::system::error_code ec = {}) {
-        if (auto self = w.lock()) {
-            if (self->done_) {
-                LOG_DEBUG << "DnsTcpSession " << self->uuid()
-                          << " for req " << req.uuid << " was done while "
-                          << what;
-                return {};
-            }
-
-            if (self->validate(req, what, ec)) {
-                return self;
-            }
-
-            return {}; // failed validation
-        }
-
-        LOG_DEBUG << "DnsTcpSession for req " << req.uuid << " was removed while "
-                  << what;
-
-        return {};
-    }
-
     bool validate(const TcpRequest& req, string_view what,
              boost::system::error_code ec = {}) {
         if (done_) {
@@ -281,9 +301,14 @@ public:
         }
 
         if (ec) {
-            LOG_DEBUG << "DnsTcpSession " << uuid()
-                      << " for req " << req.uuid << " failed with error '"
-                      << ec << "' on " << what;
+            if (ec == boost::asio::error::eof) {
+                LOG_DEBUG << "DnsTcpSession " << uuid()
+                          << " for req " << req.uuid << " closed by peer on " << what;
+            } else {
+                LOG_DEBUG << "DnsTcpSession " << uuid()
+                          << " for req " << req.uuid << " failed with error '"
+                          << ec.message() << "' on " << what;
+            }
             done();
             return false;
         }
@@ -326,6 +351,13 @@ public:
                }
 
                if (!done_) {
+                   if (axfr_timeout_ > chrono::steady_clock::now()) {
+                       LOG_DEBUG << "DnsTcpSession " << uuid()
+                             << " idle-timer expiered but an axfr session is in progress. Resetting the timer.";
+                       setIdleTimer();
+                       return;
+                   }
+
                    LOG_DEBUG << "DnsTcpSession " << uuid()
                          << " idle-timer expiered. Closing session.";
                    done();
@@ -334,117 +366,139 @@ public:
         }
     }
 
-    // Note: Legacy IO with chained callbacks. Not coroutines.
-    // Buffers must be in shard_ptr's passed down the chain.
-    void next() {
+    void start() {
         auto req = make_shared<TcpRequest>();
         if (!validate(*req, "next")) {
             return;
         }
 
-        // Read message-length
-        auto w = weak_from_this();
-        socket_.async_receive(to_asio_buffer(req->size_buffer),
-                                    [w, req=req]
-                                    (const boost::system::error_code& error,
-                                    std::size_t bytes) mutable {
-            if (auto self = validate(w, *req, "read message-length")) {
-                const auto len = get16bValueAt(req->size_buffer, 0);
-                if (!len) {
-                    LOG_DEBUG << "DnsTcpSession " << self->uuid()
-                              << " for req " << req->uuid
-                              << " contains a 0 bytes DNS query. Assuming other end closed the connection.";
-                    self->done();
+        boost::asio::spawn([this, req](auto yield) {
+
+            while(!done_) {
+                // Read message-length
+                boost::system::error_code ec;
+                auto bytes = socket_.async_receive(to_asio_buffer(req->size_buffer), yield[ec]);
+                if (!validate(*req, "read message-length", ec)) {
                     return;
                 }
+                assert(bytes == req->size_buffer.size());
+
+                const auto len = get16bValueAt(req->size_buffer, 0);
+                if (!len) {
+                    LOG_DEBUG << "DnsTcpSession " << uuid()
+                              << " for req " << req->uuid
+                              << " contains a 0 bytes DNS query. Assuming other end closed the connection.";
+                    done();
+                    return;
+                }
+
                 if (len > MAX_TCP_QUERY_LEN) {
-                    LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                    LOG_DEBUG << "DnsTcpSession " << uuid()
                               << " for req " << req->uuid
                               << " contains a " << len << " bytes DNS query. "
                               << "My upper limit is " << MAX_TCP_QUERY_LEN << " bytes!";
-                    self->done();
+                    done();
                     return;
                 }
 
                 req->buffer_in.resize(len);
 
                 // Read message
-                self->socket_.async_receive(to_asio_buffer(req->buffer_in),
-                                      [w, req=req]
-                                      (const boost::system::error_code& error,
-                                      std::size_t bytes) mutable {
+                bytes = socket_.async_receive(to_asio_buffer(req->buffer_in), yield[ec]);
+                if (!validate(*req, "read message", ec)) {
+                    return;
+                }
 
-                    if (auto self = validate(w, *req, "read message")) {
-                        assert(req->buffer_in.size() == bytes);
-                        req->setBufferLen();
-                        req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
+                assert(req->buffer_in.size() == bytes);
+                req->setBufferLen();
+                req->maxReplyBytes = MAX_TCP_MESSAGE_BUFFER;
 
-                        self->setIdleTimer();
+                setIdleTimer();
 
-                        LOG_DEBUG << "DnsTcpSession " << self->uuid()
-                                  << " received a DNS message of " << bytes << " bytes from "
-                                  << self->socket_.remote_endpoint()
-                                  << " on TCP " << self->socket_.local_endpoint()
-                                  << " as request id " << req->uuid;
+                LOG_DEBUG << "DnsTcpSession " << uuid()
+                          << " received a DNS message of " << bytes << " bytes from "
+                          << socket_.remote_endpoint()
+                          << " on TCP " << socket_.local_endpoint()
+                          << " as request id " << req->uuid;
 
-                        // Get ready for the next message. We do pipelining and parallel things here!
-                        // TODO: Protect against flooding / DoS attacks
-                        self->parent_.ctx().post([w] {
-                            if (auto self = w.lock()) {
-                                self->next();
-                            }
-                        });
+                try {
+                    parent_.processRequest(*req, [this, &req, &yield](auto& message, bool final) {
 
-                        try {
-                            auto message = make_shared<MessageBuilder>();
-                            self->parent_.processRequest(*req, *message);
-
-                            if (message->empty() || message->header().ancount() == 0) {
-                                LOG_DEBUG << "processRequest for request id " << req->uuid
-                                          << " came back empty. Will not reply.";
-                                return self->done();
-                            }
-
-                            const auto reply_len = static_cast<uint16_t>(message->span().size());
-                            setValueAt(req->size_buffer, 0, reply_len);
-
-                            LOG_DEBUG << "Sending a DNS reply message of "
-                                      << reply_len << " bytes to "
-                                      << self->socket_.remote_endpoint()
-                                      << " from TCP " << self->socket_.local_endpoint()
-                                      << " as a reply to request id " << req->uuid
-                                      << " on TCP session " << self->uuid();
-
-                            array<boost::asio::const_buffer, 2> buffers{
-                                to_asio_buffer(req->size_buffer),
-                                to_asio_buffer(message->span())
-                            };
-
-                            self->socket_.async_send(buffers,
-                                               [w, req=req, message=message]
-                                               (const boost::system::error_code& error,
-                                               std::size_t bytes) mutable {
-
-                                if (auto self = validate(w, *req, "sent reply", error)) {
-                                    LOG_DEBUG << "Successfully replied to DNS message from "
-                                          << self->socket_.local_endpoint()
-                                          << " on TCP " << self->socket_.local_endpoint()
-                                          << " for request id " << req->uuid;
-                                }
-                            });
-                        } catch (const std::exception& ex) {
-                            LOG_ERROR << "DNS request from " << self->socket_.local_endpoint()
-                                     << " on UDP " << self->socket_.local_endpoint()
-                                     << " for request id " << req->uuid
-                                     << " failed with exception: " << ex.what();
-
-                            self->done();
+                        if (message->empty() || message->header().ancount() == 0) {
+                            LOG_DEBUG << "processRequest/send for request id " << req->uuid
+                                      << " came empty. Will not reply.";
+                            return;
                         }
-                    } // validated message
-                }); // received message
-            } // validated message-length
-        }); // received message-length
-    } // next()
+
+                        if (!validate(*req, "preparing reply")) {
+                            return;
+                        }
+
+                        if (req->is_axfr) {
+                            if (final) {
+                                axfrResetTimeout();
+                            } else {
+                                axfrExtendTimeout();
+                            }
+                        }
+
+                        // Set the length of the message-segment in two bytes before the message
+                        // as required by DNS over TCP
+                        const auto reply_len = static_cast<uint16_t>(message->span().size());
+                        setValueAt(req->size_buffer, 0, reply_len);
+
+                        LOG_DEBUG << "Sending a DNS reply message of "
+                                  << reply_len << " + 2 bytes to "
+                                  << socket_.remote_endpoint()
+                                  << " from TCP " << socket_.local_endpoint()
+                                  << " as a reply to request id " << req->uuid
+                                  << " on TCP session " << uuid();
+
+                        array<boost::asio::const_buffer, 2> buffers{
+                            to_asio_buffer(req->size_buffer),
+                            to_asio_buffer(message->span())
+                        };
+
+                        // TODO: Change the idle-timer to allow for a much longer idle period when
+                        //       the session is doing one or more zone transfers.
+                        boost::system::error_code ec;
+                        socket_.async_send(buffers, yield[ec]);
+
+                        if (!validate(*req, "sent reply", ec)) {
+                            LOG_DEBUG << "Successfully replied to DNS message from "
+                                  << socket_.local_endpoint()
+                                  << " on TCP " << socket_.local_endpoint()
+                                  << " for request id " << req->uuid;
+                        }
+                    });
+                } catch (const std::exception& ex) {
+                    LOG_ERROR << "DNS request from " << socket_.local_endpoint()
+                             << " on UDP " << socket_.local_endpoint()
+                             << " for request id " << req->uuid
+                             << " failed with exception: " << ex.what();
+
+                    done();
+                } catch(...) {
+                    ostringstream estr;
+    #ifdef __unix__
+                    estr << " of type : " << __cxxabiv1::__cxa_current_exception_type()->name();
+    #endif
+                    LOG_ERROR << "DNS TCP session " << uuid()
+                              << " caught unknow exception in coroutine: " << estr.str();
+                } // one request
+            } // loop
+        });
+    } // start()
+
+    // Currently we don't do parallel processing, so no need to track the individual
+    // AXFR replies
+    void axfrExtendTimeout() {
+        axfr_timeout_ = chrono::steady_clock::now() + 3min;
+    }
+
+    void axfrResetTimeout() {
+        axfr_timeout_  = {};
+    }
 
 private:
     const boost::uuids::uuid uuid_ = newUuid();
@@ -452,6 +506,9 @@ private:
     DnsEngine::tcp_t::socket socket_;
     bool done_ = false;
     boost::asio::deadline_timer idle_timer_;
+
+    // If set in the future, leave the session running even if the idle_timer timed out
+    chrono::steady_clock::time_point axfr_timeout_ = {};
 };
 
 
@@ -486,31 +543,30 @@ void DnsEngine::stop()
     });
 }
 
-void DnsEngine::processRequest(const DnsEngine::Request &request, MessageBuilder& mb)
+
+void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngine::send_t &send)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
 
-    mb.setMaxBufferSize(request.maxReplyBytes);
+    auto out_buffer_len = request.maxReplyBytes;
 
-    BOOST_SCOPE_EXIT(&mb) {
-        mb.finish();
+    Message message{request.span}; // TODO: Return error code. Now throws if the message is malformed
+
+    shared_ptr<MessageBuilder> mb;
+    bool ok = true;
+    tie(ok, mb) = createBuilder(request, message, out_buffer_len);
+    auto hdr = mb->getMutableHeader();
+
+    bool do_reply = true;
+    BOOST_SCOPE_EXIT(&mb, &send, &do_reply) {
+        if (do_reply) {
+            mb->finish();
+            send(mb, true);
+        }
     } BOOST_SCOPE_EXIT_END
 
-    Message message{request.span}; // Throws if the message is malformed
-    auto org_hdr = message.header();
-    auto hdr = mb.createHeader(org_hdr.id(), true, org_hdr.opcode(), org_hdr.rd());
-    hdr.setAa(true);
-
-    // Copy the questions section to the reply
-    for(const auto& query : message.getQuestions()) {
-        if (query.clas() != CLASS_IN) {
-            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
-            return;
-        }
-
-        if (!mb.addRr(query, hdr, MessageBuilder::Segment::QUESTION)) {
-            return; // Truncated
-        }
+    if (!ok) {
+        return;
     }
 
     auto trx = resource_.transaction();
@@ -524,6 +580,111 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, MessageBuilder
 
         auto key = labelsToFqdnKey(orig_fqdn);
 
+        if (query.type() == QTYPE_AXFR) {
+            // TODO: Check if the caller is allowed to do AXFR!
+            out_buffer_len = config_.dns_max_large_tcp_buffer_size;
+
+            auto flush_if = [&mb, &request, &message, &hdr, &send, &out_buffer_len](const Rr& rr) {
+                if (mb->size() + rr.size() >= mb->maxBufferSize()) {
+                    // Flush
+                    LOG_TRACE << "DnsEngine::processRequest Flushing full reply-buffer";
+                    mb->finish();
+                    send(mb, false);
+
+                    bool ok = true;
+                    tie(ok, mb) = createBuilder(request, message, out_buffer_len);
+                    assert(ok); // Should not fail here when we just call it again!
+                    hdr = mb->getMutableHeader();
+                }
+            };
+
+            size_t count = 0;
+            vector<char> zone_buffer; // To keep the SOA we need as the latest RR in the reply
+            optional<Entry> zone;
+            vector<char> cut;
+            trx->iterate(key, [&]
+                         (auto db_key, auto value) mutable {
+
+                // Skip child-zones if they happen to be hosted by me (and the keys appears here)
+                if (!cut.empty()) {
+                   if (cut.size() <= db_key.size()) {
+                       if (memcmp(cut.data(), db_key.data(), cut.size()) == 0) {
+                           // The key is after the cut, inside the child-zone
+                           // We only want to send RR's from inside the requested zone,
+                           // so we have to ignore this key.
+                           LOG_TRACE << "DnsEngine::processRequest for request "
+                                     << request.uuid
+                                     << " in AXFR; ignoring child Entry at "
+                                     << toPrintable(db_key);
+                           return true;
+                       }
+                   }
+
+                   // If we got here, we are outside the cut and should be back inside the zone.
+                   cut.clear();
+                }
+
+                Entry entry{value};
+
+                if (++count == 1) {
+                    if (key != db_key) {
+                        LOG_WARN << "Cannot do AXFR for " << query.labels().string()
+                                 << ". Fqdn not found.";
+                        hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                        return false;
+                    }
+
+                    // Expect SOA for the zone
+                    if (!entry.header().flags.soa) {
+                        LOG_WARN << "Cannot do AXFR for " << query.labels().string()
+                                 << ". Not a zone.";
+                        hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                        return false;
+                    }
+
+                    zone_buffer.reserve(value.size());
+                    std::copy(value.begin(), value.end(), back_inserter(zone_buffer));
+                    assert(!zone);
+                    zone.emplace(zone_buffer);
+                    assert(zone->begin()->type() == TYPE_SOA);
+                }
+
+                for(const auto& rr : entry) {
+                    const auto flags = entry.header().flags;
+                    if (flags.ns && !flags.soa) {
+                        // Start of a cut
+                        cut.reserve(db_key.size());
+                        copy(db_key.begin(), db_key.end(), back_inserter(cut));
+                    }
+
+                    // For now, copy all the RR's. I don't think we have any RR's
+                    // in the database Entry's that require special treatment.
+                    flush_if(rr);
+                    auto ok = mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER);
+                    assert(ok);
+                }
+
+                return true; // We are ready for the next Entry
+            });
+
+            if (!zone) {
+                // Not found
+                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                return;
+            }
+
+            // Add soa. The transfer must end with the soa record it started with
+            assert(zone);
+            assert(!zone->empty());
+            assert(zone_buffer.size() == zone->buffer().size());
+            assert(zone_buffer.data() == zone->buffer().data());
+            auto rr = zone->begin();
+            assert(rr->type() == TYPE_SOA);
+            flush_if(*rr);
+            ok = mb->addRr(*rr, hdr, MessageBuilder::Segment::ANSWER);
+            assert(ok);
+            return;
+        }
 again:
         auto rr_set = trx->lookup(key);
         if (!rr_set.empty()) {
@@ -538,10 +699,11 @@ again:
                 });
 
                 if (rr_cname == rr_set.end()) {
+                    do_reply = false;
                     throw runtime_error{" DnsEngine::processRequest Internal error: rr_cname == rr.end()"};
                 }
 
-                if (!mb.addRr(*rr_cname, hdr, MessageBuilder::Segment::ANSWER)) {
+                if (!mb->addRr(*rr_cname, hdr, MessageBuilder::Segment::ANSWER)) {
                     return; // Truncated
                 }
 
@@ -553,7 +715,7 @@ again:
             // Copy all matching entries
             for(const auto& rr : rr_set) {
                 if (qtype == QTYPE_ALL || qtype == rr.type()) {
-                    if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
+                    if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
                         return; // Truncated
                     }
                 }
@@ -571,7 +733,7 @@ again:
                         vector<string> ns_list;
                         for(const auto& rr : entry) {
                             if (rr.type() == TYPE_NS) {
-                                if (!mb.addRr(rr, hdr, MessageBuilder::Segment::AUTHORITY)) {
+                                if (!mb->addRr(rr, hdr, MessageBuilder::Segment::AUTHORITY)) {
                                     return; // Truncated
                                 }
                                 ns_list.push_back(rr.labels().string());
@@ -584,7 +746,7 @@ again:
                                 for(const auto& rr : ns_rrset) {
                                     const auto type = rr.type();
                                     if (type == TYPE_CNAME || type == TYPE_A || type == TYPE_AAAA) {
-                                        if (!mb.addRr(rr, hdr, MessageBuilder::Segment::ADDITIONAL)) {
+                                        if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ADDITIONAL)) {
                                             return; // Truncated
                                         }
                                     } // relevant type
@@ -672,8 +834,8 @@ DnsEngine::tcp_session_t DnsEngine::createTcpSession(DnsEngine::tcp_t::socket &&
     auto w = session->weak_from_this();
     ctx().post([w] {
         if (auto self = w.lock()) {
-            // Start the session
-            self->next();
+            // Start receiving messages
+            self->start();
         } else {
             LOG_DEBUG << "DnsEngine::createTcpSession / start session lambda: Session was orphaned!";
         }

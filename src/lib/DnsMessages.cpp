@@ -148,8 +148,6 @@ void MessageBuilder::finish()
     createIndex();
 }
 
-
-
 StorageBuilder::NewRr
 StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
 {
@@ -625,53 +623,53 @@ bool Message::Header::validate() const
 
 void MessageBuilder::NewHeader::incQdcount()
 {
-    inc16BitValueAt(mutable_buffer_, 4);
+    inc16BitValueAt(*mutable_buffer_, 4);
 }
 
 void MessageBuilder::NewHeader::incAncount()
 {
-    inc16BitValueAt(mutable_buffer_, 6);
+    inc16BitValueAt(*mutable_buffer_, 6);
 }
 
 void MessageBuilder::NewHeader::incNscount()
 {
-    inc16BitValueAt(mutable_buffer_, 8);
+    inc16BitValueAt(*mutable_buffer_, 8);
 }
 
 void MessageBuilder::NewHeader::incArcount()
 {
-    inc16BitValueAt(mutable_buffer_, 10);
+    inc16BitValueAt(*mutable_buffer_, 10);
 }
 
 void MessageBuilder::NewHeader::increment(MessageBuilder::Segment segment)
 {
-    inc16BitValueAt(mutable_buffer_, 4 + (static_cast<uint16_t>(segment) * 2));
+    inc16BitValueAt(*mutable_buffer_, 4 + (static_cast<uint16_t>(segment) * 2));
 }
 
 void MessageBuilder::NewHeader::setAa(bool flag)
 {
-    auto bits = getHdrFlags(mutable_buffer_);
+    auto bits = getHdrFlags(*mutable_buffer_);
     bits.aa = flag;
-    setHdrFlags(mutable_buffer_, bits);
+    setHdrFlags(*mutable_buffer_, bits);
 }
 
 void MessageBuilder::NewHeader::setTc(bool flag)
 {
-    auto bits = getHdrFlags(mutable_buffer_);
+    auto bits = getHdrFlags(*mutable_buffer_);
     bits.tc = flag;
-    setHdrFlags(mutable_buffer_, bits);
+    setHdrFlags(*mutable_buffer_, bits);
 }
 
 void MessageBuilder::NewHeader::setRa(bool flag)
 {
-    auto bits = getHdrFlags(mutable_buffer_);
+    auto bits = getHdrFlags(*mutable_buffer_);
     bits.ra = flag;
-    setHdrFlags(mutable_buffer_, bits);
+    setHdrFlags(*mutable_buffer_, bits);
 }
 
 void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
 {
-    auto bits = getHdrFlags(mutable_buffer_);
+    auto bits = getHdrFlags(*mutable_buffer_);
 
     const auto newRcode = static_cast<uint8_t>(rcode);
     if (newRcode >= static_cast<uint8_t>(Message::Header::RCODE::RESERVED_)) {
@@ -679,7 +677,7 @@ void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
     }
 
     bits.rcode = newRcode;
-    setHdrFlags(mutable_buffer_, bits);
+    setHdrFlags(*mutable_buffer_, bits);
 }
 
 Message::Message(span_t span)
@@ -798,6 +796,10 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
             if (ch == 0) {
                 ++size_;
 
+                if (size_ > 255) { // size_ + 1 byte for the first size-byte.
+                    throw runtime_error{"Labels::parse: Labels exeed the 255 bytes limit for a fqdn"};
+                }
+
                 return; // At this point we know that the labels are within the
                         // limits for their individual and total size, and that
                         // they are withinn the boundries for the buffer.
@@ -848,9 +850,7 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
             if (offset + ch >= buffer.size()) {
                 throw runtime_error("Labels::parse: Labels exeed the containing buffer-size");
             }
-            if (offset + ch >= 255) {
-                throw runtime_error("Labels::parse: Labels exeed the 255 bytes limit for a fqdn: "s + to_string(offset + ch));
-            }
+
             // OK.
             in_header = false;
             label_bytes = ch;
@@ -864,6 +864,10 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
             if (--label_bytes == 0) {
                 in_header = true;
             }
+        }
+
+        if (size_ > 254) { // size_ + 1 byte for the first size-byte and 1 byte for the root node.
+            throw runtime_error{"Labels::parse: Labels exeed the 255 bytes limit for a fqdn"};
         }
     }
 

@@ -12,6 +12,11 @@
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
 
+    template <typename T>
+    auto make_unique_from(T *ptr) {
+        return std::unique_ptr<T>{ptr};
+    }
+
     template <typename T, typename I>
     I getValueAt(const T& b, size_t loc) {
         const auto tlen = sizeof(I);
@@ -133,6 +138,19 @@ namespace nsblast::lib {
             return std::holds_alternative<std::string>(d_);
         }
 
+        bool operator == (span_t span) const noexcept {
+            const auto mine = key();
+            if (mine.size() != span.size()) {
+                return false;
+            }
+
+            return std::memcmp(mine.data(), span.data(), mine.size()) == 0;
+        }
+
+        bool operator != (span_t span) const noexcept {
+            return ! operator == (span);
+        }
+
     private:
         data_t d_;
     };
@@ -171,6 +189,24 @@ namespace nsblast::lib {
 
     template <typename T> auto to_asio_buffer(const T& b) {
         return boost::asio::const_buffer{b.data(), b.size()};
+    }
+
+    // Very simple, does not handle utf8
+    template<typename T>
+    std::string toPrintable(const T& data) {
+        std::ostringstream o;
+
+        for(auto ch : data) {
+            if (ch >= ' ' && ch <= '~') {
+                o << ch;
+            } else if (ch == '\t') {
+                o << ' ';
+            } else {
+                o << '.';
+            }
+        }
+
+        return o.str();
     }
 
 

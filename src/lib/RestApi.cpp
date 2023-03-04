@@ -328,6 +328,9 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         // check that the rrs include soa and 2 ns (and that one is primary in soa)
         validateZone(json);
 
+        // TODO: If configured to do so, add name-servers for the zone and notify the
+        //       slave servers about their new responsibility.
+
         // Build binary buffer
         StorageBuilder sb;
         uint32_t ttl = config_.default_ttl;

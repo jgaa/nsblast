@@ -1,6 +1,7 @@
 
 #include "RocksDbResource.h"
 #include "nsblast/logging.h"
+#include "nsblast/util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -60,7 +61,7 @@ ResourceIf::TransactionIf::RrAndSoa RocksDbResource::Transaction::lookupEntryAnd
     string_view key = {fqdn.data(), fqdn.size()};
     bool first = true;
     while(!key.empty()) {
-        LOG_TRACE << "lookupEntryAndSoa: key=" << key;
+        LOG_TRACE << "lookupEntryAndSoa: key=" << toPrintable(key);
         if (auto e = lookup(key)) {
             if (e.flags().soa) {
                 if (first) {
@@ -110,6 +111,19 @@ ResourceIf::TransactionIf::EntryWithBuffer RocksDbResource::Transaction::lookup(
     }
 
     return {}; // Not found
+}
+
+void RocksDbResource::Transaction::iterate(ResourceIf::TransactionIf::key_t key,
+                                           ResourceIf::TransactionIf::iterator_fn_t fn)
+{
+    auto it = make_unique_from(trx_->GetIterator({}, owner_.entryHandle()));
+    for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
+        if (!fn(it->key(), it->value())) {
+            return;
+        }
+    }
+
+    //fn({}, {}); // Notify end
 }
 
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key)
@@ -176,7 +190,7 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
 
 ResourceIf::TransactionIf::read_ptr_t RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key)
 {
-    LOG_TRACE << "Read from transaction " << uuid() << " key: " << string_view{key.data(), key.size()} ;
+    LOG_TRACE << "Read from transaction " << uuid() << " key: " << toPrintable(key);
 
     auto rval = make_unique<BufferImpl>();
 

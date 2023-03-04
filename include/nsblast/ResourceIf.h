@@ -123,6 +123,18 @@ public:
         TransactionIf() = default;
         virtual ~TransactionIf() = default;
 
+        /*! Callback called when iterating over a range of data
+         *
+         *  \param key The key for this item
+         *  \param span The value value (data) of this item
+         *
+         *  \return true to continue the iteration, false to abort
+         */
+        using iterator_fn_t = std::function<bool (key_t key, span_t value)>;
+
+        /*! Iterate over all data-items matching (starting with) key */
+        virtual void iterate(key_t, iterator_fn_t fn) = 0;
+
         /*! Get the Entry with the soa (zone) for a key.
          *
          *  \param fqdn name to query about. For zone "example.com", this may be

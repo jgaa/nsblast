@@ -10,6 +10,8 @@ using namespace nsblast::lib;
 
 namespace {
 
+using namespace nsblast;
+
 struct WriteLabelsSetup {
 
     WriteLabelsSetup() {

@@ -38,7 +38,7 @@ def test_create_zone(global_data):
         - 127.0.0.2
       mx:
         - priority: 10
-          host: mail.examle.com
+          host: mail.example.com
     """
 
     print('Creating example.com zone')
@@ -107,3 +107,22 @@ def test_query_test1Nocase(global_data):
     assert a.rdtype == 1 # A
     assert answer.name.to_text(True) == 'TeSt1.example.com'
     assert answer.name.to_text(True) != 'test1.example.com'
+
+@pytest.mark.order(3)
+def test_query_test1Axfr(global_data):
+
+    z = dns.zone.from_xfr(dns.query.xfr('127.0.0.1', 'example.com', lifetime=1000, port=5353))
+
+    print(z.to_text())
+
+    assert z.to_text() == """@ 1000 IN SOA ns1 hostmaster 3 2000 3000 4000 5000
+@ 1000 IN NS ns1
+@ 1000 IN NS ns2
+@ 1000 IN A 127.0.0.1
+@ 1000 IN A 127.0.0.2
+@ 1000 IN MX 10 mail
+TeSt1 3600 IN A 127.0.0.3
+TeSt1 3600 IN A 127.0.0.4
+www 2592000 IN A 127.0.0.3
+www 2592000 IN A 127.0.0.4
+"""

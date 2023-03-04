@@ -4,14 +4,11 @@
 #include <iterator>
 #include <cassert>
 #include <deque>
-#include <boost/core/span.hpp>
 #include <boost/asio.hpp>
 #include "nsblast/nsblast.h"
 
 
 namespace nsblast::lib {
-
-using span_t = boost::span<const char>;
 
 static constexpr uint32_t TTL_MAX = 2147483647; // RFC 2181 8
 uint32_t sanitizeTtl(uint32_t ttl) noexcept;
@@ -170,7 +167,7 @@ private:
 
     size_t count_ = {}; // Number of labels
     size_t size_ = {}; // Number of bytes for the fqdn (stringlen, including trailing dot)
-    uint16_t bytes_ = {}; // Bumber of bytes this label occupies in the buffer
+    uint16_t bytes_ = {}; // Number of bytes this label occupies in the buffer
     uint16_t offset_ = {}; // Offset to the start of the buffer
     boost::span<const char> buffer_view_; // A span over the full buffer
 };
@@ -639,7 +636,13 @@ public:
     class NewHeader {
     public:
         NewHeader(buffer_t& b)
-            : mutable_buffer_{b} {}
+            : mutable_buffer_{&b} {}
+
+        NewHeader(NewHeader&) = default;
+        NewHeader(NewHeader&&) = default;
+
+        NewHeader& operator = (NewHeader&) = default;
+        NewHeader& operator = (NewHeader&&) = default;
 
         void incQdcount();
         void incAncount();
@@ -653,12 +656,16 @@ public:
         void setRcode(Header::RCODE rcode);
 
     private:
-        buffer_t& mutable_buffer_;
+        buffer_t *mutable_buffer_;
     };
 
     MessageBuilder() = default;
 
     NewHeader createHeader(uint16_t id, bool qr, Header::OPCODE opcode, bool rd);
+
+    NewHeader getMutableHeader() {
+        return {buffer_};
+    }
 
     /*! Add a rr to the buffer.
      *
@@ -681,6 +688,14 @@ public:
     }
 
     void finish();
+
+    size_t size() const noexcept {
+        return buffer_.size();
+    }
+
+    size_t maxBufferSize() const {
+        return maxBufferSize_;
+    }
 
 protected:
     void increaseBuffer(size_t bytes) {

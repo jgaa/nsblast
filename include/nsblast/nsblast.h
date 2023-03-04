@@ -5,9 +5,13 @@
 #include <optional>
 #include <vector>
 
+#include <boost/core/span.hpp>
+
 #include "yahat/HttpServer.h"
 
 namespace nsblast {
+
+using span_t = boost::span<const char>;
 
 static constexpr uint32_t DEFAULT_TTL = 2592000; // 30 days
 
@@ -63,6 +67,12 @@ struct Config {
 
     /*! DNS TCP connection idle time for QUERY sessions in seconds */
     uint32_t dns_tcp_idle_time = 3;
+
+    /*! Max buffer-size for TCP buffers doring zone transfers.
+     *
+     *  Note: This is a 16 bit value.
+     */
+    uint16_t dns_max_large_tcp_buffer_size = std::numeric_limits<uint16_t>::max() - 1024;
 
     ///@}
 
