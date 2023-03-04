@@ -109,6 +109,14 @@ def test_query_test1Nocase(global_data):
     assert answer.name.to_text(True) != 'test1.example.com'
 
 @pytest.mark.order(3)
+def test_nonexistingLookup(global_data):
+    dns = global_data['dns']
+
+    with pytest.raises(Exception):
+        dns.resolve('dontexist.example.com', 'A')
+
+
+@pytest.mark.order(3)
 def test_query_test1Axfr(global_data):
 
     z = dns.zone.from_xfr(dns.query.xfr('127.0.0.1', 'example.com', lifetime=1000, port=5353))

@@ -531,6 +531,7 @@ public:
 
         enum class RCODE {
             OK,
+            FORMAT_ERROR,
             SERVER_FAILURE,
             NAME_ERROR,
             NOT_IMPLEMENTED,
@@ -653,7 +654,7 @@ public:
         void setAa(bool flag);
         void setTc(bool flag);
         void setRa(bool flag);
-        void setRcode(Header::RCODE rcode);
+        void setRcode(Header::RCODE rcode, bool onlyIfUnset = true);
 
     private:
         buffer_t *mutable_buffer_;

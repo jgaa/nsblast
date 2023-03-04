@@ -667,7 +667,7 @@ void MessageBuilder::NewHeader::setRa(bool flag)
     setHdrFlags(*mutable_buffer_, bits);
 }
 
-void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
+void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode, bool onlyIfUnset)
 {
     auto bits = getHdrFlags(*mutable_buffer_);
 
@@ -676,6 +676,9 @@ void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
         throw runtime_error{"setRcode: Invalid rcode: "s + to_string(newRcode)};
     }
 
+    if (onlyIfUnset && bits.rcode) {
+        return;
+    }
     bits.rcode = newRcode;
     setHdrFlags(*mutable_buffer_, bits);
 }

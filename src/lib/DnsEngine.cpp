@@ -100,7 +100,7 @@ public:
 
             try {
                 parent().processRequest(*req, [req, this](std::shared_ptr<MessageBuilder>& message, bool /*final */) {
-                    if (message->empty() || message->header().ancount() == 0) {
+                    if (message->empty()) {
                         LOG_DEBUG << "processRequest for request id " << req->uuid
                                   << " came back empty. Will not reply.";
                         return;
@@ -424,7 +424,7 @@ public:
                 try {
                     parent_.processRequest(*req, [this, &req, &yield](auto& message, bool final) {
 
-                        if (message->empty() || message->header().ancount() == 0) {
+                        if (message->empty()) {
                             LOG_DEBUG << "processRequest/send for request id " << req->uuid
                                       << " came empty. Will not reply.";
                             return;
@@ -668,8 +668,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
             });
 
             if (!zone) {
-                // Not found
-                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                hdr.setRcode(Message::Header::RCODE::NAME_ERROR, false);
                 return;
             }
 

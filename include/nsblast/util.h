@@ -94,7 +94,7 @@ namespace nsblast::lib {
     }
 
     // Simple return value that may or may not own it's buffer.
-    // The caller must assume that it owns the buffer, unless
+    // The caller must assume that they owns the buffer, unless
     // it's constructed with a r-value reference string
     struct FqdnKey {
         using data_t = std::variant<span_t, std::string>;
