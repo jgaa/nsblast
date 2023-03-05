@@ -7,7 +7,9 @@
 #include "nsblast/logging.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
+#include "SlaveMgr.h"
 #include "proto/nsblast.pb.h"
+#include "google/protobuf/util/json_util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -43,12 +45,42 @@ uint32_t getTtl(const boost::json::value& json) {
     return 0;
 }
 
+template <typename T>
+bool fromJson(const std::string& json, T& obj) {
+    const auto res = google::protobuf::util::JsonStringToMessage(json, &obj);
+    if (!res.ok()) {
+        LOG_DEBUG << "Failed to convert json to "
+                 << typeid(T).name() << ": "
+                 << res.ToString();
+        LOG_TRACE << "Failed json: " << json;
+        return false;
+    }
+    return true;
+}
+
+template <typename T>
+std::string toJson(const T& obj) {
+    string str;
+    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
+    if (!res.ok()) {
+        LOG_DEBUG << "Failed to convert object to json: "
+                 << typeid(T).name() << ": "
+                 << res.ToString();
+        throw std::runtime_error{"Failed to convertt object to json"};
+    }
+    return str;
+}
+
 } // anon ns
 
-RestApi::RestApi(const Config &config, ResourceIf& resource)
-    : config_{config}, resource_{resource}
+RestApi::RestApi(ApiEngine& apiEngine)
+    : config_{apiEngine.config()}, resource_{apiEngine.resource()}
+    , api_engine_{&apiEngine}
 {
 }
+
+RestApi::RestApi(const Config &config, ResourceIf &resource)
+    : config_{config}, resource_{resource} {}
 
 Response RestApi::onReqest(const Request &req, const Auth &auth)
 {
@@ -64,7 +96,7 @@ Response RestApi::onReqest(const Request &req, const Auth &auth)
 
     if (p.what == "config") {
         if (p.operation == "master") {
-
+            return onConfigMaster(req, p);
         }
     }
 
@@ -503,6 +535,37 @@ put:
     }
 
     return  {};
+}
+
+Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &parsed)
+{
+    pb::Zone zone;
+    if (req.expectBody() && !fromJson(req.body, zone)) {
+        return {400, "Failed to parse json payload into a Zone object"};
+    }
+
+    try {
+        switch(req.type) {
+        case Request::Type::GET:
+            apiEngine().slaveMgr().getZone(parsed.fqdn, zone);
+            return {200, "OK", toJson(zone)};
+        case Request::Type::POST:
+            apiEngine().slaveMgr().addZone(parsed.fqdn, zone);
+        case Request::Type::PUT:
+            apiEngine().slaveMgr().replaceZone(parsed.fqdn, zone);
+        case Request::Type::PATCH:
+            apiEngine().slaveMgr().mergeZone(parsed.fqdn, zone);
+        case Request::Type::DELETE:
+            apiEngine().slaveMgr().deleteZone(parsed.fqdn);
+            return {200, "OK"};
+        default:
+            return {400, "Invalid method"};
+        }
+    } catch (const exception& ex) {
+        LOG_WARN << "Exception while processing config/master request "
+                 << req.uuid << ": " << ex.what();
+        return {500, "Server Error/ "s + ex.what()};
+    }
 }
 
 

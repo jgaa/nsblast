@@ -13,6 +13,12 @@ namespace nsblast {
  */
 class ResourceIf {
 public:
+    enum class Category {
+        ZONE,
+        ENTRY
+    };
+
+
     class TransactionIf {
     public:
         using key_t = boost::span<const char>;
@@ -133,7 +139,7 @@ public:
         using iterator_fn_t = std::function<bool (key_t key, span_t value)>;
 
         /*! Iterate over all data-items matching (starting with) key */
-        virtual void iterate(key_t, iterator_fn_t fn) = 0;
+        virtual void iterate(key_t, iterator_fn_t fn, Category category = Category::ENTRY) = 0;
 
         /*! Get the Entry with the soa (zone) for a key.
          *
@@ -162,7 +168,7 @@ public:
             return exists(fqdn, TYPE_SOA);
         }
 
-        virtual bool keyExists(key_t key) = 0;
+        virtual bool keyExists(key_t key, Category category = Category::ENTRY) = 0;
 
         /*! Add or update an entry
          *
@@ -174,7 +180,7 @@ public:
          *          already exists.
          *  \throws std::runtime_error on errors
          */
-        virtual void write(key_t key, data_t data, bool isNew) = 0;
+        virtual void write(key_t key, data_t data, bool isNew, Category category = Category::ENTRY) = 0;
 
         /*! Delete an entry
          *
@@ -184,10 +190,11 @@ public:
          *         will be removed. This is primarily to allow
          *         a zone to be deleted.
          */
-        virtual void remove(key_t key, bool recursive = false) = 0;
+        virtual void remove(key_t key, bool recursive = false, Category category = Category::ENTRY) = 0;
 
         /*! Low level read */
-        virtual read_ptr_t read(key_t key) = 0;
+        virtual read_ptr_t read(key_t key, Category category = Category::ENTRY) = 0;
+        virtual void read(key_t key, std::string& buffer, Category category = Category::ENTRY) = 0;
 
         virtual void commit() = 0;
         virtual void rollback() = 0;

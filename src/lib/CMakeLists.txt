@@ -17,10 +17,10 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
+    ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
-    ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ApiEngine.cpp
     DnsEngine.cpp
     DnsMessages.cpp
@@ -28,6 +28,10 @@ add_library(${PROJECT_NAME}
     RestApi.h
     RocksDbResource.cpp
     RocksDbResource.h
+    Slave.cpp
+    Slave.h
+    SlaveMgr.cpp
+    SlaveMgr.h
     swagger_res.cpp
     swagger_res.h
     util.cpp

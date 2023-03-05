@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
     try {        
         ApiEngine api{config};
         api.initRocksdb();
-        lib::DnsEngine dns{config, api.getResource()};
+        lib::DnsEngine dns{config, api.resource()};
         dns.start();
         api.run();
         ;

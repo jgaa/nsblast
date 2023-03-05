@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package nsblast;
+package nsblast.pb;
 
 // Master ns for the zone. Only populated on slaves
 message Master {

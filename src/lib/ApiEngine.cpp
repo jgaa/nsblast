@@ -1,9 +1,8 @@
 
-
-
 #include "nsblast/ApiEngine.h"
 #include "RocksDbResource.h"
 #include "RestApi.h"
+#include "SlaveMgr.h"
 #include "nsblast/logging.h"
 
 #include "swagger_res.h"
@@ -44,7 +43,10 @@ void ApiEngine::run()
             return auth;
         }, "nsblast "s + NSBLAST_VERSION};
 
-    httpServer.addRoute("/api/v1", make_shared<lib::RestApi>(config_, *resource_));
+    // TODO: Move the ownership somewhere it can use the ctx (trhreads) from the DnsEngine
+    slave_mgr_ = make_shared<lib::SlaveMgr>(config_, *resource_, httpServer.getCtx());
+
+    httpServer.addRoute("/api/v1", make_shared<lib::RestApi>(*this));
 
     if (config_.swagger) {
         const string_view swagger_path = "/api/swagger";

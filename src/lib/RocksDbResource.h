@@ -28,12 +28,13 @@ public:
         // TransactionIf interface
         RrAndSoa lookupEntryAndSoa(key_t fqdn) override;
         EntryWithBuffer lookup(key_t fqdn) override;
-        void iterate(key_t, iterator_fn_t fn) override;
-        bool keyExists(key_t key) override;
+        void iterate(key_t, iterator_fn_t fn, Category category = Category::ENTRY) override;
+        bool keyExists(key_t key, Category category = Category::ENTRY) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
-        void write(key_t key, data_t data, bool isNew) override;
-        read_ptr_t read(key_t key) override;
-        void remove(key_t key, bool recursive) override;
+        void write(key_t key, data_t data, bool isNew, Category category = Category::ENTRY) override;
+        read_ptr_t read(key_t key, Category category = Category::ENTRY) override;
+        void read(key_t key, std::string& buffer, Category category = Category::ENTRY) override;
+        void remove(key_t key, bool recursive, Category category = Category::ENTRY) override;
         void commit() override;
         void rollback() override;
 
@@ -80,6 +81,17 @@ private:
     static constexpr size_t ZONE = 1;
     static constexpr size_t ENTRY = 2;
     static constexpr size_t ACCOUNT = 3;
+
+    auto handle(const Category category) {
+        if (category == Category::ENTRY) {
+            return cfh_[ENTRY];
+        }
+        if (category == Category::ZONE) {
+            return cfh_[ZONE];
+        }
+
+        throw std::runtime_error{"handle: Unknown Category"};
+    }
 
     void prepareDirs();
     void open();
