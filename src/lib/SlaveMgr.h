@@ -31,17 +31,19 @@ public:
     SlaveMgr(const Config& config, ResourceIf& resource, boost::asio::io_context& ctx);
 
     void getZone(std::string_view fqdn, pb::Zone& zone);
-    void addZone(std::string_view fqdn, const pb::Zone zone);
-    void replaceZone(std::string_view fqdn, const pb::Zone zone);
-    void mergeZone(std::string_view fqdn, const pb::Zone zone);
+    void addZone(std::string_view fqdn, const pb::Zone& zone);
+    void replaceZone(std::string_view fqdn, const pb::Zone& zone);
+    void mergeZone(std::string_view fqdn, const pb::Zone& zone);
     void deleteZone(std::string_view fqdn);
 
-private:
     void init();
     void reload(std::string_view fqdn);
+    void reload(std::string_view fqdn, pb::Zone& zone);
+private:
 
     // List of active slave zones
     std::unordered_map<std::string, std::shared_ptr<Slave>> zones_;
+    std::mutex mutex_;
 
     const Config& config_;
     ResourceIf& db_;
