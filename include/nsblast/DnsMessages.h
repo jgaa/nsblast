@@ -683,6 +683,8 @@ public:
      */
     bool addRr(const Rr& rr, NewHeader& hdr, Segment segment);
 
+    bool addQuestion(std::string_view fqdn, uint16_t type);
+
     void setMaxBufferSize(uint32_t limit) {
         maxBufferSize_ = limit;
         buffer_.reserve(limit);
@@ -836,6 +838,13 @@ public:
     const index_t& index() const noexcept {
         return index_;
     }
+
+    bool hasSoa() const noexcept {
+        assert(!empty());
+        return header().flags.soa;
+    }
+
+    RrSoa getSoa() const;
 
 private:
     static index_t mkIndex(span_t b, const Header& h, size_t count) {

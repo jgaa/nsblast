@@ -143,6 +143,17 @@ truncate:
     return true;
 }
 
+bool MessageBuilder::addQuestion(string_view fqdn, uint16_t type)
+{
+    const auto start_offset =  buffer_.size();
+    auto llen = writeName(buffer_, start_offset, fqdn, false);
+
+    increaseBuffer(llen + 2);
+    writeName(buffer_, start_offset, fqdn);
+    set16bValueAt(buffer_, buffer_.size() - 2, type);
+    NewHeader(buffer_).incQdcount();
+}
+
 void MessageBuilder::finish()
 {
     createIndex();
@@ -1235,6 +1246,12 @@ Entry::Entry(boost::span<const char> buffer)
     , count_{ntohs(header_->rrcount)}
     , index_{mkIndex(span_, *header_, count_)}
 {
+}
+
+RrSoa Entry::getSoa() const
+{
+    assert(hasSoa());
+    return {buffer(), begin()->offset()};
 }
 
 Entry::Iterator::Iterator(const Entry &entry, bool begin)

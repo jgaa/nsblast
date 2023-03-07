@@ -3,6 +3,7 @@
 
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
+#include "proto_util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -70,7 +71,7 @@ void SlaveMgr::init()
 
         pb::Zone z;
         if (z.ParseFromArray(value.data(), value.size())) {
-            if (z.active()) {
+            if (PB_GET(z, active, true)) {
                 reload({key.data(), key.size()}, z);
             }
         } else {
@@ -95,10 +96,11 @@ void SlaveMgr::reload(string_view fqdn, pb::Zone &zone)
     string info_message;
 
     {
+        const bool active = PB_GET(zone, active, true);
         lock_guard<mutex> lock{mutex_};
         if (auto it = zones_.find(key); it != zones_.end()) {
             // TODO: Abort any on-going update
-            if (zone.active()) {
+            if (active) {
                 LOG_DEBUG << "Realoading configuration for master-zone " << fqdn;
             } else {
                 zones_.erase(it);
@@ -106,8 +108,8 @@ void SlaveMgr::reload(string_view fqdn, pb::Zone &zone)
             }
         }
 
-        if (zone.active()) {
-            auto slave = make_shared<Slave>(*this);
+        if (active) {
+            auto slave = make_shared<Slave>(*this, key, zone);
             slave->start();
             zones_[key] = slave;
         }

@@ -39,6 +39,19 @@ public:
     void init();
     void reload(std::string_view fqdn);
     void reload(std::string_view fqdn, pb::Zone& zone);
+
+    auto& ctx() const noexcept {
+        return ctx_;
+    }
+
+    auto& config() const noexcept {
+        return config_;
+    }
+
+    auto& db() {
+        return db_;
+    }
+
 private:
 
     // List of active slave zones

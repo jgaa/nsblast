@@ -74,6 +74,13 @@ struct Config {
      */
     uint16_t dns_max_large_tcp_buffer_size = std::numeric_limits<uint16_t>::max() - 1024;
 
+    /*! Default time to wait between checking for changes in SOA for slaves
+     *
+     *  This sttrategy is used as a fall-back if there are no reliable way to get
+     *  notifications about zoine changes.
+     */
+    uint32_t dns_default_zone_pull_interval_ = 600;
+
     ///@}
 
     /*! \name HTTP */

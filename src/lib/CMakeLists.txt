@@ -24,6 +24,7 @@ add_library(${PROJECT_NAME}
     ApiEngine.cpp
     DnsEngine.cpp
     DnsMessages.cpp
+    proto_util.h
     RestApi.cpp
     RestApi.h
     RocksDbResource.cpp
