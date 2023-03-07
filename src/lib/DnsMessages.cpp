@@ -710,6 +710,16 @@ const span_t &Message::span() const
     return span_;
 }
 
+std::optional<RrSoa> Message::getSoa() const
+{
+    for(auto& rr : getAnswers()) {
+        if (rr.type() == TYPE_SOA) {
+            return {RrSoa{span_, rr.offset()}};
+        }
+    }
+    return {};
+}
+
 void Message::createIndex()
 {
     Header hdr{span_};

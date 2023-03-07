@@ -151,6 +151,11 @@ namespace nsblast::lib {
             return ! operator == (span);
         }
 
+        std::string string() const {
+            const auto k = key();
+            return {k.data(), k.size()};
+        }
+
     private:
         data_t d_;
     };
@@ -208,6 +213,12 @@ namespace nsblast::lib {
 
         return o.str();
     }
+
+    boost::asio::ip::tcp::socket TcpConnect(
+            boost::asio::io_context& ctx,
+            const std::string& endpoint,
+            const std::string& port,
+            boost::asio::yield_context& yield);
 
 
 } // ns

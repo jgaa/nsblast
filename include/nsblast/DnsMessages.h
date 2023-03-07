@@ -561,6 +561,7 @@ public:
     };
 
     Message() = default;
+    Message(Message &&) = default;
 
     /*! Construct from an existing buffer.
      *
