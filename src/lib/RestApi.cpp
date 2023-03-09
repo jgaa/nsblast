@@ -551,10 +551,13 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
             return {200, "OK", toJson(zone)};
         case Request::Type::POST:
             apiEngine().slaveMgr().addZone(parsed.fqdn, zone);
+            break;
         case Request::Type::PUT:
             apiEngine().slaveMgr().replaceZone(parsed.fqdn, zone);
+            break;
         case Request::Type::PATCH:
             apiEngine().slaveMgr().mergeZone(parsed.fqdn, zone);
+            break;
         case Request::Type::DELETE:
             apiEngine().slaveMgr().deleteZone(parsed.fqdn);
             return {200, "OK"};
@@ -566,6 +569,8 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
                  << req.uuid << ": " << ex.what();
         return {500, "Server Error/ "s + ex.what()};
     }
+
+    return {200, "OK"};
 }
 
 

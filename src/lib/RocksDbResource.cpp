@@ -173,7 +173,9 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
                                          ResourceIf::TransactionIf::data_t data,
                                          bool isNew, Category category)
 {
-    LOG_TRACE << "Write to transaction " << uuid() << " key: " << string_view{key.data(), key.size()} ;
+    LOG_TRACE << "RocksDbResource::Transaction::write - Write to transaction "
+              << uuid() << " key: " << toPrintable(key)
+              << ", category " << category;
 
     if (isNew && keyExists(key)) {
         throw AlreadyExistException{"Key exists"};
@@ -181,18 +183,22 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
     const auto status = trx_->Put(owner_.handle(category), toSlice(key), toSlice(data));
 
     if (!status.ok()) {
-        throw runtime_error{"Rocksdn write failed: "s + status.ToString()};
+        throw runtime_error{"Rocksdb write failed: "s + status.ToString()};
     }
 
     if (isNew && status.IsOkOverwritten()) { // TODO: don't actually work...
         throw AlreadyExistException{"Key exists"};
     }
+
+    dirty_ = true;
 }
 
 ResourceIf::TransactionIf::read_ptr_t
 RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Category category)
 {
-    LOG_TRACE << "Read from transaction " << uuid() << " key: " << toPrintable(key);
+    LOG_TRACE << "RocksDbResource::Transaction::read - Read from transaction "
+              << uuid() << " key: " << toPrintable(key)
+              << ", category " << category;
 
     auto rval = make_unique<BufferImpl>();
 
@@ -207,22 +213,34 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
         throw NotFoundException{"Key not found"};
     }
 
-    LOG_WARN << "RocksDbResource::Transaction::read: " << status.ToString();
+    LOG_WARN << "RocksDbResource::Transaction::read - Read from transaction "
+              << uuid() << " key: " << toPrintable(key)
+              << ", category " << category
+              << " failed with status: " << status.ToString();
 
     throw runtime_error{status.ToString()};
 }
 
 void RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, string &buffer, ResourceIf::Category category)
 {
-    LOG_TRACE << "Read from transaction " << uuid() << " key: " << toPrintable(key);
+    LOG_TRACE << "RocksDbResource::Transaction::read (string) - Read from transaction "
+              << uuid() << " key: " << toPrintable(key)
+              << ", category " << category;
+
     const auto status = trx_->Get({}, owner_.handle(category), toSlice(key), &buffer);
+
+    if (status.ok()) {
+        return;
+    }
 
     if (status.IsNotFound()) {
         throw NotFoundException{"Key not found"};
     }
 
-    LOG_WARN << "RocksDbResource::Transaction::read: " << status.ToString();
-
+    LOG_WARN << "RocksDbResource::Transaction::read (string) - Read from transaction "
+              << uuid() << " key: " << toPrintable(key)
+              << ", category " << category
+              << " failed with status: " << status.ToString();
     throw runtime_error{status.ToString()};
 }
 
@@ -230,6 +248,10 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
                                           bool recursive, Category category)
 {
     if (recursive) {
+        LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
+                  << toPrintable(key) << ", category " << category
+                  << " recursively.";
+
         // Assumption: The iterator starts at key, and we can do a memcmp to
         // figure out if we are still iterating the same zone
         //
@@ -245,8 +267,13 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
             trx_->Delete(owner_.handle(category), it->key());
         }
     } else {
+        LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
+                  << toPrintable(key) << ", category " << category;
+
         trx_->Delete(owner_.handle(category), toSlice(key));
     }
+
+    dirty_ = true;
 }
 
 void RocksDbResource::Transaction::commit()
@@ -264,7 +291,11 @@ void RocksDbResource::Transaction::commit()
 void RocksDbResource::Transaction::rollback()
 {
     call_once(once_, [&] {
-        LOG_TRACE << "Rolling back transaction " << uuid();
+        if (dirty_) {
+            LOG_TRACE << "Rolling back transaction " << uuid();
+        } else {
+            LOG_TRACE << "Closing clean transaction " << uuid();
+        }
         auto status = trx_->Rollback();
         if (!status.ok()) {
             LOG_ERROR << "Transaction rollback failed " << uuid() << " : " << status.ToString();

@@ -99,7 +99,8 @@ void SlaveMgr::reload(string_view fqdn, pb::Zone &zone)
         const bool active = PB_GET(zone, active, true);
         lock_guard<mutex> lock{mutex_};
         if (auto it = zones_.find(key); it != zones_.end()) {
-            // TODO: Abort any on-going update
+            // Lazily abort any on-going update
+            it->second->done();
             if (active) {
                 LOG_DEBUG << "Realoading configuration for master-zone " << fqdn;
             } else {

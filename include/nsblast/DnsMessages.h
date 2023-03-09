@@ -607,6 +607,8 @@ public:
     bool empty() const noexcept {
         return span_.empty();
     }
+    
+    std::optional<RrSoa> getSoa() const;
 
 protected:
     void createIndex();

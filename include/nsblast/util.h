@@ -12,6 +12,10 @@
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
 
+    uint64_t getRandomNumber64();
+    uint32_t getRandomNumber32();
+    uint16_t getRandomNumber16();
+
     template <typename T>
     auto make_unique_from(T *ptr) {
         return std::unique_ptr<T>{ptr};

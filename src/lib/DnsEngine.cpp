@@ -216,7 +216,7 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
 }
 
 tuple<bool, shared_ptr<MessageBuilder>>
-createBuilder(const DnsEngine::Request &request, const Message message, uint16_t maxBufferSize) {
+createBuilder(const DnsEngine::Request &request, const Message& message, uint16_t maxBufferSize) {
     auto mb = make_shared<MessageBuilder>();
     mb->setMaxBufferSize(maxBufferSize);
 
@@ -232,6 +232,8 @@ createBuilder(const DnsEngine::Request &request, const Message message, uint16_t
         }
 
         if (query.type() == QTYPE_AXFR) {
+            LOG_DEBUG << "createBuilder: " << "Processing AXFR query. Request: " << request.uuid;
+
             if (message.header().qdcount() != 1) {
                 LOG_WARN << "Refusing AXFR request " << request.uuid
                          << " because the QUERY section has more than 1 entry. That is not valid DNS!";
@@ -247,6 +249,7 @@ createBuilder(const DnsEngine::Request &request, const Message message, uint16_t
             }
 
             if (!request.is_axfr) {
+                LOG_TRACE << "Setting is_axfr flag to true";
                 request.is_axfr = true;
             }
         }
@@ -424,6 +427,14 @@ public:
                 try {
                     parent_.processRequest(*req, [this, &req, &yield](auto& message, bool final) {
 
+                        LOG_TRACE << "Replying to TCP session " << uuid()
+                                  << " for request " << req->uuid
+                                  << " is_axfr=" << req->is_axfr
+                                  << ", final=" << final
+                                  << ", message-size is " << message->size()
+                                  << ", Answer-count is " << (message->empty() ? 0 : message->header().ancount());
+
+
                         if (message->empty()) {
                             LOG_DEBUG << "processRequest/send for request id " << req->uuid
                                       << " came empty. Will not reply.";
@@ -434,6 +445,7 @@ public:
                             return;
                         }
 
+                        LOG_TRACE << "Reply to request: is_axfr =" << req->is_axfr;
                         if (req->is_axfr) {
                             if (final) {
                                 axfrResetTimeout();
@@ -493,10 +505,12 @@ public:
     // Currently we don't do parallel processing, so no need to track the individual
     // AXFR replies
     void axfrExtendTimeout() {
+        LOG_TRACE << "axfrExtendTimeout - Extending time for ongoing AXFR transfer on session " << uuid();
         axfr_timeout_ = chrono::steady_clock::now() + 3min;
     }
 
     void axfrResetTimeout() {
+        LOG_TRACE << "axfrResetTimeout - Removing extended time for obsolete AXFR transfer on session " << uuid();
         axfr_timeout_  = {};
     }
 
@@ -570,6 +584,9 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
     }
 
     auto trx = resource_.transaction();
+
+    LOG_TRACE << "DnsEngine::processRequest " << request.uuid
+              << ". qcount=" << message.header().qdcount();
 
     // Iterate over the queries and add our answers
     for(const auto& query : message.getQuestions()) {

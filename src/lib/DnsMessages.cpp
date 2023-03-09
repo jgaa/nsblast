@@ -148,10 +148,13 @@ bool MessageBuilder::addQuestion(string_view fqdn, uint16_t type)
     const auto start_offset =  buffer_.size();
     auto llen = writeName(buffer_, start_offset, fqdn, false);
 
-    increaseBuffer(llen + 2);
+    increaseBuffer(llen + 4);
     writeName(buffer_, start_offset, fqdn);
-    set16bValueAt(buffer_, buffer_.size() - 2, type);
+    set16bValueAt(buffer_, buffer_.size() - 4, type);
+    set16bValueAt(buffer_, buffer_.size() - 2, CLASS_IN);
     NewHeader(buffer_).incQdcount();
+
+    return true;
 }
 
 void MessageBuilder::finish()

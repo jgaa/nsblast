@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
             "DNS port to listen to on TCP")
         ("dns-tcp-idle-time",
             po::value<uint32_t>(&config.dns_tcp_idle_time)->default_value(config.dns_tcp_idle_time),
-            "DNS port to listen to on TCP")
+            "Idle-time in seconds for TCP sessions for the DNS protocol")
         ("dns-num-threads",
             po::value<size_t>(&config.num_dns_threads)->default_value(config.num_dns_threads),
             "Threads for the DNS server")

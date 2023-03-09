@@ -210,7 +210,7 @@ paths:
       parameters:
       - in: "body"
         name: "body"
-        description: "Settings for the configuraytion."
+        description: "Settings for the configuration."
         required: true
         schema:
           $ref: "#/definitions/MasterZone"
@@ -233,7 +233,7 @@ paths:
       parameters:
       - in: "body"
         name: "body"
-        description: "Settings for the configuraytion."
+        description: "Settings for the configuration."
         required: true
         schema:
           $ref: "#/definitions/MasterZone"
@@ -256,7 +256,7 @@ paths:
       parameters:
       - in: "body"
         name: "body"
-        description: "Settings for the configuraytion."
+        description: "Settings for the configuration."
         required: true
         schema:
           $ref: "#/definitions/MasterZone"

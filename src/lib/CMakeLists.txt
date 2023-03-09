@@ -27,6 +27,7 @@ add_library(${PROJECT_NAME}
     proto_util.h
     RestApi.cpp
     RestApi.h
+    ResourceIf.cpp
     RocksDbResource.cpp
     RocksDbResource.h
     Slave.cpp

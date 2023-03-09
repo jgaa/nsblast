@@ -60,6 +60,7 @@ public:
         RocksDbResource& owner_;
         std::once_flag once_;
         std::unique_ptr<ROCKSDB_NAMESPACE::Transaction> trx_;
+        bool dirty_ = false;
 
         // TransactionIf interface
     public:

@@ -1,9 +1,27 @@
+
+#include <random>
 #include "nsblast/util.h"
 #include "nsblast/logging.h"
 
 using namespace std;
 
 namespace nsblast::lib {
+
+namespace {
+
+template <typename T>
+T getRandomNumberT()
+{
+    static random_device rd;
+    static mt19937 mt(rd());
+    static mutex mtx;
+    static uniform_int_distribution<T> dist; //dist(1, numeric_limits<T>::max);
+
+    lock_guard<mutex> lock{mtx};
+    return dist(mt);
+}
+
+} // anon ns
 
 boost::uuids::uuid newUuid()
 {
@@ -69,6 +87,20 @@ boost::asio::ip::tcp::socket TcpConnect(boost::asio::io_context& ctx,
     throw runtime_error{"Failed to connect"};
 }
 
+uint64_t getRandomNumber64()
+{
+    return getRandomNumberT<uint64_t>();
+}
+
+uint32_t getRandomNumber32()
+{
+    return getRandomNumberT<uint32_t>();
+}
+
+uint16_t getRandomNumber16()
+{
+    return getRandomNumberT<uint32_t>();
+}
 
 
 }

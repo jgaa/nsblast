@@ -1,5 +1,7 @@
 #pragma once
 
+#define LOGFAULT_USE_TID_AS_NAME 1
+
 #include "logfault/logfault.h"
 
 #define LOG_ERROR   LFLOG_ERROR

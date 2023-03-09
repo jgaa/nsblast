@@ -227,3 +227,6 @@ public:
 
 
 } // ns
+
+std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::Category& cat);
+

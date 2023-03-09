@@ -19,7 +19,7 @@ message Contact {
 }
 
 message Zone {
-    required string uuid = 1; // Unique identifier for the zone
+    optional string uuid = 1; // Unique identifier for the zone
     required Master master = 2; // If present in a server, this server is a slave for this zone
     optional Contact contact = 3;
     optional bool active = 4;

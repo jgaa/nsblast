@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include "nsblast/nsblast.h"
@@ -16,6 +17,7 @@ public:
     Slave(SlaveMgr& mgr, std::string_view fqdn, const pb::Zone& zone);
 
     void start();
+    void done();
 
 private:
     using tcp_t = boost::asio::ip::tcp;
@@ -41,7 +43,10 @@ private:
      *
      * The caller owns the buffer for the returned Entry.
      */
-    Entry getReply(tcp_t::socket& socket, buffer_t& buffer, yield_t& yield);
+    Message getReply(tcp_t::socket& socket, buffer_t& buffer, yield_t& yield);
+    void checkIfDone();
+    bool isZoneUpToDate(tcp_t::socket& socket, yield_t& yield);
+    void doAxfr(tcp_t::socket& socket, yield_t& yield);
 
     SlaveMgr& mgr_;
     const std::string fqdn_;
@@ -49,7 +54,9 @@ private:
     boost::asio::deadline_timer schedule_;
     std::optional<boost::asio::deadline_timer> timeout_;
     std::mutex mutex_;;
-    bool done_ = true;
+    std::atomic_bool done_{false};
+    tcp_t::endpoint current_remote_ep_;
+    uint16_t next_id = getRandomNumber16();
 };
 
 } // ns
