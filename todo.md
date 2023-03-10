@@ -27,9 +27,9 @@
 - [ ] Call slave servers hat are on-line to get noitificatiosn when zones are up to date after a change. 
 
 # Slave DNS 
-- [ ] Handle configuration-based Slave setup (interoperatibility with other servers)
-  - [ ] API endpoint to tell an instance that it is a slave for a specific zone and it's master's IP.
-  - [ ] AXFR client to fetch/refresh a slave zone
+- [x] Handle configuration-based Slave setup (interoperatibility with other servers)
+  - [x] API endpoint to tell an instance that it is a slave for a specific zone and it's master's IP.
+  - [x] AXFR client to fetch/refresh a slave zone
 - [ ] Startup procedure 
     - [ ] Subscribe to zone changes
     - [ ] Get a list of all zones and their current version (bootstrap)
@@ -41,6 +41,7 @@
 - [ ] Reconnect to the master server when we lose the connection.
 
 # API
+- [ ] Get an Entry as json
 - [ ] Delete a RR type from a fqdn
 - [ ] DDNS service to allow users to use the DNS for their home networks
 
@@ -74,9 +75,11 @@
 - [ ] See what other open source DNS servers use/do
 
 # Design
+- [ ] How to handle authentication. What to put in nsblast, and what to put elsewhere.
 - [ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
 
 # Tests
+- [ ] Automatic replication to child zone using AXFR and timeout polling
 - [ ] child-zones are excluded from AXFR
 - [ ] AXFR for non-existant key returns NAME_ERROR
 - [ ] AXFR for valid key inside a zone (but not the key for the SOA) returns NAME_ERROR
