@@ -87,4 +87,4 @@
 - [ ] AXFR returns the correct data for it's SOA version even when the zone is changed during the transfer.
 
 # CI
-- [ ] Compile to docker image
+- [x] Compile to docker image
