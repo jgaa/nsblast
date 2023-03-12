@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.13)
 
 if (NOT DEFINED NSBLAST_VERSION)
     set(NSBLAST_VERSION 0.0.1)
@@ -24,6 +24,18 @@ find_package(OpenSSL REQUIRED)
 find_package(Threads)
 find_package(BZip2 REQUIRED)
 find_package(Protobuf REQUIRED)
+
+find_package(Doxygen)
+
+if (NOT  DOXYGEN_FOUND)
+    message("Doxygen not found. Disabling document generation")
+    set(NSBLAST_WITH_DOCS OFF)
+endif()
+
+if (NSBLAST_WITH_TESTS)
+    find_package(GTest REQUIRED)
+endif()
+
 
 if (NSBLAST_WITH_DOCS)
     find_package(Doxygen REQUIRED)
@@ -53,6 +65,7 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     context
     chrono
     regex
+    json
     )
 
 add_library(boost INTERFACE IMPORTED)

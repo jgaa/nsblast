@@ -20,3 +20,17 @@ MVP expected by spring 2003
 - [ ] [RFC 7766](https://www.rfc-editor.org/rfc/rfc7766) DNS Transport over TCP - Implementation Requirements
 
 *note*: Things in old RFC's that has later been obsoleted are ignored.
+
+## Docker image
+
+Building:
+```sh
+./build-docker-image.sh
+```
+
+Starting:
+The example use the local docker IP. You can substitute that with a machines real IP.
+
+```sh
+docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp lastviking/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
+```

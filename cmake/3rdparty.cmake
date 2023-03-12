@@ -39,60 +39,33 @@ ExternalProject_Add(externalYahat
 
 add_dependencies(externalYahat logfault)
 
-
-# If we compile the tests; download and install gtest if it's not found on the target
-# On ubuntu and debian, you can install `libgtest-dev` to avoid this step.
-if (NSBLAST_WITH_TESTS)
-    find_package(GTest)
-    if (GTest_FOUND)
-        message("Using installed googletest")
-    else()
-        message("Will download and install googletest as a cmake included project")
-        set(DEPENDS_GTEST googletest)
-        set(GTEST_LIBRARIES gtest)
-
-        if (NOT DEFINED GTEST_TAG)
-            set(GTEST_TAG "main")
-        endif()
-
-        message("GTEST_TAG: ${GTEST_TAG}")
-
-        ExternalProject_Add(googletest
-            GIT_TAG "${GTEST_TAG}"
-            PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            CMAKE_ARGS
-                -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
-                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
-                ${GTEST_EXTRA_ARGS}
-        )
-        set(GTEST_LIB_DIR ${RESTC_EXTERNAL_INSTALLED_LIB_DIR})
-    endif()
-endif()
+#        -DPORTABLE=${PORTABLE}
+#-DCMAKE_CXX_COMPILER='${CMAKE_CXX_COMPILER}'
+#-DCMAKE_C_COMPILER='${CMAKE_C_COMPILER}'
+#-DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+#-DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
-    GIT_TAG "v7.9.2"
+    GIT_TAG "v7.10.2"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DUSE_RTTI=1
-        -DPORTABLE=${PORTABLE}
         -DCMAKE_CXX_STANDARD=17
         -DWITH_TESTS=OFF
+        -DWITH_ALL_TESTS=OFF
         -DWITH_TOOLS=OFF
         -DWITH_BENCHMARK_TOOLS=OFF
         -DWITH_CORE_TOOLS=OFF
+        -DWITH_JNI=OFF
+        -DJNI=OFF
+        -DWITH_EXAMPLES=OFF
+        -DWITH_BENCHMARK=OFF
         -DWITH_SNAPPY=ON
         -DWITH_ZLIB=ON
-        -DCMAKE_POSITION_INDEPENDENT_CODE=True
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
-        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+
 
      # Required because CMake don't work really well with ninja
      BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
@@ -102,3 +75,4 @@ ExternalProject_Get_Property(rocksdb BINARY_DIR)
 set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
 set(ROCKSDB_FOUND TRUE)
 
+message("For rocksdb: EXTERNAL_PROJECTS_INSTALL_PREFIX='${EXTERNAL_PROJECTS_INSTALL_PREFIX}'")

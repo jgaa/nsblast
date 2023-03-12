@@ -73,6 +73,7 @@ target_include_directories(db_tests
 
 target_link_libraries(db_tests
     ${GTEST_LIBRARIES}
+    yahat
     nsblastlib
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working

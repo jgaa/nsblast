@@ -85,3 +85,6 @@
 - [ ] AXFR for valid key inside a zone (but not the key for the SOA) returns NAME_ERROR
 - [ ] AXFR request from client without access returns REFUSED
 - [ ] AXFR returns the correct data for it's SOA version even when the zone is changed during the transfer.
+
+# CI
+- [ ] Compile to docker image
