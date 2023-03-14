@@ -294,6 +294,15 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         }
         sb.createCname(fqdn, ttl, v.as_string());
     }},
+    { "ptr", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        // TODO: Validate that the payload is valid and in 'in-addr.arpa' or 'ip6.arpa' root-domain?
+
+        if (!v.if_string()) {
+            throw Response{400, "PTR entities must be strings (hostnames)"};
+        }
+        sb.createPtr(fqdn, ttl, v.as_string());
+    }},
     { "mx", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
         uint16_t priority = 10;
         string_view host;

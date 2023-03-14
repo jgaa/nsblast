@@ -297,6 +297,18 @@ public:
     Labels cname() const;
 };
 
+/*! Wrapper over a RR PTR instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrPtr : public Rr {
+public:
+    RrPtr(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels ptrdname() const;
+};
+
 /*! Wrapper over a RR NS instance.
  *
  *  Can be used to simply obtain data from the record.
@@ -945,6 +957,11 @@ public:
     NewRr createCname(std::string_view fqdn,
                       uint32_t ttl,
                       std::string_view cname);
+
+    /*! Create a PTR record. */
+    NewRr createPtr(std::string_view fqdn,
+                    uint32_t ttl,
+                    std::string_view hostname);
 
     /*! Create a NS record. */
     NewRr createNs(std::string_view fqdn,

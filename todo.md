@@ -29,8 +29,8 @@ Data types, stored in the DNS server
 |EUI48 | MAC address (EUI-48)|7043|pending|
 |EUI64 | MAC address (EUI-64)|7043|pending|
 |HINFO | Host Information. Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY|8482|pending|
-|HIP   | Host Identity Protocol. Method of separating the end-point identifier and locator roles of IP addresses. |8005| |
-|IPSECKEY | IPsec Key |4025| |
+|HIP   | Host Identity Protocol. Method of separating the end-point identifier and locator roles of IP addresses. |8005|pending|
+|IPSECKEY | IPsec Key |4025|pending|
 |KEY   | Key record (DNSSEC)|2535 2930|pending|
 |KX    | Key Exchanger record |2230|pending|
 |LOC   | Specifies a geographical location associated with a domain name |1876|pending|
@@ -41,7 +41,7 @@ Data types, stored in the DNS server
 |NSEC3 | (Next-Secure 3) Record: Similar to NSEC but uses hashed domain names to provide better zone enumeration protection, used in DNSSEC|5155|pending|
 |NSEC3PARAM| (NSEC3 Parameters) Record: Specifies the parameters used for NSEC3, used in DNSSEC|5155|pending|
 |OPENPGPKEY| OpenPGP public key record|7929|pending|
-|PTR   | (Pointer) Record: Maps an IP address to a domain name|1035|pending|
+|PTR   | (Pointer) Record: Maps an IP address to a domain name|1035|implemented|
 |RP    | Responsible Person|1183|pending|
 |SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|pending|
 |SOA   | (Start of Authority) Record: Specifies administrative information about a DNS zone, including the primary name server, contact email address, and other parameters|1035|implemented|

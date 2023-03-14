@@ -826,6 +826,43 @@ TEST(Rr, Cname) {
     EXPECT_EQ(cn.cname().string(), cname);
 }
 
+TEST(Rr, PtrIpv4) {
+    StorageBuilder sb;
+
+    string_view fqdn = "in-addr.arpa";
+    string_view ptr = "1.0.0.127";
+
+    auto rr = sb.createPtr(fqdn, 1000, ptr);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrPtr cn{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(cn.labels().string(), fqdn);
+    EXPECT_EQ(cn.type(), nsblast::TYPE_PTR);
+    EXPECT_EQ(cn.ttl(), 1000);
+    EXPECT_EQ(cn.ptrdname().string(), ptr);
+}
+
+TEST(Rr, PtrIpv6) {
+    StorageBuilder sb;
+
+    string_view fqdn = "ip6.arpa";
+    string_view ptr = "b.a.9.8.7.6.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2";
+
+    auto rr = sb.createPtr(fqdn, 1000, ptr);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrPtr cn{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(cn.labels().string(), fqdn);
+    EXPECT_EQ(cn.type(), nsblast::TYPE_PTR);
+    EXPECT_EQ(cn.ttl(), 1000);
+    EXPECT_EQ(cn.ptrdname().string(), ptr);
+}
+
+
 TEST(Rr, Ns) {
     StorageBuilder sb;
 

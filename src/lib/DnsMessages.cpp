@@ -245,6 +245,11 @@ StorageBuilder::NewRr StorageBuilder::createCname(string_view fqdn, uint32_t ttl
     return createDomainNameInRdata(fqdn, TYPE_CNAME, ttl, cname);
 }
 
+StorageBuilder::NewRr StorageBuilder::createPtr(string_view fqdn, uint32_t ttl, string_view hostname)
+{
+    return createDomainNameInRdata(fqdn, TYPE_PTR, ttl, hostname);
+}
+
 StorageBuilder::NewRr StorageBuilder::createNs(string_view fqdn, uint32_t ttl, string_view ns)
 {
     return createDomainNameInRdata(fqdn, TYPE_NS, ttl, ns);
@@ -1319,12 +1324,20 @@ boost::asio::ip::address RrA::address()
 
 string RrA::string()
 {
-                  return address().to_string();
+    return address().to_string();
 }
 
 uint32_t sanitizeTtl(uint32_t ttl) noexcept
 {
     return min(ttl, TTL_MAX);
+}
+
+Labels RrPtr::ptrdname() const
+{
+    if (type() != TYPE_PTR) {
+        throw runtime_error{"Not a TYPE_PTR"};
+    }
+    return {rdata(), 0};
 }
 
 
