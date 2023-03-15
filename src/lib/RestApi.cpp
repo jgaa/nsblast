@@ -307,6 +307,26 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 
         sb.createHinfo(fqdn, ttl, cpu, os);
     }},
+    { "rp", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+    if (!v.if_object()) {
+        throw Response{400, "rp must be an object"};
+    }
+
+        string_view mbox, txt;
+
+        for(const auto& a : v.as_object()) {
+             if (a.key() == "mbox") {
+                mbox = a.value().as_string();
+             } else if (a.key() == "txt") {
+                txt = a.value().as_string();
+             } else {
+                throw Response{400, "Unknown rp entity: "s + string(a.key())};
+             }
+         }
+
+        sb.createRp(fqdn, ttl, mbox, txt);
+    }},
     { "cname", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         if (!v.if_string()) {

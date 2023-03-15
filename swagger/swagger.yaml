@@ -394,6 +394,14 @@ definitions:
         type: string
       os:
         type: string
+  
+  Rp:
+    type: object
+    properties:
+      mbox:
+        type: string
+      txt:
+        type: string
         
   Ptr:
     type: string
@@ -423,6 +431,8 @@ definitions:
         $ref: "#/definitions/Hinfo"
       ptr:
         $ref: "#/definitions/Ptr"
+      rp:
+        $ref: "#/definitions/Rp"
 
     
   

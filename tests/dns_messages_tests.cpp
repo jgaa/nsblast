@@ -178,7 +178,7 @@ TEST(CreateMessageHeader, CheckingOpcodeQuery) {
 
     MessageBuilder mb;
 
-    auto nh = mb.createHeader(1, true, Message::Header::OPCODE::QUERY, false);
+    mb.createHeader(1, true, Message::Header::OPCODE::QUERY, false);
 
     auto header = mb.header();
     EXPECT_EQ(header.opcode(), Message::Header::OPCODE::QUERY);
@@ -188,7 +188,7 @@ TEST(CreateMessageHeader, CheckingOpcodeIquery) {
 
     MessageBuilder mb;
 
-    auto nh = mb.createHeader(1, true, Message::Header::OPCODE::IQUERY, false);
+    mb.createHeader(1, true, Message::Header::OPCODE::IQUERY, false);
 
     auto header = mb.header();
     EXPECT_EQ(header.opcode(), Message::Header::OPCODE::IQUERY);
@@ -198,7 +198,7 @@ TEST(CreateMessageHeader, CheckingOpcodeStatus) {
 
     MessageBuilder mb;
 
-    auto nh = mb.createHeader(1, true, Message::Header::OPCODE::STATUS, false);
+    mb.createHeader(1, true, Message::Header::OPCODE::STATUS, false);
 
     auto header = mb.header();
     EXPECT_EQ(header.opcode(), Message::Header::OPCODE::STATUS);
@@ -737,7 +737,7 @@ TEST(RrList, parse) {
     auto rr1 = sb.createA(fqdn, 5000, ip1);
     auto rr2 = sb.createA(fqdn, 5001, ip2);
     auto rr3 = sb.createA(fqdn, 5002, ip3);
-    auto rrs = sb.createSoa(fqdn, 5003, mname, rname,
+    sb.createSoa(fqdn, 5003, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
 
     RrList rs{sb.buffer(), rr1.offset(), 4, false};
@@ -824,6 +824,26 @@ TEST(Rr, Cname) {
     EXPECT_EQ(cn.type(), nsblast::TYPE_CNAME);
     EXPECT_EQ(cn.ttl(), 1000);
     EXPECT_EQ(cn.cname().string(), cname);
+}
+
+TEST(Rr, Rp) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view mbox = "foo.example.com";
+    string_view txt = "bar.example.com";
+
+    auto rr = sb.createRp(fqdn, 1000, mbox, txt);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrRp rp{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(rp.labels().string(), fqdn);
+    EXPECT_EQ(rp.type(), nsblast::TYPE_RP);
+    EXPECT_EQ(rp.ttl(), 1000);
+    EXPECT_EQ(rp.mbox().string(), mbox);
+    EXPECT_EQ(rp.txt().string(), txt);
 }
 
 TEST(Rr, Hinfo) {

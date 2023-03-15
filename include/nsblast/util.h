@@ -218,6 +218,57 @@ namespace nsblast::lib {
         return o.str();
     }
 
+    /*! Get a text segment from rdata.
+     *
+     *  For RR's where there are one or more text segments
+     *  in the rdata, like HINFO.
+     */
+    template <size_t Num>
+    std::string_view getTextFromRdata(span_t rd, size_t index) {
+        if (index >= Num) {
+            throw std::runtime_error{"getTextFromRdata: Index out of range"};
+        }
+        std::string_view rval;
+        for(size_t i = 0; i <= index; ++i) {
+            if (rd.empty()) {
+                throw std::runtime_error{"getTextFromRdata: text field has no length byte!"};
+            }
+            size_t len = rd[0];
+            if (len >= rd.size()) {
+                throw std::runtime_error{"getTextFromRdata - Length exeeds buffer-len!"};
+            }
+
+            rval = {rd.data() + 1, len};
+            rd = rd.subspan(len + 1);
+        }
+
+        return rval;
+    }
+
+    /*! Get labels from rdata.
+     *
+     *  For RR's where there are one or more labels segments
+     *  in the rdata, like RP.
+     */
+    template <size_t Num>
+    Labels getLabelsFromRdata(span_t rd, size_t index) {
+        size_t offset = 0;
+        if (index >= Num) {
+            throw std::runtime_error{"getTLabelsFromRdata: Index out of range"};
+        }
+        std::string_view rval;
+        Labels label;
+        for(size_t i = 0; i <= index; ++i) {
+            if (rd.empty()) {
+                throw std::runtime_error{"getTextFromRdata: field can not be empty!"};
+            }
+            label = {rd, 0};
+            rd = rd.subspan(label.bytes());
+        }
+
+        return label;
+    }
+
     boost::asio::ip::tcp::socket TcpConnect(
             boost::asio::io_context& ctx,
             const std::string& endpoint,

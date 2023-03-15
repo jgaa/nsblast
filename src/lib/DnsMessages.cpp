@@ -300,6 +300,22 @@ StorageBuilder::NewRr StorageBuilder::createHinfo(string_view fqdn, uint32_t ttl
     return createTxtRdata(fqdn, ttl, segments, TYPE_HINFO);
 }
 
+StorageBuilder::NewRr StorageBuilder::createRp(string_view fqdn, uint32_t ttl,
+                                               string_view mbox, string_view txt)
+{
+    vector<char> rdata;
+
+    // We store the labels uncompressed
+    const auto mbox_len = writeName(rdata, 0, mbox, false);
+    const auto txt_len = writeName(rdata, 0, txt, false);
+
+    rdata.resize(mbox_len + txt_len);
+    writeName(rdata, 0, mbox);
+    writeName(rdata, mbox_len, txt);
+
+    return createRr(fqdn, TYPE_RP, ttl, rdata);
+}
+
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
 {
     auto addr = boost::asio::ip::address::from_string(string{ip});
@@ -1351,17 +1367,7 @@ string_view RrHinfo::cpu() const
         throw runtime_error{"Not a TYPE_HINFO"};
     }
 
-    auto rd = rdata();
-    if (rd.empty()) {
-        return {};
-    }
-
-    size_t len = rd[0];
-    if (len >= rd.size()) {
-        throw runtime_error{"HINFO.cpu - invalid length"};
-    }
-
-    return {rd.data() + 1, len};
+    return getTextFromRdata<2>(rdata(), 0);
 }
 
 string_view RrHinfo::os() const
@@ -1370,19 +1376,25 @@ string_view RrHinfo::os() const
         throw runtime_error{"Not a TYPE_HINFO"};
     }
 
-    auto offset = cpu().size() + 1;
-    auto rd = rdata();
-    if (offset >= rd.size()) {
-        throw runtime_error{"HINFO.os - Invalid offset"};
+    return getTextFromRdata<2>(rdata(), 1);
+}
+
+Labels RrRp::mbox() const
+{
+    if (type() != TYPE_RP) {
+        throw runtime_error{"Not a TYPE_RP"};
     }
 
-    rd = rd.subspan(offset);
-    size_t len = rd[0];
-    if (len >= rd.size()) {
-        throw runtime_error{"HINFO.os - invalid length"};
+    return getLabelsFromRdata<2>(rdata(), 0);
+}
+
+Labels RrRp::txt() const
+{
+    if (type() != TYPE_RP) {
+        throw runtime_error{"Not a TYPE_RP"};
     }
 
-    return {rd.data() + 1, len};
+    return getLabelsFromRdata<2>(rdata(), 1);
 }
 
 } // ns

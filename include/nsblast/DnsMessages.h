@@ -321,7 +321,7 @@ public:
     Labels ns() const;
 };
 
-/*! Wrapper over a RR NS instance.
+/*! Wrapper over a RR Hinfo instance.
  *
  *  Can be used to simply obtain data from the record.
  */
@@ -333,6 +333,20 @@ public:
     std::string_view cpu() const;
     std::string_view os() const;
 };
+
+/*! Wrapper over a RR RP instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrRp : public Rr {
+public:
+    RrRp(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels mbox() const;
+    Labels txt() const;
+};
+
 
 /*! Wrapper over a RR CNAME instance.
  *
@@ -1013,6 +1027,18 @@ public:
                       uint32_t ttl,
                       std::string_view cpu,
                       std::string_view os);
+
+    /*! Create a Rp record.
+     *
+     * \param fqdn Fully Qualified Domanin Name
+     * \param ttl Time To Live
+     * \param mbox Mail address for the responsible person (labels)
+     * \param txt Pointer to fdqn for text RR with more info (labels)
+     */
+    NewRr createRp(std::string_view fqdn,
+                   uint32_t ttl,
+                   std::string_view mbox,
+                   std::string_view txt);
 
     /*! Create a rdata segment composed of one or more strings/views from a container.
      *

@@ -121,6 +121,7 @@ static constexpr std::uint16_t TYPE_HINFO = 13;
 static constexpr std::uint16_t TYPE_MINFO = 14;
 static constexpr std::uint16_t TYPE_MX = 15;
 static constexpr std::uint16_t TYPE_TXT = 16;
+static constexpr std::uint16_t TYPE_RP = 17;
 
 // RFC 6891
 static constexpr std::uint16_t TYPE_OPT = 41;

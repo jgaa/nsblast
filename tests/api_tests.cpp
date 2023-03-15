@@ -44,6 +44,28 @@ auto getAJson() {
    return boost::json::serialize(json);
 }
 
+auto getHinfoJson() {
+   boost::json::object json, hinfo;
+
+   hinfo["cpu"] = "awesome";
+   hinfo["os"] = "minix";
+
+   json["hinfo"] = hinfo;
+
+   return boost::json::serialize(json);
+}
+
+auto getRpJson() {
+   boost::json::object json, rp;
+
+   rp["mbox"] = "admin.example.com";
+   rp["txt"] = "more.info.example.com";
+
+   json["rp"] = rp;
+
+   return boost::json::serialize(json);
+}
+
 auto makeRequest(const string& what, string_view fqdn, string json, yahat::Request::Type type) {
     static const string base = "/api/v1";
 
@@ -613,6 +635,34 @@ TEST(ApiRequest, patchSubRrNoZone) {
     auto parsed = api.parse(req);
     auto res = api.onResourceRecord(req, parsed);
     EXPECT_EQ(res.code, 404);
+}
+
+TEST(ApiRequest, postRrHinfo) {
+    const string_view fqdn{"foo.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = getHinfoJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, postRrRp) {
+    const string_view fqdn{"foo.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = getRpJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
 }
 
 // TODO: Make a series of tests to validate PATCH

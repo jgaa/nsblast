@@ -42,7 +42,7 @@ Data types, stored in the DNS server
 |NSEC3PARAM| (NSEC3 Parameters) Record: Specifies the parameters used for NSEC3, used in DNSSEC|5155|pending|
 |OPENPGPKEY| OpenPGP public key record|7929|pending|
 |PTR   | (Pointer) Record: Maps an IP address to a domain name|1035|implemented|
-|RP    | Responsible Person|1183|pending|
+|RP    | Responsible Person|1183|implemented|
 |SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|pending|
 |SOA   | (Start of Authority) Record: Specifies administrative information about a DNS zone, including the primary name server, contact email address, and other parameters|1035|implemented|
 |SRV   | (Service) Record: Specifies the location of servers for specific services, such as SIP or XMPP|2782|pending|
