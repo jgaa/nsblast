@@ -613,7 +613,13 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
 
     // Iterate over the queries and add our answers
     for(const auto& query : message.getQuestions()) {
-        assert(query.clas() == CLASS_IN);
+        if (query.clas() != CLASS_IN) {
+            LOG_WARN << "I can only handle CLASS_IN. Client requested " << query.clas()
+                     << " in request " << request.uuid;
+            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            return;
+        }
+
         const auto qtype = query.type();
         const auto orig_fqdn = query.labels();
         bool persuing_cname = false;
