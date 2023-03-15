@@ -66,6 +66,22 @@ auto getRpJson() {
    return boost::json::serialize(json);
 }
 
+auto getAfsdbJson() {
+    return R"({
+    "afsdb": [
+        {
+          "subtype": 1,
+          "host": "foo.example.com"
+        },
+        {
+          "host": "bar.example.com",
+          "subtype": 3
+        }
+    ]
+    })";
+}
+
+
 auto makeRequest(const string& what, string_view fqdn, string json, yahat::Request::Type type) {
     static const string base = "/api/v1";
 
@@ -514,7 +530,6 @@ TEST(ApiRequest, postSubRr) {
 
 TEST(ApiRequest, postSubRrExists) {
     const string_view fqdn{"www.example.com"};
-    const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
     db.createTestZone();
@@ -532,7 +547,6 @@ TEST(ApiRequest, postSubRrExists) {
 
 TEST(ApiRequest, postSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
-    const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
     db.createTestZone();
@@ -569,7 +583,6 @@ TEST(ApiRequest, putSubRr) {
 
 TEST(ApiRequest, putSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
-    const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
     db.createTestZone();
@@ -584,7 +597,6 @@ TEST(ApiRequest, putSubRrNoZone) {
 
 TEST(ApiRequest, putSubRrExists) {
     const string_view fqdn{"www.example.com"};
-    const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
     db.createTestZone();
@@ -624,7 +636,6 @@ TEST(ApiRequest, patchSubRr) {
 
 TEST(ApiRequest, patchSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
-    const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
     db.createTestZone();
@@ -657,6 +668,20 @@ TEST(ApiRequest, postRrRp) {
     TmpDb db;
     db.createTestZone();
     auto json = getRpJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, postRrAfsdb) {
+    const string_view fqdn{"foo.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = getAfsdbJson();
     auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
     RestApi api{db.config(), db.resource()};

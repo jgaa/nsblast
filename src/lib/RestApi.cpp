@@ -364,6 +364,24 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         }
 
         sb.createMx(fqdn, ttl, priority, host);
+    }},
+    { "afsdb", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        uint16_t subtype = 0;
+        string_view host;
+
+        for(const auto& mx: v.as_array()) {
+            for(const auto& e : mx.as_object()) {
+                if (e.key() == "host") {
+                    host = e.value().as_string();
+                } else if (e.key() == "subtype") {
+                    subtype = e.value().as_int64();
+                } else {
+                    throw Response{400, "Unknown entity in afsdb: "s + string(e.key())};
+                }
+            }
+        }
+
+        sb.createAfsdb(fqdn, ttl, subtype, host);
     }}
     };
 

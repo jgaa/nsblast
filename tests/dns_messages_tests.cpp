@@ -1077,6 +1077,25 @@ TEST(Rr, Mx) {
     EXPECT_EQ(dn.priority(), 10);
 }
 
+TEST(Rr, Afsdb) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view host = "db.example.com";
+
+    auto rr = sb.createAfsdb(fqdn, 1000, 3, host);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrAfsdb afsdb{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(afsdb.labels().string(), fqdn);
+    EXPECT_EQ(afsdb.type(), nsblast::TYPE_AFSDB);
+    EXPECT_EQ(afsdb.ttl(), 1000);
+    EXPECT_EQ(afsdb.host().string(), host);
+    EXPECT_EQ(afsdb.subtype(), 3);
+}
+
 TEST(StorageBuilder, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";

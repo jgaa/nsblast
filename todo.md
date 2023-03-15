@@ -13,7 +13,7 @@ Data types, stored in the DNS server
 |------|--------------------------------|-----|--------|
 |A     | (Address) Record: Maps a domain name to an IPv4 address.|1035|implemented|
 |AAAA  | (IPv6 Address) Record: Maps a domain name to an IPv6 address.|3596|implemented|
-|AFSDB | Location of database servers of an AFS cell.|1183|pending|
+|AFSDB | Location of database servers of an AFS cell.|1183|implemented|
 |CAA   | DNS Certification Authority Authorization, constraining acceptable CAs for a host/domain |6844|pending|
 |CDNSKEY|Child copy of DNSKEY record, for transfer to parent |7344|pending|
 |CDS   | Child copy of DS record, for transfer to parent |7344|pending|

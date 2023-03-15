@@ -255,17 +255,27 @@ StorageBuilder::NewRr StorageBuilder::createNs(string_view fqdn, uint32_t ttl, s
     return createDomainNameInRdata(fqdn, TYPE_NS, ttl, ns);
 }
 
-StorageBuilder::NewRr StorageBuilder::createMx(string_view fqdn, uint32_t ttl, uint16_t priority, string_view host)
+StorageBuilder::NewRr StorageBuilder::createInt16AndLabels(string_view fqdn, uint16_t type, uint32_t ttl, uint16_t val, string_view label)
 {
     vector<char> rdata;
-
-    const auto host_size = writeName(rdata, 0, host, false);
+    const auto host_size = writeName(rdata, 0, label, false);
     rdata.resize(host_size + 2);
 
-    setValueAt(rdata, 0, priority);
-    writeName(rdata, 2, host);
+    setValueAt(rdata, 0, val);
+    writeName(rdata, 2, label);
 
-    return createRr(fqdn, TYPE_MX, ttl, rdata);
+    return createRr(fqdn, type, ttl, rdata);
+}
+
+
+StorageBuilder::NewRr StorageBuilder::createMx(string_view fqdn, uint32_t ttl, uint16_t priority, string_view host)
+{
+    return createInt16AndLabels(fqdn, TYPE_MX, ttl, priority, host);
+}
+
+StorageBuilder::NewRr StorageBuilder::createAfsdb(string_view fqdn, uint32_t ttl, uint16_t subtype, string_view host)
+{
+    return createInt16AndLabels(fqdn, TYPE_AFSDB, ttl, subtype, host);
 }
 
 StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, string_view txt, bool split)
@@ -543,7 +553,6 @@ void StorageBuilder::adding(uint16_t startOffset, uint16_t type)
         ;
     }
 }
-
 
 uint16_t Message::Header::id() const
 {
@@ -1395,6 +1404,26 @@ Labels RrRp::txt() const
     }
 
     return getLabelsFromRdata<2>(rdata(), 1);
+}
+
+Labels RrAfsdb::host()
+{
+    if (type() != TYPE_AFSDB) {
+        throw runtime_error{"Not a TYPE_AFSDB"};
+    }
+
+    return {rdata(), 2};
+}
+
+uint32_t RrAfsdb::subtype() const
+{
+    if (type() != TYPE_AFSDB) {
+        throw runtime_error{"Not a TYPE_AFSDB"};
+    }
+
+    const auto rd = rdata();
+    assert(rd.size() >= 2);
+    return get16bValueAt(rd, 0);
 }
 
 } // ns

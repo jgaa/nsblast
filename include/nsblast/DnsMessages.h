@@ -410,6 +410,19 @@ public:
     uint32_t priority() const;
 };
 
+/*! Wrapper over a RR MX instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrAfsdb : public Rr {
+public:
+    RrAfsdb(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels host();
+    uint32_t subtype() const;
+};
+
 
 /*! Wrapper / view over a list of result sets
  *
@@ -1001,6 +1014,14 @@ public:
                    uint16_t priority,
                    std::string_view host);
 
+    /*! Create a AFSDB record. */
+    NewRr createAfsdb(std::string_view fqdn,
+                   uint32_t ttl,
+                   uint16_t subtype,
+                   std::string_view host);
+
+
+
     /*! Create a TXT record.
      *
      * \param fqdn Fully Qualified Domanin Name
@@ -1187,6 +1208,11 @@ private:
     size_t calculateLen(uint16_t labelsLen, size_t rdataLen) const ;
     void prepare();
     void adding(uint16_t startOffset,  uint16_t type);
+    NewRr createInt16AndLabels(std::string_view fqdn,
+                   uint16_t type,
+                   uint32_t ttl,
+                   uint16_t val,
+                   std::string_view label);
 
     buffer_t buffer_;
     uint16_t name_ptr_ = 0;
