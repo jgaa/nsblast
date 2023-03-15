@@ -28,7 +28,7 @@ Data types, stored in the DNS server
 |DS    | (Delegation Signer) Record: Specifies the hash of a DNSKEY record for a child zone, used in DNSSEC.|4034|pending|
 |EUI48 | MAC address (EUI-48)|7043|pending|
 |EUI64 | MAC address (EUI-64)|7043|pending|
-|HINFO | Host Information. Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY|8482|pending|
+|HINFO | Host Information. Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY|8482|implemented|
 |HIP   | Host Identity Protocol. Method of separating the end-point identifier and locator roles of IP addresses. |8005|pending|
 |IPSECKEY | IPsec Key |4025|pending|
 |KEY   | Key record (DNSSEC)|2535 2930|pending|

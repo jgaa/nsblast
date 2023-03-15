@@ -68,6 +68,26 @@ struct Config {
     /*! DNS TCP connection idle time for QUERY sessions in seconds */
     uint32_t dns_tcp_idle_time = 3;
 
+    /*! The servers response to QTYPE=ANY on UDP
+     *  One of:
+     *    - hinfo    Follow RFC 8482's reccomondation and return a specially crafted HINFO record.
+     *    - relevant Only return A, AAA, CNAME, MX
+     *    - all      Return all RR's
+     *
+     *  On UDP it is reccommended to use "hinfo" to reduce the risk of the server
+     *  being used in DoS / UDP amplification attaks where a short, spoofed
+     *  UDP message can generate large UDP messages sent to the spoofed IP address.
+     */
+    std::string udp_qany_response = "hinfo";
+
+    /*! The servers response to QTYPE=ANY on TCP
+     *  One of:
+     *    - hinfo    Follow RFC 8482's reccomondation and return a specially crafted HINFO record.
+     *    - relevant Only return A, AAA, CNAME, MX
+     *    - all      Return all RR's
+     */
+    std::string tcp_qany_response = "relevant";
+
     /*! Max buffer-size for TCP buffers doring zone transfers.
      *
      *  Note: This is a 16 bit value.

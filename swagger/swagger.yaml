@@ -386,7 +386,19 @@ definitions:
           type: integer
         host:
           type: string
+          
+  Hinfo:
+    type: object
+    properties:
+      cpu:
+        type: string
+      os:
+        type: string
         
+  Ptr:
+    type: string
+    description: Pointer to domain name. Usually only used for IP to domain name mapping in the special zones in-addr.arpa and ip6.arpa
+
   Entry:
     type: object
     properties:
@@ -407,6 +419,10 @@ definitions:
         $ref: "#/definitions/Soa"
       ns:
         $ref: "#/definitions/Ns"
+      hinfo:
+        $ref: "#/definitions/Hinfo"
+      ptr:
+        $ref: "#/definitions/Ptr"
 
     
   

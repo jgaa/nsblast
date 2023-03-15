@@ -287,6 +287,26 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         }
         sb.createTxt(fqdn, ttl, v.as_string());
     }},
+    { "hinfo", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.if_object()) {
+            throw Response{400, "Hinfo must be an object"};
+        }
+
+        string_view cpu, os;
+
+        for(const auto& a : v.as_object()) {
+             if (a.key() == "cpu") {
+                cpu = a.value().as_string();
+             } else if (a.key() == "os") {
+                os = a.value().as_string();
+             } else {
+                throw Response{400, "Unknown hinfo entity: "s + string(a.key())};
+             }
+         }
+
+        sb.createHinfo(fqdn, ttl, cpu, os);
+    }},
     { "cname", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         if (!v.if_string()) {

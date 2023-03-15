@@ -321,6 +321,19 @@ public:
     Labels ns() const;
 };
 
+/*! Wrapper over a RR NS instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrHinfo : public Rr {
+public:
+    RrHinfo(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    std::string_view cpu() const;
+    std::string_view os() const;
+};
+
 /*! Wrapper over a RR CNAME instance.
  *
  *  Can be used to simply obtain data from the record.
@@ -988,6 +1001,18 @@ public:
     NewRr createTxt(std::string_view fqdn,
                       uint32_t ttl,
                       std::string_view txt, bool split = false);
+
+    /*! Create a HINFO record.
+     *
+     * \param fqdn Fully Qualified Domanin Name
+     * \param ttl Time To Live
+     * \param cpu specified CPU type
+     * \param os Os type
+     */
+    NewRr createHinfo(std::string_view fqdn,
+                      uint32_t ttl,
+                      std::string_view cpu,
+                      std::string_view os);
 
     /*! Create a rdata segment composed of one or more strings/views from a container.
      *

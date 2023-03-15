@@ -59,6 +59,10 @@ public:
         return c_;
     }
 
+    auto& config() {
+        return c_;
+    }
+
     ResourceIf& resource() {
         return db_;
     }

@@ -289,6 +289,17 @@ StorageBuilder::NewRr StorageBuilder::createTxt(string_view fqdn, uint32_t ttl, 
     return createTxtRdata(fqdn, ttl, a);
 }
 
+StorageBuilder::NewRr StorageBuilder::createHinfo(string_view fqdn, uint32_t ttl,
+                                                  string_view cpu, string_view os)
+{
+    if (cpu.size() > TXT_SEGMENT_MAX || os.size() > TXT_SEGMENT_MAX) {
+        throw runtime_error("StorageBuilder::createHinfo: cpu and os must be <= 255 bytes");
+    }
+
+    array<string_view, 2> segments = {cpu, os};
+    return createTxtRdata(fqdn, ttl, segments, TYPE_HINFO);
+}
+
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
 {
     auto addr = boost::asio::ip::address::from_string(string{ip});
@@ -1137,12 +1148,6 @@ RrList::Iterator RrList::Iterator::operator++(int) {
     return self;
 }
 
-//RrSet::Iterator::Iterator(const RrSet::Iterator &it)
-//    : index_{it.index_}, buffer_{it.buffer_}, current_{it.current_}, crr_{it.crr_}
-//{
-
-//}
-
 bool RrList::Iterator::equals(const boost::span<const char> a, const boost::span<const char> b)
 {
     return a.data() == b.data() && a.size() == b.size();
@@ -1340,5 +1345,44 @@ Labels RrPtr::ptrdname() const
     return {rdata(), 0};
 }
 
+string_view RrHinfo::cpu() const
+{
+    if (type() != TYPE_HINFO) {
+        throw runtime_error{"Not a TYPE_HINFO"};
+    }
+
+    auto rd = rdata();
+    if (rd.empty()) {
+        return {};
+    }
+
+    size_t len = rd[0];
+    if (len >= rd.size()) {
+        throw runtime_error{"HINFO.cpu - invalid length"};
+    }
+
+    return {rd.data() + 1, len};
+}
+
+string_view RrHinfo::os() const
+{
+    if (type() != TYPE_HINFO) {
+        throw runtime_error{"Not a TYPE_HINFO"};
+    }
+
+    auto offset = cpu().size() + 1;
+    auto rd = rdata();
+    if (offset >= rd.size()) {
+        throw runtime_error{"HINFO.os - Invalid offset"};
+    }
+
+    rd = rd.subspan(offset);
+    size_t len = rd[0];
+    if (len >= rd.size()) {
+        throw runtime_error{"HINFO.os - invalid length"};
+    }
+
+    return {rd.data() + 1, len};
+}
 
 } // ns

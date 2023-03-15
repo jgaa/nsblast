@@ -826,6 +826,46 @@ TEST(Rr, Cname) {
     EXPECT_EQ(cn.cname().string(), cname);
 }
 
+TEST(Rr, Hinfo) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view cpu = "foo";
+    string_view os = "bar";
+
+    auto rr = sb.createHinfo(fqdn, 1000, cpu, os);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrHinfo hinfo{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(hinfo.labels().string(), fqdn);
+    EXPECT_EQ(hinfo.type(), nsblast::TYPE_HINFO);
+    EXPECT_EQ(hinfo.ttl(), 1000);
+    EXPECT_EQ(hinfo.cpu(), cpu);
+    EXPECT_EQ(hinfo.os(), os);
+}
+
+TEST(Rr, HinfoEmptyOs) {
+    StorageBuilder sb;
+
+    string_view fqdn = "example.com";
+    string_view cpu = "foo";
+    string_view os = "";
+
+    auto rr = sb.createHinfo(fqdn, 1000, cpu, os);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrHinfo hinfo{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(hinfo.labels().string(), fqdn);
+    EXPECT_EQ(hinfo.type(), nsblast::TYPE_HINFO);
+    EXPECT_EQ(hinfo.ttl(), 1000);
+    EXPECT_EQ(hinfo.cpu(), cpu);
+    EXPECT_EQ(hinfo.os(), os);
+}
+
 TEST(Rr, PtrIpv4) {
     StorageBuilder sb;
 

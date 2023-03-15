@@ -17,6 +17,13 @@ public:
     using tcp_t = boost::asio::ip::tcp;
     using tcp_session_t = std::shared_ptr<DnsTcpSession>;
 
+    enum class QtypeAllResponse {
+        IGNORE, // Not Qtype ALL
+        ALL,
+        RELEVANT,
+        HINFO
+    };
+
     struct Request {
         virtual ~Request() = default;
 
@@ -92,6 +99,8 @@ public:
     tcp_session_t createTcpSession(tcp_t::socket && socket);
 
     void removeTcpSession(boost::uuids::uuid uuid);
+
+    QtypeAllResponse getQtypeAllResponse(const Request& req, uint16_t type) const;
 
 private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;

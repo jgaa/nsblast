@@ -558,6 +558,29 @@ void DnsEngine::stop()
 }
 
 
+DnsEngine::QtypeAllResponse
+DnsEngine::getQtypeAllResponse(const Request &req, uint16_t type) const
+{
+    if (type != QTYPE_ALL) {
+        return QtypeAllResponse::IGNORE;
+    }
+
+    static const auto parse = [](string_view val) {
+        if (val == "hinfo")
+            return QtypeAllResponse::HINFO;
+        if (val == "relevant")
+            return QtypeAllResponse::RELEVANT;
+        if (val == "all")
+            return QtypeAllResponse::ALL;
+
+        LOG_WARN << "getQtypeAllResponse: Unknown response type '"
+                 << val << "'.";
+        return QtypeAllResponse::HINFO;
+    };
+
+    return parse(req.is_tcp ? config_.tcp_qany_response : config_.udp_qany_response);
+}
+
 void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngine::send_t &send)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
@@ -594,6 +617,8 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
         const auto qtype = query.type();
         const auto orig_fqdn = query.labels();
         bool persuing_cname = false;
+
+        const auto qtall_resp = getQtypeAllResponse(request, query.type());
 
         auto key = labelsToFqdnKey(orig_fqdn);
 
@@ -706,7 +731,8 @@ again:
         if (!rr_set.empty()) {
             const auto& rr_hdr = rr_set.header();
 
-            if (rr_hdr.flags.cname && qtype != TYPE_CNAME) {
+            if (rr_hdr.flags.cname
+                    && (qtype != TYPE_CNAME)) {
 
                 // RFC 1034 4.2.3 - step 3 a // store CNAME and pursue CNAME
 
@@ -728,14 +754,45 @@ again:
                 goto again;
             }
 
+            if (qtall_resp == QtypeAllResponse::HINFO) {
+                StorageBuilder sb;
+                sb.createHinfo(orig_fqdn.string(), 86400 /* one day */, "RFC8482", {});
+                sb.finish();
+                Entry entry{sb.buffer()};
+                assert(!entry.empty());
+                if (!mb->addRr(*entry.begin(), hdr, MessageBuilder::Segment::ANSWER)) {
+                    return; // Truncated
+                }
+                continue;
+            }
+
             // Copy all matching entries
             for(const auto& rr : rr_set) {
-                if (qtype == QTYPE_ALL || qtype == rr.type()) {
-                    if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
-                        return; // Truncated
+                const auto rr_type = rr.type();
+                switch(qtall_resp) {
+                case QtypeAllResponse::IGNORE:
+                    if (qtype != rr_type) {
+                        continue; // Only give what the user asked for
                     }
+                    break;
+                case QtypeAllResponse::HINFO:
+                        assert(false); // We were supposed to deal with this before the for-loop
+                        continue;
+                case QtypeAllResponse::RELEVANT:
+                    if (rr_type != TYPE_A
+                            && rr_type != TYPE_AAAA
+                            && rr_type != TYPE_CNAME
+                            && rr_type != TYPE_MX) {
+                        continue;
+                    }
+                case QtypeAllResponse::ALL:
+                    ; // Copy the record
+                } // qtype
+
+                if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
+                    return; // Truncated
                 }
-            }
+            } // for rr_set
         } else {
             // key not found.
             bool is_referral = false;
