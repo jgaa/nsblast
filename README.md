@@ -17,6 +17,7 @@ MVP expected by spring 2023
 - [x] [RFC 2782](https://www.rfc-editor.org/rfc/rfc2782) A DNS RR for specifying the location of services (DNS SRV)
 - [x] [RFC 3596](https://www.rfc-editor.org/rfc/rfc3596) DNS Extensions to Support IP Version 6
 - [ ] [RFC 3597](https://www.rfc-editor.org/rfc/rfc3597) Handling of Unknown DNS Resource Record (RR) Types
+- [x] [RFC 4701](https://www.rfc-editor.org/rfc/rfc4701) A DNS Resource Record (RR) for Encoding Dynamic Host Configuration Protocol (DHCP) Information (DHCID RR)
 - [x] [RFC 5936](https://www.rfc-editor.org/rfc/rfc5936) DNS Zone Transfer Protocol (AXFR)
 - [ ] [RFC 6891](https://www.rfc-editor.org/rfc/rfc6891) Extension Mechanisms for DNS (EDNS(0))
 - [ ] [RFC 7766](https://www.rfc-editor.org/rfc/rfc7766) DNS Transport over TCP - Implementation Requirements

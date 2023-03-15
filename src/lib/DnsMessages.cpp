@@ -339,6 +339,13 @@ StorageBuilder::NewRr StorageBuilder::createSrv(string_view fqdn, uint32_t ttl, 
     return createRr(fqdn, TYPE_SRV, ttl, rdata);
 }
 
+StorageBuilder::NewRr StorageBuilder::createBase64(string_view fqdn, uint16_t type, uint32_t ttl, string_view base64EncodedBlob)
+{
+    const auto rdata = base64Decode(base64EncodedBlob);
+    return createRr(fqdn, type, ttl,
+                    {reinterpret_cast<const char*>(rdata.data()), rdata.size()});
+}
+
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
 {
     auto addr = boost::asio::ip::address::from_string(string{ip});
@@ -1107,6 +1114,11 @@ Labels Rr::labels() const
     }
 
     return *labels_;
+}
+
+string Rr::rdataAsBase64() const
+{
+    return Base64Encode(rdata());
 }
 
 void Rr::parse(bool isQuery)

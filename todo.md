@@ -20,7 +20,7 @@ Data types, stored in the DNS server
 |CERT  | Stores PKIX, SPKI, PGP, etc. |4398|pending|
 |CNAME | (Canonical Name) Record: Specifies an alias for a domain name.|1035|implemented|
 |CSYNC | Specify a synchronization mechanism between a child and a parent DNS zone.|7477|pending|
-|DHCID | DHCP identifier|4701|pending|
+|DHCID | DHCP identifier|4701|implemented|
 |DLV   | For publishing DNSSEC trust anchors outside of the DNS delegation chain.|4431|pending|
 |DNAME | Delegation name record. Alias for a name and all its subnames, unlike CNAME, which is an alias for only the exact name.|6672|pending|
 |DNSKEY| (DNS Security Key) Record: Contains a public key used for DNSSEC authentication.|4034|pending|

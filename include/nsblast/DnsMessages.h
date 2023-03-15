@@ -239,6 +239,8 @@ public:
         return {self_view_.data() + llen, dlen};
     }
 
+    std::string rdataAsBase64() const;
+
 protected:
     void parse(bool isQuery);
 
@@ -1164,6 +1166,11 @@ public:
     NewRr createA(std::string_view fqdn, uint32_t ttl, std::string_view ip);
 
     NewRr createA(std::string_view fqdn, uint32_t ttl, const std::string& ip);
+
+    /*! General method to construct RR's that contain binary data in the rdata section.
+     *
+     */
+    NewRr createBase64(std::string_view fqdn, uint16_t type, uint32_t ttl, std::string_view base64EncodedBlob);
 
     /*! Create a new resource record
      *

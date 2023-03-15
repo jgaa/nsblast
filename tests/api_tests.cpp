@@ -81,6 +81,12 @@ auto getAfsdbJson() {
     })";
 }
 
+auto getSrvDhcidJson() {
+    return R"({
+    "dhcid":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
+    })";
+}
+
 auto getSrvJson() {
     return R"({
     "srv": [
@@ -753,6 +759,20 @@ TEST(ApiRequest, postRrSrvNoAddressTarget) {
     RestApi api{db.config(), db.resource()};
     auto parsed = api.parse(req);
     EXPECT_THROW(api.onResourceRecord(req, parsed), yahat::Response);
+}
+
+TEST(ApiRequest, postRrDhcid) {
+    const string_view fqdn{"foo.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = getSrvDhcidJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
 }
 
 // TODO: Make a series of tests to validate PATCH

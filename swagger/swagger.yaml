@@ -431,6 +431,10 @@ definitions:
         target:
           type: string
           description: Pointer (fqdn) to a node that contains address record(s). It can not point to an alias.
+          
+  Base64:
+    type: string
+    description: Binary data. Must be encoded as BASE64.
     
 
   Entry:
@@ -463,6 +467,8 @@ definitions:
         $ref: "#/definitions/Afsdb"
       srv:    
         $ref: "#/definitions/Srv"
+      dhcid:
+        $ref: "#/definitions/Base64"
     
   
 externalDocs:

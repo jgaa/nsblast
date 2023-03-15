@@ -127,6 +127,7 @@ static constexpr std::uint16_t TYPE_TXT = 16;
 static constexpr std::uint16_t TYPE_RP = 17;
 static constexpr std::uint16_t TYPE_AFSDB = 18;
 static constexpr std::uint16_t TYPE_SRV = 33;
+static constexpr std::uint16_t TYPE_DHCID = 49;
 
 // RFC 6891
 static constexpr std::uint16_t TYPE_OPT = 41;

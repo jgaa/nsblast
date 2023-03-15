@@ -1134,6 +1134,20 @@ TEST(StorageBuilder, SingleA) {
     EXPECT_EQ(sb.header().flags.cname, false);
 }
 
+TEST(StorageBuilder, Dhcid) {
+    StorageBuilder sb;
+    string_view fqdn = "example.com";
+    string_view payload{"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="};
+
+    sb.createBase64(fqdn, TYPE_DHCID, 1000, payload);
+    EXPECT_NO_THROW(sb.finish());
+    EXPECT_EQ(sb.rrCount(), 1);
+
+    Entry entry{sb.buffer()};
+    EXPECT_EQ(entry.begin()->type(), TYPE_DHCID);
+    EXPECT_EQ(entry.begin()->rdataAsBase64(), payload);
+}
+
 TEST(Entry, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";

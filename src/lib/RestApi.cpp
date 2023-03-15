@@ -347,24 +347,23 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         sb.createHinfo(fqdn, ttl, cpu, os);
     }},
     { "rp", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+        if (!v.if_object()) {
+            throw Response{400, "rp must be an object"};
+        }
 
-    if (!v.if_object()) {
-        throw Response{400, "rp must be an object"};
-    }
+            string_view mbox, txt;
 
-        string_view mbox, txt;
-
-        for(const auto& a : v.as_object()) {
-             if (a.key() == "mbox") {
-                mbox = a.value().as_string();
-             } else if (a.key() == "txt") {
-                txt = a.value().as_string();
-             } else {
-                throw Response{400, "Unknown rp entity: "s + string(a.key())};
+            for(const auto& a : v.as_object()) {
+                 if (a.key() == "mbox") {
+                    mbox = a.value().as_string();
+                 } else if (a.key() == "txt") {
+                    txt = a.value().as_string();
+                 } else {
+                    throw Response{400, "Unknown rp entity: "s + string(a.key())};
+                 }
              }
-         }
 
-        sb.createRp(fqdn, ttl, mbox, txt);
+            sb.createRp(fqdn, ttl, mbox, txt);
     }},
     { "cname", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
@@ -372,6 +371,13 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             throw Response{400, "Cname entities must be strings"};
         }
         sb.createCname(fqdn, ttl, v.as_string());
+    }},
+    { "dhcid", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.if_string()) {
+            throw Response{400, "dhcid entities must be strings"};
+        }
+        sb.createBase64(fqdn, TYPE_DHCID, ttl, v.as_string());
     }},
     { "ptr", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
