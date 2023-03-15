@@ -33,7 +33,7 @@ Data types, stored in the DNS server
 |IPSECKEY | IPsec Key |4025|pending|
 |KEY   | Key record (DNSSEC)|2535 2930|pending|
 |KX    | Key Exchanger record |2230|pending|
-|LOC   | Specifies a geographical location associated with a domain name |1876|pending|
+|LOC   | Specifies a geographical location associated with a domain name |1876|maybe (experimental)|
 |MX    | Mail Exchange) Record: Specifies the mail exchange servers for a domain name.|1035|implemented|
 |NAPTR | Naming Authority Pointer|3403|pending|
 |NS    | (Name Server) Record: Specifies the authoritative name servers for a domain name.|1035|implemented|
@@ -45,7 +45,7 @@ Data types, stored in the DNS server
 |RP    | Responsible Person|1183|implemented|
 |SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|pending|
 |SOA   | (Start of Authority) Record: Specifies administrative information about a DNS zone, including the primary name server, contact email address, and other parameters|1035|implemented|
-|SRV   | (Service) Record: Specifies the location of servers for specific services, such as SIP or XMPP|2782|pending|
+|SRV   | (Service) Record: Specifies the location of servers for specific services, such as SIP or XMPP|2782|implemented|
 |SSHFP | SSH Public Key Fingerprint |4255|pending|
 |TLSA  | (Transport Layer Security Authentication) Record: Specifies the certificate or public key of a TLS server for a specific service, used for certificate pinning|6698|pending|
 |TLSA  | TLSA certificate association |6698|pending|

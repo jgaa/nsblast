@@ -39,6 +39,7 @@ public:
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
+    void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
 private:
     ApiEngine& apiEngine() {
         assert(api_engine_);

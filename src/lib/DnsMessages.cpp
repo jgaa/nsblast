@@ -326,6 +326,19 @@ StorageBuilder::NewRr StorageBuilder::createRp(string_view fqdn, uint32_t ttl,
     return createRr(fqdn, TYPE_RP, ttl, rdata);
 }
 
+StorageBuilder::NewRr StorageBuilder::createSrv(string_view fqdn, uint32_t ttl, uint16_t priority, uint16_t weight, uint16_t port, string_view target)
+{
+    vector<char> rdata;
+    const auto target_len = writeName(rdata, 0, target, false);
+
+    rdata.resize(6 + target_len);
+    set16bValueAt(rdata, 0, priority);
+    set16bValueAt(rdata, 2, weight);
+    set16bValueAt(rdata, 4, port);
+    writeName(rdata, 6, target);
+    return createRr(fqdn, TYPE_SRV, ttl, rdata);
+}
+
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
 {
     auto addr = boost::asio::ip::address::from_string(string{ip});
@@ -372,10 +385,33 @@ void StorageBuilder::finish()
     }
 
     sort(index_.begin(), index_.end(), [](const auto& left, const auto& right) {
-        static constexpr array<uint8_t, 30> sorting_table = {
+        static constexpr array<uint8_t, 255> sorting_table = {
             9, /* a */ 3, /* ns */ 2, 9, 9, /* cname */ 5, /* soa */ 1, 9, 9, 9, // 0
             9, 9, 9, 9, 9, /* mx */ 6, /* txt */ 7, 9, 9, 9,                     // 10
-            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 4, 9                              // 20
+            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 4, 9,                             // 20
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            16, 16, 16, 16, 16
         };
 
         assert(left.type < sorting_table.size());
@@ -1302,45 +1338,6 @@ RrSoa Entry::getSoa() const
     return {buffer(), begin()->offset()};
 }
 
-Entry::Iterator::Iterator(const Entry &entry, bool begin)
-    : entry_{&entry}
-    , ix_{begin ? entry.index().begin() : entry.index().end()}
-{
-    update();
-}
-
-Entry::Iterator Entry::Iterator::operator++(int)
-{
-    auto self = *this;
-    increment();
-    update();
-    return self;
-}
-
-Entry::Iterator& Entry::Iterator::operator++()
-{
-    increment();
-    update();
-    return *this;
-}
-
-void Entry::Iterator::update()
-{
-    if (ix_ != entry_->index().end()) {
-        const auto pos = ntohs(ix_->offset);
-        assert(pos < entry_->buffer().size() + 10);
-        crr_ = {entry_->buffer(), pos};
-        assert(crr_.type() == ntohs(ix_->type));
-        return;
-    }
-
-    crr_ = {};
-}
-
-void Entry::Iterator::increment()
-{
-    ++ix_;
-}
 
 
 boost::asio::ip::address RrA::address()
@@ -1425,5 +1422,79 @@ uint32_t RrAfsdb::subtype() const
     assert(rd.size() >= 2);
     return get16bValueAt(rd, 0);
 }
+
+Labels RrSrv::target() const
+{
+    if (type() != TYPE_SRV) {
+        throw runtime_error{"Not a TYPE_SRV"};
+    }
+
+    return {rdata(), 6};
+}
+
+uint32_t RrSrv::priority() const
+{
+    if (type() != TYPE_SRV) {
+        throw runtime_error{"Not a TYPE_SRV"};
+    }
+    return get16bValueAt(rdata(), 0);
+}
+
+uint32_t RrSrv::weight() const
+{
+    if (type() != TYPE_SRV) {
+        throw runtime_error{"Not a TYPE_SRV"};
+    }
+    return get16bValueAt(rdata(), 2);
+}
+
+uint32_t RrSrv::port() const
+{
+    if (type() != TYPE_SRV) {
+        throw runtime_error{"Not a TYPE_SRV"};
+    }
+    return get16bValueAt(rdata(), 4);
+}
+
+Entry::Iterator::Iterator(const Entry &entry, bool begin)
+    : entry_{&entry}
+    , ix_{begin ? entry.index().begin() : entry.index().end()}
+{
+    update();
+}
+
+Entry::Iterator Entry::Iterator::operator++(int)
+{
+    auto self = *this;
+    increment();
+    update();
+    return self;
+}
+
+Entry::Iterator& Entry::Iterator::operator++()
+{
+    increment();
+    update();
+    return *this;
+}
+
+void Entry::Iterator::update()
+{
+    if (ix_ != entry_->index().end()) {
+        const auto pos = ntohs(ix_->offset);
+        assert(pos < entry_->buffer().size() + 10);
+        crr_ = {entry_->buffer(), pos};
+        assert(crr_.type() == ntohs(ix_->type));
+        return;
+    }
+
+    crr_ = {};
+}
+
+void Entry::Iterator::increment()
+{
+    ++ix_;
+}
+
 
 } // ns

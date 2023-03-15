@@ -88,6 +88,9 @@ struct Config {
      */
     std::string tcp_qany_response = "relevant";
 
+    /*! Only allow Srv targets that points to a fqdn managed by this server */
+    bool dns_validate_srv_targets_locally = true;
+
     /*! Max buffer-size for TCP buffers doring zone transfers.
      *
      *  Note: This is a 16 bit value.
@@ -123,6 +126,7 @@ static constexpr std::uint16_t TYPE_MX = 15;
 static constexpr std::uint16_t TYPE_TXT = 16;
 static constexpr std::uint16_t TYPE_RP = 17;
 static constexpr std::uint16_t TYPE_AFSDB = 18;
+static constexpr std::uint16_t TYPE_SRV = 33;
 
 // RFC 6891
 static constexpr std::uint16_t TYPE_OPT = 41;

@@ -263,6 +263,45 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 
         sb.createSoa(fqdn, ttl, mname, rname, serial, refresh, retry, expire, minimum);
     }},
+    {"srv", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.is_array()) {
+            throw Response{400, "Json element 'srv' must be an array of objects(s)"};
+        }
+
+        for(const auto& srv : v.as_array()) {
+
+            if (!srv.is_object()) {
+                throw Response{400, "Json element 'srv' must be an array of objects(s)"};
+            }
+
+            uint32_t priority = 0, weight = 0, port = 0;
+            string_view target;
+
+            map<string_view, uint32_t *> nentries = {
+                {"priority", &priority},
+                {"weight", &weight},
+                {"port", &port}
+            };
+
+            for(const auto& a : srv.as_object()) {
+                if (auto it = nentries.find(a.key()) ; it != nentries.end()) {
+                    assert(it->second);
+                    *it->second = a.value().as_int64();
+                } else if (a.key() == "target") {
+                    target = a.value().as_string();
+                } else {
+                    throw Response{400, "Unknown Srv entity: "s + string(a.key())};
+                }
+            }
+
+            if (target.empty() || !port) {
+                throw Response{400, "Srv entities require avalid target and a valid port!"};
+            }
+
+            sb.createSrv(fqdn, ttl, priority, weight, port, target);
+        }
+    }},
     { "ns", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
         for(const auto& name : v.as_array()) {
             if (!name.if_string()) {
@@ -494,6 +533,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         sb.setZoneLen(existing.soa().begin()->labels().size() -1);
     }
     build(parsed.fqdn, config_.default_ttl, sb, parseJson(req.body));
+    checkSrv(sb.buffer(), *trx);
 
     bool need_version_increment = false;
 
@@ -638,6 +678,43 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
     }
 
     return {200, "OK"};
+}
+
+void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)
+{
+    if (!config_.dns_validate_srv_targets_locally) {
+        return;
+    }
+
+    Entry e{span};
+    set<string> targets;
+
+    for(const auto& rr : e) {
+        if (rr.type() == TYPE_SRV) {
+            RrSrv srv{span, rr.offset()};
+            targets.insert(toLower(srv.target().string()));
+        }
+    }
+
+    for (const auto& target : targets) {
+        auto e = trx.lookup(target);
+        bool found_adress_rr = false;
+        for(const auto& err : e) {
+            const auto type = err.type();
+            if (type == TYPE_A || type == TYPE_AAAA) {
+                found_adress_rr = true;
+                break;
+            }
+        }
+\
+        LOG_DEBUG << "RestApi::checkSrv target " << target
+                  << " in Srv for " << e.begin()->labels().string()
+                  << " is not pointing to a fqdn with A or AAAA records on this server.";
+
+        if (!found_adress_rr) {
+            throw Response{400, "SRV records' targets must point to an existing fqdn with address record(s)"};
+        }
+    }
 }
 
 

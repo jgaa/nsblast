@@ -11,9 +11,10 @@ MVP expected by spring 2023
 - [x] [RFC 1034](https://www.rfc-editor.org/rfc/rfc1034) DOMAIN NAMES - CONCEPTS AND FACILITIES
 - [x] [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035) DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION
 - [ ] [RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) Requirements for Internet Hosts -- Application and Support
-- [ ] [RFC 1183](https://www.rfc-editor.org/rfc/rfc1183) New DNS RR Definitions
+- [x] [RFC 1183](https://www.rfc-editor.org/rfc/rfc1183) New DNS RR Definitions (Rr, Asfdb)
 - [ ] [RFC 1995](https://www.rfc-editor.org/rfc/rfc1995) Incremental Zone Transfer in DNS
 - [ ] [RFC 2181](https://www.rfc-editor.org/rfc/rfc2181) Clarifications to the DNS Specification
+- [x] [RFC 2782](https://www.rfc-editor.org/rfc/rfc2782) A DNS RR for specifying the location of services (DNS SRV)
 - [x] [RFC 3596](https://www.rfc-editor.org/rfc/rfc3596) DNS Extensions to Support IP Version 6
 - [ ] [RFC 3597](https://www.rfc-editor.org/rfc/rfc3597) Handling of Unknown DNS Resource Record (RR) Types
 - [x] [RFC 5936](https://www.rfc-editor.org/rfc/rfc5936) DNS Zone Transfer Protocol (AXFR)

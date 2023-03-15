@@ -81,6 +81,43 @@ auto getAfsdbJson() {
     })";
 }
 
+auto getSrvJson() {
+    return R"({
+    "srv": [
+        {
+          "priority": 1,
+          "weight": 200,
+          "port": 3000,
+          "target": "example.com"
+        },
+        {
+          "priority": 2,
+          "weight": 300,
+          "port": 4000,
+          "target": "example.com"
+        }
+      ]
+    })";
+}
+
+auto getSrvNoAddressTargetJson() {
+    return R"({
+    "srv": [
+        {
+          "priority": 1,
+          "weight": 200,
+          "port": 3000,
+          "target": "example.com"
+        },
+        {
+          "priority": 2,
+          "weight": 300,
+          "port": 4000,
+          "target": "foo.example.com"
+        }
+      ]
+    })";
+}
 
 auto makeRequest(const string& what, string_view fqdn, string json, yahat::Request::Type type) {
     static const string base = "/api/v1";
@@ -688,6 +725,34 @@ TEST(ApiRequest, postRrAfsdb) {
     auto parsed = api.parse(req);
     auto res = api.onResourceRecord(req, parsed);
     EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, postRrSrv) {
+    const string_view fqdn{"_test._tcp.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = getSrvJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, postRrSrvNoAddressTarget) {
+    const string_view fqdn{"_test._tcp.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    db.createFooWithHinfo();
+    auto json = getSrvNoAddressTargetJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    EXPECT_THROW(api.onResourceRecord(req, parsed), yahat::Response);
 }
 
 // TODO: Make a series of tests to validate PATCH

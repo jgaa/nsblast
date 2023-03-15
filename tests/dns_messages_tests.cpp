@@ -1096,6 +1096,27 @@ TEST(Rr, Afsdb) {
     EXPECT_EQ(afsdb.subtype(), 3);
 }
 
+TEST(Rr, Srv) {
+    StorageBuilder sb;
+
+    string_view target = "example.com";
+    string_view fqdn = "_test._tcp.example.com";
+
+    auto rr = sb.createSrv(fqdn, 1000, 100, 200, 300, target);
+
+    EXPECT_EQ(rr.labels().string(), fqdn);
+
+    RrSrv srv{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(srv.labels().string(), fqdn);
+    EXPECT_EQ(srv.type(), nsblast::TYPE_SRV);
+    EXPECT_EQ(srv.ttl(), 1000);
+    EXPECT_EQ(srv.priority(), 100);
+    EXPECT_EQ(srv.weight(), 200);
+    EXPECT_EQ(srv.port(), 300);
+    EXPECT_EQ(srv.target().string(), target);
+}
+
 TEST(StorageBuilder, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";

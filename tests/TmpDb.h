@@ -116,6 +116,19 @@ public:
         tx->commit();
     }
 
+    void createFooWithHinfo() {
+        StorageBuilder sb;
+        string_view fqdn = "foo.example.com";
+
+        // Notice order. Sorting the index must work to iterate in the expected order below
+        sb.createHinfo(fqdn, 1000, "awesome", "minix");
+        sb.finish();
+
+        auto tx = db_.transaction();
+        tx->write(fqdn, sb.buffer(), true);
+        tx->commit();
+    }
+
 private:
     filesystem::path path_;
     Config c_;

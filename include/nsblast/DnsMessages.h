@@ -270,6 +270,21 @@ public:
     uint16_t serialOffset() const;
 };
 
+/*! Wrapper over a RR RrSrv instance.
+ *
+ *  Can be used to simply obtain data from the record.
+ */
+class RrSrv : public Rr {
+public:
+    RrSrv(buffer_t bufferView, uint32_t offset)
+        : Rr(bufferView, offset) {}
+
+    Labels target() const;
+    uint32_t priority() const;
+    uint32_t weight() const;
+    uint32_t port() const;
+};
+
 /*! Wrapper over a RR A instance.
  *
  *  Can be used to simply obtain data from the record.
@@ -1060,6 +1075,22 @@ public:
                    uint32_t ttl,
                    std::string_view mbox,
                    std::string_view txt);
+
+    /*! Create a Srv record.
+     *
+     * \param fqdn Fully Qualified Domanin Name
+     * \param ttl Time To Live
+     * \param priority The priority of this target host
+     * \param weight   A server selection mechanism.
+     * \param port     The port on this target host of this service.
+     * \param target   The domain name of the target host.
+     */
+    NewRr createSrv(std::string_view fqdn,
+                   uint32_t ttl,
+                   uint16_t priority,
+                   uint16_t weight,
+                   uint16_t port,
+                   std::string_view target);
 
     /*! Create a rdata segment composed of one or more strings/views from a container.
      *

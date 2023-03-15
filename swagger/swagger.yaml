@@ -414,7 +414,24 @@ definitions:
         
   Ptr:
     type: string
-    description: Pointer to domain name. Usually only used for IP to domain name mapping in the special zones in-addr.arpa and ip6.arpa
+    description: Pointer to domain name. Usually only used for IP to domain name mapping in the special zones in-addr.arpa and ip6.
+    
+  Srv:
+    type: array
+    description: See RFC 2782. Note that this Resource Record must be added after the records it points to (it's target) are created and contains A or AAAA Resource Records.
+    items:
+      type: object
+      properties:
+        priority:
+          type: integer
+        weight:
+          type: integer
+        port: 
+          type: integer
+        target:
+          type: string
+          description: Pointer (fqdn) to a node that contains address record(s). It can not point to an alias.
+    
 
   Entry:
     type: object
@@ -444,8 +461,8 @@ definitions:
         $ref: "#/definitions/Rp"
       afsdb:    
         $ref: "#/definitions/Afsdb"
-    
-
+      srv:    
+        $ref: "#/definitions/Srv"
     
   
 externalDocs:
