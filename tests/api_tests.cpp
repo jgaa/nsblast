@@ -775,6 +775,38 @@ TEST(ApiRequest, postRrDhcid) {
     EXPECT_EQ(res.code, 201);
 }
 
+TEST(ApiRequest, postRr) {
+    const string_view fqdn{"foo.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    auto json = R"({
+        "rr": [{
+            "type": 49,
+            "rdata": "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
+        }, {
+            "type": 1,
+            "rdata": "fwAAAQ=="
+        }]
+    })";
+
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+    auto trx = db.resource().transaction();
+    auto e = trx->lookup(fqdn);
+    EXPECT_FALSE(e.empty());
+    EXPECT_EQ(e.count(), 2);
+    EXPECT_EQ(e.begin()->type(), TYPE_A);
+    EXPECT_EQ(e.begin()->rdata().size(), 4);
+    RrA a{e.buffer(), e.begin()->offset()};
+    EXPECT_EQ(a.string(), "127.0.0.1");
+    EXPECT_EQ(a.rdataAsBase64(), "fwAAAQ==");
+}
+
 // TODO: Make a series of tests to validate PATCH
 
 int main(int argc, char **argv) {

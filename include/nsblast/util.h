@@ -275,7 +275,7 @@ namespace nsblast::lib {
             const std::string& port,
             boost::asio::yield_context& yield);
 
-    std::vector<uint8_t> base64Decode(const std::string_view in);
+    std::vector<char> base64Decode(const std::string_view in);
     std::string Base64Encode(const span_t in);
 
 } // ns

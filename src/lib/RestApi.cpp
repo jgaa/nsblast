@@ -389,10 +389,19 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         sb.createPtr(fqdn, ttl, v.as_string());
     }},
     { "mx", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
-        uint16_t priority = 10;
-        string_view host;
+
+        if (!v.is_array()) {
+            throw Response{400, "Json element 'mx' must be an array of objects(s)"};
+        }
 
         for(const auto& mx: v.as_array()) {
+            uint16_t priority = 10;
+            string_view host;
+
+            if (!mx.is_object()) {
+                throw Response{400, "Json element 'mx' must be an array of objects(s)"};
+            }
+
             for(const auto& e : mx.as_object()) {
                 if (e.key() == "host") {
                     host = e.value().as_string();
@@ -402,19 +411,19 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                     throw Response{400, "Unknown entity in mx: "s + string(e.key())};
                 }
             }
-        }
 
-        if (host.empty()) {
-                throw Response{400, "Mx entry is missing 'host' attribute"};
-        }
+            if (host.empty()) {
+                    throw Response{400, "Mx entry is missing 'host' attribute"};
+            }
 
-        sb.createMx(fqdn, ttl, priority, host);
+            sb.createMx(fqdn, ttl, priority, host);
+        }
     }},
     { "afsdb", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
-        uint16_t subtype = 0;
-        string_view host;
-
         for(const auto& mx: v.as_array()) {
+            uint16_t subtype = 0;
+            string_view host;
+
             for(const auto& e : mx.as_object()) {
                 if (e.key() == "host") {
                     host = e.value().as_string();
@@ -424,14 +433,49 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                     throw Response{400, "Unknown entity in afsdb: "s + string(e.key())};
                 }
             }
+
+            sb.createAfsdb(fqdn, ttl, subtype, host);
+        }
+    }},
+    { "rr", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.is_array()) {
+            throw Response{400, "Json element 'rr' must be an array of objects(s)"};
         }
 
-        sb.createAfsdb(fqdn, ttl, subtype, host);
+        for(const auto& rr: v.as_array()) {
+
+            if (!rr.is_object()) {
+                throw Response{400, "Json element 'rr' must be an array of objects(s)"};
+            }
+
+            uint16_t type = 0;
+            string_view rdata;
+
+            for(const auto& e : rr.as_object()) {
+                if (e.key() == "rdata") {
+                    rdata = e.value().as_string();
+                } else if (e.key() == "type") {
+                    const auto val = e.value().as_int64();
+                    if (val < 0 ||  static_cast<size_t>(val) > numeric_limits<uint16_t>::max()) {
+                        throw Response{400, "Invalid type (type must be an unsigned 16 bit integer): "s + to_string(val)};
+                    }
+                    type = static_cast<uint16_t>(val);
+                } else {
+                    throw Response{400, "Unknown entity in rr: "s + string(e.key())};
+                }
+            }
+
+            if (!type) {
+                throw Response{400, "Invalid or missing type in rr in "s + string{fqdn}};
+            }
+
+            sb.createBase64(fqdn, type, ttl, rdata);
+        }
     }}
     };
 
-
-    LOG_DEBUG << "json is_object=" << json.is_object()
+    LOG_TRACE << "RestApi::build - json is_object=" << json.is_object()
               << ", kind=" << json.kind()
               << ", json=" << boost::json::serialize(json);
 

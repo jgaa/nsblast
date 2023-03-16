@@ -29,8 +29,8 @@ Data types, stored in the DNS server
 |EUI48 | MAC address (EUI-48)|7043|pending|
 |EUI64 | MAC address (EUI-64)|7043|pending|
 |HINFO | Host Information. Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY|8482|implemented|
-|HIP   | Host Identity Protocol. Method of separating the end-point identifier and locator roles of IP addresses. |8005|pending|
-|IPSECKEY | IPsec Key |4025|pending|
+|HIP   | Host Identity Protocol. Method of separating the end-point identifier and locator roles of IP addresses. |8005|pending/low priority|
+|IPSECKEY | IPsec Key |4025|pending/low priority|
 |KEY   | Key record (DNSSEC)|2535 2930|pending|
 |KX    | Key Exchanger record |2230|pending|
 |LOC   | Specifies a geographical location associated with a domain name |1876|maybe (experimental)|

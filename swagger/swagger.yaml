@@ -421,6 +421,9 @@ definitions:
     description: See RFC 2782. Note that this Resource Record must be added after the records it points to (it's target) are created and contains A or AAAA Resource Records.
     items:
       type: object
+      required:
+        - port
+        - target
       properties:
         priority:
           type: integer
@@ -435,6 +438,20 @@ definitions:
   Base64:
     type: string
     description: Binary data. Must be encoded as BASE64.
+    
+  Rr:
+    type: array
+    description: General method to submit *any* Resource Record, using base64 encoding for the RDATA section. This allows you to add experimental Resource Records and any Resource Record not direcly supported by this API. Please note that nsblast only support the CLASS_IN Resource Record type at this time. (This is the class used for the Internet).
+    items:
+      type: object
+      required:
+        - type
+        - rdata
+      properties:
+        type: 
+          type: integer
+        rdata:
+          $ref: "#/definitions/Base64"
     
 
   Entry:
@@ -469,6 +486,8 @@ definitions:
         $ref: "#/definitions/Srv"
       dhcid:
         $ref: "#/definitions/Base64"
+      rr:
+        $ref: "#/definitions/Rr"
     
   
 externalDocs:

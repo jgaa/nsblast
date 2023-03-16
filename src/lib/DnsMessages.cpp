@@ -342,8 +342,7 @@ StorageBuilder::NewRr StorageBuilder::createSrv(string_view fqdn, uint32_t ttl, 
 StorageBuilder::NewRr StorageBuilder::createBase64(string_view fqdn, uint16_t type, uint32_t ttl, string_view base64EncodedBlob)
 {
     const auto rdata = base64Decode(base64EncodedBlob);
-    return createRr(fqdn, type, ttl,
-                    {reinterpret_cast<const char*>(rdata.data()), rdata.size()});
+    return createRr(fqdn, type, ttl, rdata);
 }
 
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
@@ -517,8 +516,6 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
     }
 
     ttl = sanitizeTtl(ttl);
-
-    LOG_TRACE << "StorageBuilder::finishRr: ttl=" << ttl;
 
     const auto len = calculateLen(labelLen, rdata.size());
     size_t coffset = startOffset + labelLen;
