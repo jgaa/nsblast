@@ -35,7 +35,7 @@ Data types, stored in the DNS server
 |KX    | Key Exchanger record |2230|pending|
 |LOC   | Specifies a geographical location associated with a domain name |1876|maybe (experimental)|
 |MX    | Mail Exchange) Record: Specifies the mail exchange servers for a domain name.|1035|implemented|
-|NAPTR | Naming Authority Pointer|3403|pending|
+|NAPTR | Naming Authority Pointer|3403|pending/low priority|
 |NS    | (Name Server) Record: Specifies the authoritative name servers for a domain name.|1035|implemented|
 |NSEC  | (Next-Secure) Record: Specifies the next domain name in a zone and indicates which resource record types exist or do not exist for that name, used in DNSSEC|4034|pending|
 |NSEC3 | (Next-Secure 3) Record: Similar to NSEC but uses hashed domain names to provide better zone enumeration protection, used in DNSSEC|5155|pending|
@@ -43,7 +43,7 @@ Data types, stored in the DNS server
 |OPENPGPKEY| OpenPGP public key record|7929|implemented|
 |PTR   | (Pointer) Record: Maps an IP address to a domain name|1035|implemented|
 |RP    | Responsible Person|1183|implemented|
-|SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|pending|
+|SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|experimental|
 |SOA   | (Start of Authority) Record: Specifies administrative information about a DNS zone, including the primary name server, contact email address, and other parameters|1035|implemented|
 |SRV   | (Service) Record: Specifies the location of servers for specific services, such as SIP or XMPP|2782|implemented|
 |SSHFP | SSH Public Key Fingerprint |4255|pending|
@@ -51,6 +51,8 @@ Data types, stored in the DNS server
 |TLSA  | TLSA certificate association |6698|pending|
 |TXT   | (Text) Record: Contains text data associated with a domain name. Can be used for various purposes, such as domain verification or anti-spam measures.|1035|implemented|
 |URI   | Uniform Resource Identifier. Can be used for publishing mappings from hostnames to URIs.|7553|pending|
+
+* Experimental RR's are not a general priority at this time. 
 
 
 Processing/other
