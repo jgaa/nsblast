@@ -40,7 +40,7 @@ Data types, stored in the DNS server
 |NSEC  | (Next-Secure) Record: Specifies the next domain name in a zone and indicates which resource record types exist or do not exist for that name, used in DNSSEC|4034|pending|
 |NSEC3 | (Next-Secure 3) Record: Similar to NSEC but uses hashed domain names to provide better zone enumeration protection, used in DNSSEC|5155|pending|
 |NSEC3PARAM| (NSEC3 Parameters) Record: Specifies the parameters used for NSEC3, used in DNSSEC|5155|pending|
-|OPENPGPKEY| OpenPGP public key record|7929|pending|
+|OPENPGPKEY| OpenPGP public key record|7929|implemented|
 |PTR   | (Pointer) Record: Maps an IP address to a domain name|1035|implemented|
 |RP    | Responsible Person|1183|implemented|
 |SMIMEA| Associates an S/MIME certificate with a domain name for sender authentication. |8162|pending|

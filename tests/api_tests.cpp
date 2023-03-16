@@ -775,6 +775,29 @@ TEST(ApiRequest, postRrDhcid) {
     EXPECT_EQ(res.code, 201);
 }
 
+TEST(ApiRequest, postRrOpenpgpkey) {
+    const string_view fqdn{"4ecce23dd685d0c16e29e5959352._openpgpkey.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    // the rdata is not a valid pgp key! It's just to test the API interface.
+    const string json = R"({
+    "openpgpkey":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
+    })";
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 201);
+    auto trx = db.resource().transaction();
+    auto e = trx->lookup(fqdn);
+    EXPECT_FALSE(e.empty());
+    EXPECT_EQ(e.count(), 1);
+    EXPECT_EQ(e.begin()->type(), TYPE_OPENPGPKEY);
+    EXPECT_EQ(e.begin()->rdataAsBase64(), "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA=");
+}
+
 TEST(ApiRequest, postRr) {
     const string_view fqdn{"foo.example.com"};
 

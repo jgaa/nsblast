@@ -21,6 +21,7 @@ MVP expected by spring 2023
 - [x] [RFC 5936](https://www.rfc-editor.org/rfc/rfc5936) DNS Zone Transfer Protocol (AXFR)
 - [ ] [RFC 6891](https://www.rfc-editor.org/rfc/rfc6891) Extension Mechanisms for DNS (EDNS(0))
 - [ ] [RFC 7766](https://www.rfc-editor.org/rfc/rfc7766) DNS Transport over TCP - Implementation Requirements
+- [x] [RFC 7929](https://www.rfc-editor.org/rfc/rfc7929) DNS-Based Authentication of Named Entities (DANE) Bindings for OpenPGP
 - [x] [RFC 8482](https://www.rfc-editor.org/rfc/rfc8482) Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY
 
 *note*: Things in old RFC's that has later been obsoleted are ignored.

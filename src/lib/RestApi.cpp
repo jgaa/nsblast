@@ -379,6 +379,13 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         }
         sb.createBase64(fqdn, TYPE_DHCID, ttl, v.as_string());
     }},
+    { "openpgpkey", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+
+        if (!v.if_string()) {
+            throw Response{400, "openpgpkey entities must be strings"};
+        }
+        sb.createBase64(fqdn, TYPE_OPENPGPKEY, ttl, v.as_string());
+    }},
     { "ptr", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         // TODO: Validate that the payload is valid and in 'in-addr.arpa' or 'ip6.arpa' root-domain?
