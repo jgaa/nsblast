@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <random>
 #include "nsblast/util.h"
 #include "nsblast/logging.h"
@@ -102,62 +103,61 @@ uint16_t getRandomNumber16()
     return getRandomNumberT<uint32_t>();
 }
 
-// Modified from https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
-vector<uint8_t> base64Decode(const string_view in) {
-  // table from '+' to 'z'
-  static constexpr array<uint8_t, 80> lookup = {
-      62,  255, 62,  255, 63,  52,  53, 54, 55, 56, 57, 58, 59, 60, 61, 255,
-      255, 0,   255, 255, 255, 255, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
-      10,  11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-      255, 255, 255, 255, 63,  255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-      36,  37,  38,  39,  40,  41,  42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
-  static_assert(lookup.size() == 'z' - '+' + 1);
+// Modified from ChatGPT generated code
+vector<char> base64Decode(const string_view base64_data) {
+    std::vector<char> binary_data;
+    binary_data.reserve((base64_data.size() / 4) * 3);
 
-  vector<uint8_t> out;
-  out.reserve((in.size() / 4) * 3);
-  int val = 0, valb = -8;
-  for (uint8_t c : in) {
-    if (c < '+' || c > 'z')
-      break;
-    c -= '+';
-    if (lookup.at(c) >= 64)
-      break;
-    val = (val << 6) + lookup.at(c);
-    valb += 6;
-    if (valb >= 0) {
-      out.push_back(char((val >> valb) & 0xFF));
-      valb -= 8;
+    static constexpr string_view base64_chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+
+    for (std::size_t i = 0; i < base64_data.size(); i += 4) {
+      const int index1 = base64_chars.find(base64_data[i]);
+      const int index2 = base64_chars.find(base64_data[i + 1]);
+      const int index3 = base64_chars.find(i + 2 < base64_data.size() ? base64_data[i + 2] : '=');
+      const int index4 = base64_chars.find(i + 3 < base64_data.size() ? base64_data[i + 3] : '=');
+
+      const int a = (index1 << 2) | (index2 >> 4);
+      const int b = ((index2 & 0xf) << 4) | (index3 >> 2);
+      const int c = ((index3 & 0x3) << 6) | index4;
+
+      binary_data.push_back(a);
+      if (static_cast<size_t>(index3) != std::string::npos) binary_data.push_back(b);
+      if (static_cast<size_t>(index4) != std::string::npos) binary_data.push_back(c);
     }
-  }
-  return out;
+
+    return binary_data;
 }
 
-// modified from http://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
-string Base64Encode(const span_t in)
+// Modified from ChatGPT generated code
+string Base64Encode(const span_t binary_data)
 {
-    // Silence the cursed clang-tidy...
-    constexpr auto magic_4 = 4;
-    constexpr auto magic_6 = 6;
-    constexpr auto magic_8 = 8;
-    constexpr auto magic_3f = 0x3F;
+    static constexpr std::string_view base64_chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+    string base64_data;
+    base64_data.reserve(((binary_data.size() + 2) / 3) * 4);
 
-    static constexpr string_view alphabeth{"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"};
-    string out;
-    out.reserve((in.size() * 4 + 2)/3);
+    for (std::size_t i = 0; i < binary_data.size(); i += 3) {
+      const int a = binary_data[i];
+      const int b = i + 1 < binary_data.size() ? binary_data[i + 1] : 0;
+      const int c = i + 2 < binary_data.size() ? binary_data[i + 2] : 0;
 
-    int val = 0;
-    int valb = -magic_6;
-    for (const uint8_t c : in) {
-        val = (val<<magic_8) + c;
-        valb += magic_8;
-        while (valb>=0) {
-            out.push_back(alphabeth[(val>>valb)&magic_3f]);
-            valb-=magic_6;
-        }
+      const int index1 = (a >> 2) & 0x3f;
+      const int index2 = ((a & 0x3) << 4) | ((b >> 4) & 0xf);
+      const int index3 = ((b & 0xf) << 2) | ((c >> 6) & 0x3);
+      const int index4 = c & 0x3f;
+
+      base64_data.push_back(base64_chars[index1]);
+      base64_data.push_back(base64_chars[index2]);
+      base64_data.push_back(i + 1 < binary_data.size() ? base64_chars[index3] : '=');
+      base64_data.push_back(i + 2 < binary_data.size() ? base64_chars[index4] : '=');
     }
-    if (valb>-magic_6) out.push_back(alphabeth[((val<<magic_8)>>(valb+magic_8))&magic_3f]);
-    while (out.size()%magic_4) out.push_back('=');
-    return out;
+
+    return base64_data;
 }
 
 } // ns
