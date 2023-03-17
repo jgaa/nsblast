@@ -2,6 +2,7 @@
 #include <set>
 
 #include <boost/json/src.hpp>
+#include <boost/unordered/unordered_flat_map.hpp>
 
 #include "RestApi.h"
 #include "nsblast/logging.h"
@@ -228,7 +229,7 @@ void RestApi::validateZone(const boost::json::value &json)
 void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                     const boost::json::value json, bool finish)
 {
-    static const map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
+    static const boost::unordered_flat_map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
     { "ttl", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
         // Ignore here.
@@ -240,7 +241,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 serial = 1;
         string_view mname, rname;
 
-        map<string_view, uint32_t *> nentries = {
+        boost::unordered_flat_map<string_view, uint32_t *> nentries = {
             {"refresh", &refresh},
             {"retry", &retry},
             {"expire", &expire},
@@ -278,7 +279,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             uint32_t priority = 0, weight = 0, port = 0;
             string_view target;
 
-            map<string_view, uint32_t *> nentries = {
+            boost::unordered_flat_map<string_view, uint32_t *> nentries = {
                 {"priority", &priority},
                 {"weight", &weight},
                 {"port", &port}

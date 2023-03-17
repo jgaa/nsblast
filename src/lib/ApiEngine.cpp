@@ -1,4 +1,5 @@
 
+#include <boost/unordered/unordered_flat_map.hpp>
 #include "nsblast/ApiEngine.h"
 #include "RocksDbResource.h"
 #include "RestApi.h"

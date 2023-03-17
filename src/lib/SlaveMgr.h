@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <boost/asio.hpp>
+#include <boost/unordered/unordered_flat_map.hpp>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
@@ -55,7 +56,7 @@ public:
 private:
 
     // List of active slave zones
-    std::unordered_map<std::string, std::shared_ptr<Slave>> zones_;
+    boost::unordered_flat_map<std::string, std::shared_ptr<Slave>> zones_;
     std::mutex mutex_;
 
     const Config& config_;

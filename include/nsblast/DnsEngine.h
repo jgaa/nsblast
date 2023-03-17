@@ -1,5 +1,7 @@
 #pragma once
 
+ #include <boost/unordered/unordered_flat_map.hpp>
+
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/ResourceIf.h"
@@ -115,7 +117,7 @@ private:
     std::vector<std::thread> workers_;
     std::once_flag stop_once_;
 
-    std::map<boost::uuids::uuid, tcp_session_t> tcp_sessions_; // Own the TCP session instances
+    boost::unordered_flat_map<boost::uuids::uuid, tcp_session_t> tcp_sessions_; // Own the TCP session instances
     std::mutex tcp_session_mutex_;
 };
 
