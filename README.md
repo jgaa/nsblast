@@ -1,12 +1,34 @@
 # nsblast
 Massively scalable authoritative DNS server
 
-## Status
+# Why?
+I needed a DNS server to make it easy to deploy stuff in Kubernetes with my own tool, [k8deployer](https://github.com/jgaa/k8deployer). The tool will generate all the required TLS certificates with Let's Encrypt and configure the ingress controller in Kubernetes automatically. This applies even for zones on local networks in the 192.168.*.* IP address space. That means that my tool need fast and reliable access to a DNS server so it can use Let's Encrypt DNS option for validating ownership of the domains.
+
+I also needed something fun to work with after I ran into a severe work burn-out in 2022 that almost killed me. A DNS server was a perfect project for me to take on to re-gain my full energy, health and enthusiasm. 
+
+# Design Goals
+When I worked with a startup in 2022, we frequently bumped in to problems with the commercial DNS server provider the company was using (and paying a *lot* of cash for every month). When we exceeded 1 million host-names (fqdn's) we had reached our limit, and our tests failed. The number of production host-names, and host-names provided for QA and individual teams and developers were just enormous. Prior to this, I never even thought of a use-case for a DNS zone with more than a few hundred names. 
+
+When I worked with DNS servers in the past (yea, I was kind of a part time sysadmin back in the days) I always ended up writing my own user interfaces to simplify my work. I would use a DNS server that supported a SQL database back-end and then wrote a web-app or real application to manage the zones in the database server. 
+
+So, when I started on nsblast, I had a few requirements:
+- Nsblast's primary role is to be the perfect Authoritative DNS server for me.
+- It must be secure and reliable, following best practices and modern engineering principles. 
+- It must be *very* easy to install, manage and use (because I'm lazy and like things that are simple, yet powerful).
+- It must have a REST API that is intuitive and easy to use for developers. I choose REST over for example gRPC because it's very simple to use directly for all kinds of use-cases, including bash scripts. 
+- It must support SaaS use-cases, where a user (for example "Alice") can sign up and create her own logical sub-zone (like alice.k8deployer.nsblast.com if k8deployer.nsblast.com is an existing zone for SaaS users). Then, Alice can manager a number of Resource Records in her sub-zone (or rather, k8deployer could do that for her and also create and deploy Let's Encrypt certificates for those host-names, giving her the opportunity to focus 100% on whatever she is making or experimenting with in the Kubernetes cluster). 
+- It must be massively scalable. A server should be able to handle millions of real zones and tens of millions of Resource Records for each zone. 
+- It must handle a huge number of DNS and API request per second on each instance. 
+- It must be CPU, memory and energy-efficient. Cloud infrastructure is *expensive*. Ideally, it should run comfortably on a raspberry PI 3 for most real use-cases (developers, developer-teams or small or medium companies and organizations running their own DNS servers for fun or to save costs).
+
+# Status
 Under initial development.
-MVP expected by spring 2023
 
+MVP expected by spring 2023.
 
-## RFC compliance (MVP)
+DNSSEC will not be implemented in the MVP, but if people need it, it will follow soon.
+
+# RFC compliance (MVP)
 
 - [x] [RFC 1034](https://www.rfc-editor.org/rfc/rfc1034) DOMAIN NAMES - CONCEPTS AND FACILITIES
 - [x] [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035) DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION
@@ -26,7 +48,7 @@ MVP expected by spring 2023
 
 *note*: Things in old RFC's that has later been obsoleted are ignored.
 
-## Docker image
+# Docker image
 
 Building:
 ```sh
