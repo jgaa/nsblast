@@ -260,8 +260,10 @@ public:
     RrSoa(buffer_t bufferView, uint32_t offset)
         : Rr(bufferView, offset) {}
 
-    Labels mname();
-    Labels rname();
+    Labels mname() const;
+    /*! Convert rname to a normail email */
+    std::string email() const;
+    Labels rname() const;
     uint32_t serial() const;
     uint32_t refresh() const;
     uint32_t retry() const;

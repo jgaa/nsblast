@@ -146,7 +146,7 @@ truncate:
 bool MessageBuilder::addQuestion(string_view fqdn, uint16_t type)
 {
     const auto start_offset =  buffer_.size();
-    auto llen = writeName(buffer_, start_offset, fqdn, false);
+    auto llen = writeName<false>(buffer_, start_offset, fqdn);
 
     increaseBuffer(llen + 4);
     writeName(buffer_, start_offset, fqdn);
@@ -215,8 +215,8 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
 
     vector<char> rdata;
 
-    const auto mname_size = writeName(rdata, 0, mname, false);
-    const auto rname_size = writeName(rdata, 0, rname, false);
+    const auto mname_size = writeName<false>(rdata, 0, mname);
+    const auto rname_size = writeName<false, true>(rdata, 0, rname);
 
     rdata.resize(mname_size + rname_size + (4 * 5));
 
@@ -225,7 +225,7 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
     auto bytes = writeName(rdata, 0, mname);
     assert(bytes == mname_size);
 
-    bytes = writeName(rdata, mname_size, rname);
+    bytes = writeName<true, true>(rdata, mname_size, rname);
     assert(bytes == rname_size);
 
     auto offset = mname_size + rname_size;
@@ -258,7 +258,7 @@ StorageBuilder::NewRr StorageBuilder::createNs(string_view fqdn, uint32_t ttl, s
 StorageBuilder::NewRr StorageBuilder::createInt16AndLabels(string_view fqdn, uint16_t type, uint32_t ttl, uint16_t val, string_view label)
 {
     vector<char> rdata;
-    const auto host_size = writeName(rdata, 0, label, false);
+    const auto host_size = writeName<false>(rdata, 0, label);
     rdata.resize(host_size + 2);
 
     setValueAt(rdata, 0, val);
@@ -316,11 +316,11 @@ StorageBuilder::NewRr StorageBuilder::createRp(string_view fqdn, uint32_t ttl,
     vector<char> rdata;
 
     // We store the labels uncompressed
-    const auto mbox_len = writeName(rdata, 0, mbox, false);
-    const auto txt_len = writeName(rdata, 0, txt, false);
+    const auto mbox_len = writeName<false, true>(rdata, 0, mbox);
+    const auto txt_len = writeName<false>(rdata, 0, txt);
 
     rdata.resize(mbox_len + txt_len);
-    writeName(rdata, 0, mbox);
+    writeName<true, true>(rdata, 0, mbox);
     writeName(rdata, mbox_len, txt);
 
     return createRr(fqdn, TYPE_RP, ttl, rdata);
@@ -329,7 +329,7 @@ StorageBuilder::NewRr StorageBuilder::createRp(string_view fqdn, uint32_t ttl,
 StorageBuilder::NewRr StorageBuilder::createSrv(string_view fqdn, uint32_t ttl, uint16_t priority, uint16_t weight, uint16_t port, string_view target)
 {
     vector<char> rdata;
-    const auto target_len = writeName(rdata, 0, target, false);
+    const auto target_len = writeName<false>(rdata, 0, target);
 
     rdata.resize(6 + target_len);
     set16bValueAt(rdata, 0, priority);
@@ -499,7 +499,7 @@ uint32_t StorageBuilder::incrementSoaVersion(const Entry &entry)
 StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
 {
     vector<char> rdata;
-    const auto mname_size = writeName(rdata, 0, dname, false);
+    const auto mname_size = writeName<false>(rdata, 0, dname);
     rdata.resize(mname_size);
     writeName(rdata, 0, dname);
     return createRr(fqdn, type, ttl, rdata);
@@ -1240,12 +1240,40 @@ void RrList::Iterator::increment()
     update();
 }
 
-Labels RrSoa::mname()
+Labels RrSoa::mname() const
 {
     return {rdata(), 0};
 }
 
-Labels RrSoa::rname()
+string RrSoa::email() const
+{
+    auto rn = rname().string();
+    string email;
+    email.reserve(rn.size());
+    char prev = 0;
+    for(auto it = rn.begin(); it != rn.end(); ++it) {
+        const char ch = *it;
+        if (ch == '.') [[unlikely]] {
+            if (prev == '\\') {
+                ; // escaped
+            } else {
+                // end of segment.
+                email += '@';
+                ++it;
+                copy(it, rn.end(), back_inserter(email));
+                break;
+            }
+        }
+        prev = ch;
+        if (ch != '\\') [[likely]] {
+            email += ch;
+        }
+    }
+
+    return email;
+}
+
+Labels RrSoa::rname() const
 {
     // TODO: Not optimal...
     return {rdata(), mname().bytes()};

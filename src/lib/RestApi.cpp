@@ -72,6 +72,30 @@ std::string toJson(const T& obj) {
     return str;
 }
 
+// Convert a plain email-address from "some.persone.name@example.com" to some\.persons\.name.example.com
+string_view toDnsEmail(string_view email, std::string& buffer) {
+
+    if (auto pos = email.find('@'); pos != string_view::npos) {
+        buffer.reserve(email.size() + 3 /* assume no more than 3 dots in the first segment */);
+        for(auto it = email.begin(); it != email.end(); ++it) {
+            const auto ch = *it;
+            if (ch == '.') {
+                buffer += "\\.";
+                continue;
+            }
+            if (ch == '@') {
+                buffer += '.';
+                ++it;
+                copy(it, email.end(), back_inserter(buffer));
+                return buffer;
+            }
+            buffer += ch;
+        }
+    }
+
+    return email;
+}
+
 } // anon ns
 
 RestApi::RestApi(ApiEngine& apiEngine)
@@ -262,7 +286,8 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             }
         }
 
-        sb.createSoa(fqdn, ttl, mname, rname, serial, refresh, retry, expire, minimum);
+        string rname_buf;
+        sb.createSoa(fqdn, ttl, mname, toDnsEmail(rname, rname_buf), serial, refresh, retry, expire, minimum);
     }},
     {"srv", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 

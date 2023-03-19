@@ -1,5 +1,7 @@
 #pragma once
 
+#include <regex>
+
 #include "nsblast/DnsMessages.h"
 #include "nsblast/logging.h"
 
@@ -12,58 +14,167 @@ constexpr int MAX_PTRS_IN_A_ROW = 16;
 constexpr auto START_OF_POINTER_TAG = 0xC0; // Binary: 11000000
 constexpr char BUFFER_HEADER_LEN = 8;
 
-// Write a fdqn in text representation as a RFC1035 name (array of labels)
-template <typename T>
-uint16_t writeName(T& buffer, uint16_t offset, string_view fdqn, bool commit = true) {
-    const auto start_offset = offset;
+inline constexpr auto createLookupTableForCharsInLabelName() {
+    array<bool, 255> table{};
+    for (size_t i = 0; i < table.size(); i++) {
+        if ((i >= '0' && i <= '9') || (i >= 'a' && i <= 'z') || (i >= 'A' && i <= 'Z') || i == '-' || i == '.') {
+            table[i] = true;
+        } else {
+            table[i] = false;
+        }
+    }
+    return table;
+}
 
-    if (commit) {
-        assert((offset + fdqn.size() + 2) <= buffer.size());
+/*! Parse and valdate part of a domain name (to the first dot)
+ *
+ *  \param name The remainder of a domain-name to work on
+ *  \param buffer Optional buffer (normaly a string or vector to write to).
+ *                The buffer will only be populated if the name cannot
+ *                directly be copied to a destination-buffer by the caller,
+ *                for example for an email with "\." sequence(s)
+ *
+ *  Template parameter `email`. Turns on handling of \. sequences.
+ *
+ *  \returns lengt of the name consumed. length can be used by substring() to start at the dot
+ *                tor the next segment.
+ */
+template <bool email = false, typename T, typename bufferT = string>
+size_t /* lenght */ parseDomainNameSegment(T name, bufferT * buffer = nullptr) {
+
+    static constexpr auto valid = createLookupTableForCharsInLabelName();
+
+    if (name.empty()) {
+        throw runtime_error{"parseDomainNameSegment: Invalid name-segment of zero bytes!"};
     }
 
-    if (fdqn.size() > 255) {
-        throw runtime_error{"writeName: fdqn must be less than 256 bytes. This fdqn is: "s
-                            + to_string(fdqn.size())};
+    char prev = 0;
+    char len = 0; // Bytes used by this segment in name. If all bytes are consumed, name.size() == len.
+    for(auto ch : name) {
+        ++len;
+        if constexpr (email) {
+            if (prev == '\\') [[unlikely]] {
+                if (ch != '.') {
+                    throw runtime_error{"parseDomainNameSegment: Label contains backslash not followed by a dot!"};
+                }
+                prev = ch;
+
+                if (buffer && buffer->empty()) {
+                    // Populate the buffer with what we have so far
+                    // After this, we will populate the buffer at the end of the loop from now on.
+                    copy(name.begin(), name.begin() + (len -1), back_inserter(*buffer));
+                }
+
+                goto go_on;
+            }
+            if (ch == '\\') [[unlikely]] {
+                prev = ch;
+                continue;
+            }
+            prev = ch;
+        }
+
+        if (ch == '.') {
+            --len;
+            break; // End of segment
+        }
+
+        if (len == 1 && ch == '-') [[unlikely]] {
+            throw runtime_error{"parseDomainNameSegment: domain-name segment cannot start with a dash!"};
+        }
+
+        if (len == 1 && ch == '_') [[unlikely]] {
+            // Used in some special applications like SRV records. Fow now, just allow them.
+            ;
+        }
+        else if (!valid[static_cast<uint8_t>(ch)]) [[unlikely]] {
+            throw runtime_error{"parseDomainNameSegment: Invalid character in name-segment!"};
+        }
+
+go_on:
+        if (buffer && !buffer->empty()) {
+            buffer->push_back(ch);
+        }
     }
 
-    for(auto dot = fdqn.find('.'); !fdqn.empty(); dot = fdqn.find('.')) {
-        const auto label = (dot != string_view::npos) ? fdqn.substr(0, dot) : fdqn;
+    assert(len <= name.size());
+    assert(len != 0);
 
-        // The root should not appear here as a dot
-        assert(label != ".");
+    return len;
+}
 
+template <bool commit = true, bool email = false, typename T>
+uint16_t writeName(T& buffer, const uint16_t startOffset, const string_view fqdn) {
+
+    static const auto save = [](T& buffer, uint16_t& offset, const string_view label) {
         if (label.size() > 63) {
             throw runtime_error{"writeName: labels must be less 64 bytes. This label: "s
                                 + to_string(label.size())};
         }
-        if (commit) {
+        if constexpr (commit) {
             buffer[offset] = static_cast<uint8_t>(label.size());
+            copy(label.begin(), label.end(), buffer.begin() + offset + 1);
         }
-        ++offset;
-        if (commit) {
-            copy(label.begin(), label.end(), buffer.begin() + offset);
-        }
-        offset += label.size();
+        offset += label.size() + 1;
+    };
 
-        if (dot == string_view::npos) {
-            break;
+    string emailbuffer;
+    string_view email_segment;
+    string_view segment = fqdn;
+    size_t min_buffer_len = 0;
+    uint16_t offset = startOffset;
+    if constexpr (email) {
+        const auto slen = parseDomainNameSegment<email>(segment, &emailbuffer);
+
+        if (emailbuffer.empty()) {
+            email_segment = segment.substr(0, slen);
+        } else {
+            email_segment = emailbuffer;
         }
 
-        // Strip the label off `fdqn` so we can go hunting for the next label!
-        fdqn = fdqn.substr(label.size());
-        if (!fdqn.empty()) {
-            assert(fdqn.front() == '.');
-            fdqn = fdqn.substr(1);
+        segment = segment.substr(min<size_t>(slen + 1, segment.size()));
+        min_buffer_len = email_segment.size() + segment.size() + startOffset + 2; // lenght email, root
+        if (!segment.empty()) {
+            ++min_buffer_len; // length 2.nd segment
+        }
+    } else {
+        min_buffer_len = startOffset + fqdn.size() + 2;
+    }
+
+    if constexpr(commit) {
+        if (min_buffer_len > buffer.size()) {
+            throw runtime_error("writeName: buffer_size is less than the required size to add this domain-name: "s
+                + to_string(min_buffer_len) + ", buffer-len: "s + to_string(buffer.size()));
         }
     }
 
-    // Always add root
-    if (commit) {
+    // We want to validate the buffer-length (above) before we commit the first segment.
+    if constexpr (email) {
+        assert(!email_segment.empty());
+        save(buffer, offset, email_segment);
+    }
+
+    const auto req_bytes = min_buffer_len - startOffset;
+    if (req_bytes >= 256) {
+        throw runtime_error{"writeName: fdqn must be less than 256 bytes. This fdqn require "s
+                            + to_string(req_bytes) + " bytes."};
+    }
+
+    while(!segment.empty()) {
+        assert(segment.at(0) != '.');
+        const auto len = parseDomainNameSegment(segment);
+        if (len) {
+            assert(len <= segment.size());
+            save(buffer, offset, segment.substr(0, len));
+        }
+        segment = segment.substr(min<size_t>(len + 1, segment.size()));
+    }
+
+    if constexpr(commit) {
         buffer[offset] = 0;
     }
-    return ++offset - start_offset;
+    return ++offset - startOffset;
 }
-
 
 template <typename T>
 void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
@@ -94,8 +205,6 @@ boost::asio::ip::address bufferToAddr(const B& buffer) {
     copy(buffer.begin(), buffer.end(), bytes.begin());
     return T{bytes};
 }
-
-
 
 // Try to compress and add the labels from `fqdn` to buffer. Update existing if we write anything but a pointer.
 // returns 0 if we needed to exeed maxLen.

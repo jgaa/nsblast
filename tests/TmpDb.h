@@ -71,7 +71,7 @@ public:
         StorageBuilder sb;
         string_view fqdn = "example.com";
         string_view nsname = "ns1.example.com";
-        string_view rname = "hostmaster@example.com";
+        string_view rname = "hostmaster.example.com";
         string_view mxname = "mail.example.com";
         auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
         auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");

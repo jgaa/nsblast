@@ -344,6 +344,9 @@ definitions:
       
   Soa:
     type: object
+    required:
+      - mname
+      - rname
     properties:
       refresh:
         type: integer
@@ -357,7 +360,7 @@ definitions:
         type: string
         description: Primar DNS server fqdn
       rname:
-        description: Weird, legacy email-name without '@'.
+        description: Email where a contact for the zone can be reached. The formal format is aquard (see RFC 1035). Nsblast will convert normal email-names like `john.doe@example.com` automatically to the required format. 
       
   Ns:
     type: array
@@ -485,6 +488,8 @@ definitions:
       srv:    
         $ref: "#/definitions/Srv"
       dhcid:
+        $ref: "#/definitions/Base64"
+      openpgpkey:
         $ref: "#/definitions/Base64"
       rr:
         $ref: "#/definitions/Rr"

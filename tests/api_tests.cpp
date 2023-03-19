@@ -18,6 +18,8 @@ namespace {
 static constexpr auto DEFAULT_SOA_SERIAL = 1000;
 
 auto getZoneJson() {
+
+    // Note rname: we expect the mapping from email to domain-name to be present in `build()`
     static const auto soa = boost::json::parse(R"({
     "ttl": 1000,
     "soa": {
@@ -27,7 +29,7 @@ auto getZoneJson() {
     "serial": 1000,
     "minimum": 1004,
     "mname": "ns1.example.com",
-    "rname": "hostmaster.example.com"
+    "rname": "hostmaster@example.com"
     },
     "ns": [
     "ns1.example.com",

@@ -550,11 +550,11 @@ TEST(Rr, CreateGeneral) {
 
     // Validate labels using the RR's internal buffer-window
     const Labels rrlabel{rr->span(), 0};
-    EXPECT_EQ(rrlabel.string(), "www.example.com"s);
+    EXPECT_EQ(rrlabel.string(), fqdn);
 
     // Validate labels using the Message's buffer and the rr's offset.
     const Labels mblabel{sb.buffer(), rr->offset()};
-    EXPECT_EQ(mblabel.string(), "www.example.com"s);
+    EXPECT_EQ(mblabel.string(), fqdn);
 }
 
 TEST(Rr, generalOnRootPath) {
@@ -728,7 +728,7 @@ TEST(RrList, parse) {
 
     string_view fqdn = "example.com";
     string_view mname = "ns1.example.com";
-    string_view rname = "hostmaster@example.com";
+    string_view rname = "hostmaster.example.com";
 
 
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
@@ -788,7 +788,7 @@ TEST(Rr, Soa) {
 
     string_view fqdn = "www.example.com";
     string_view mname = "ns1.example.com";
-    string_view rname = "hostmaster@example.com";
+    string_view rname = "hostmaster.example.com";
 
     auto rr = sb.createSoa(fqdn, 9999, mname, rname,
                            1000, 1001, 1002, 1003, 1004);
@@ -807,6 +807,34 @@ TEST(Rr, Soa) {
     EXPECT_EQ(soa.expire(), 1003);
     EXPECT_EQ(soa.minimum(), 1004);
 }
+
+TEST(Rr, SoaEscapedEmail) {
+    StorageBuilder sb;
+
+    string_view fqdn = "www.example.com";
+    string_view mname = "ns1.example.com";
+    string_view rname = "hostmaster\\.john.example.com"; // hostmaster.john@example.com
+
+    auto rr = sb.createSoa(fqdn, 9999, mname, rname,
+                           1000, 1001, 1002, 1003, 1004);
+
+    RrSoa soa{sb.buffer(), rr.offset()};
+
+    EXPECT_EQ(soa.labels().string(), fqdn);
+    EXPECT_EQ(soa.type(), nsblast::TYPE_SOA);
+    EXPECT_EQ(soa.ttl(), 9999);
+
+    EXPECT_EQ(soa.mname().string(), mname);
+    EXPECT_EQ(soa.email(), "hostmaster.john@example.com");
+    EXPECT_EQ(soa.rname().string(), rname);
+    EXPECT_EQ(soa.serial(), 1000);
+    EXPECT_EQ(soa.refresh(), 1001);
+    EXPECT_EQ(soa.retry(), 1002);
+    EXPECT_EQ(soa.expire(), 1003);
+    EXPECT_EQ(soa.minimum(), 1004);
+}
+
+
 
 TEST(Rr, Cname) {
     StorageBuilder sb;
@@ -1390,7 +1418,7 @@ TEST(Entry, Zone) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
     string_view nsname = "ns1.example.com";
-    string_view rname = "hostmaster@example.com";
+    string_view rname = "hostmaster.example.com";
     string_view mxname = "mail.example.com";
     auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
     auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
@@ -1472,7 +1500,7 @@ TEST(StorageBuilder, incrementSoaVersionOk) {
 
     string_view fqdn = "example.com";
     string_view nsname = "ns1.example.com";
-    string_view rname = "hostmaster@example.com";
+    string_view rname = "hostmaster.example.com";
 
     StorageBuilder sb;
     // Notice order. Sorting the index must work to iterate in the expected order below
