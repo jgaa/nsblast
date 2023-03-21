@@ -175,6 +175,7 @@ public:
          *  \param key Binary key
          *  \param data Binary data
          *  \param isNew true if a new entry is written
+         *  \param category In what category to execute the command.
          *
          *  \throws AlreadyExistException is isNew is true, and the entry
          *          already exists.
@@ -189,6 +190,7 @@ public:
          *         in memcmp(key.data(), other.data(), key.size()) == 0
          *         will be removed. This is primarily to allow
          *         a zone to be deleted.
+         *  \param category In what category to execute the command.
          */
         virtual void remove(key_t key, bool recursive = false, Category category = Category::ENTRY) = 0;
 

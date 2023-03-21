@@ -97,6 +97,9 @@ struct Config {
      */
     uint16_t dns_max_large_tcp_buffer_size = std::numeric_limits<uint16_t>::max() - 1024;
 
+    /*! Max UDP send-buffer size when OPT RR is in use */
+    uint16_t udp_max_buffer_size_with_opt_ = 4096;
+
     /*! Default time to wait between checking for changes in SOA for slaves
      *
      *  This sttrategy is used as a fall-back if there are no reliable way to get
@@ -150,6 +153,7 @@ static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
 constexpr char CURRENT_STORAGE_VERSION = 1;
 
 static constexpr size_t MAX_UDP_QUERY_BUFFER = 512;
+static constexpr size_t MAX_UDP_QUERY_BUFFER_WITH_OPT = 4096;
 static constexpr size_t MAX_TCP_QUERY_LEN = 1024 * 4; // If longer, something smells!
 static constexpr size_t MAX_TCP_MESSAGE_BUFFER = 1024 * 12; // Default for normal queries (not zone transfers)
 static constexpr size_t MAX_RDATA_SIZE = 1024 * 6;

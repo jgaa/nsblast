@@ -216,9 +216,42 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
 }
 
 tuple<bool, shared_ptr<MessageBuilder>>
-createBuilder(const DnsEngine::Request &request, const Message& message, uint16_t maxBufferSize) {
+createBuilder(const DnsEngine::Request &request, const Message& message,
+              uint16_t maxBufferSize, uint16_t maxBufferSizeWithOpt) {
     auto mb = make_shared<MessageBuilder>();
-    mb->setMaxBufferSize(maxBufferSize);
+    auto use_buffer_size = maxBufferSize;
+    size_t opt_count_ = 0;
+    bool ok = true;
+    // For now, we are only interested in OPT records.
+    for(const auto& rr : message.getAdditional()) {
+        if (rr.type() == TYPE_OPT) {
+            if (++opt_count_ == 2) {
+                mb->setRcode(Message::Header::RCODE::FORMAT_ERROR);
+                ok = false;
+                continue;
+            }
+
+            // Will not add the actual RR to the additional section here.
+            // That happens in mb->finish();
+            mb->addOpt(maxBufferSizeWithOpt);
+
+            // Now, look at the incoming OPT record
+            RrOpt opt{message.span(), static_cast<uint16_t>(rr.offset())};
+            if (opt.version() != 0) {
+                mb->setRcode(Message::Header::RCODE::BADVERS);
+                ok = false;
+            }
+
+            // Use whatever the OPT asked for, in the
+            // range from MAX_UDP_QUERY_BUFFER to maxBufferSizeWithOpt
+            auto opt_len = opt.maxBufferLen();
+            use_buffer_size = max<uint16_t>(
+                        min<uint16_t>(opt.maxBufferLen(), maxBufferSizeWithOpt),
+                        MAX_UDP_QUERY_BUFFER);
+        }
+    }
+
+    mb->setMaxBufferSize(use_buffer_size);
 
     auto org_hdr = message.header();
     auto hdr = mb->createHeader(org_hdr.id(), true, org_hdr.opcode(), org_hdr.rd());
@@ -227,7 +260,7 @@ createBuilder(const DnsEngine::Request &request, const Message& message, uint16_
     // Copy the questions section to the reply
     for(const auto& query : message.getQuestions()) {
         if (query.clas() != CLASS_IN) {
-            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
             return {false, mb};
         }
 
@@ -237,14 +270,14 @@ createBuilder(const DnsEngine::Request &request, const Message& message, uint16_
             if (message.header().qdcount() != 1) {
                 LOG_WARN << "Refusing AXFR request " << request.uuid
                          << " because the QUERY section has more than 1 entry. That is not valid DNS!";
-                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
                 return {false, mb};
             }
 
             if (!request.is_tcp) {
                 LOG_WARN << "Refusing AXFR request " << request.uuid
                          << " because the transport is not TCP.";
-                hdr.setRcode(Message::Header::RCODE::REFUSED);
+                mb->setRcode(Message::Header::RCODE::REFUSED);
                 return {false, mb};
             }
 
@@ -259,7 +292,7 @@ createBuilder(const DnsEngine::Request &request, const Message& message, uint16_
         }
     }
 
-    return {true, mb};
+    return {ok, mb};
 }
 
 } // anon ns
@@ -591,7 +624,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
 
     shared_ptr<MessageBuilder> mb;
     bool ok = true;
-    tie(ok, mb) = createBuilder(request, message, out_buffer_len);
+    tie(ok, mb) = createBuilder(request, message, out_buffer_len, getMaxUdpBufferSizeWithOpt());
     auto hdr = mb->getMutableHeader();
 
     bool do_reply = true;
@@ -616,7 +649,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
         if (query.clas() != CLASS_IN) {
             LOG_WARN << "I can only handle CLASS_IN. Client requested " << query.clas()
                      << " in request " << request.uuid;
-            hdr.setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
             return;
         }
 
@@ -640,7 +673,8 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
                     send(mb, false);
 
                     bool ok = true;
-                    tie(ok, mb) = createBuilder(request, message, out_buffer_len);
+                    tie(ok, mb) = createBuilder(request, message, out_buffer_len,
+                                                getMaxUdpBufferSizeWithOpt());
                     assert(ok); // Should not fail here when we just call it again!
                     hdr = mb->getMutableHeader();
                 }
@@ -678,7 +712,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
                     if (key != db_key) {
                         LOG_WARN << "Cannot do AXFR for " << query.labels().string()
                                  << ". Fqdn not found.";
-                        hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
                         return false;
                     }
 
@@ -686,7 +720,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
                     if (!entry.header().flags.soa) {
                         LOG_WARN << "Cannot do AXFR for " << query.labels().string()
                                  << ". Not a zone.";
-                        hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
                         return false;
                     }
 
@@ -716,7 +750,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
             });
 
             if (!zone) {
-                hdr.setRcode(Message::Header::RCODE::NAME_ERROR, false);
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
                 return;
             }
 
@@ -837,7 +871,7 @@ again:
             } // Next level block
 
             if (!is_referral && !persuing_cname) {
-                hdr.setRcode(Message::Header::RCODE::NAME_ERROR);
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
                 continue;
             }
         } // fqdn not found with direct lookup

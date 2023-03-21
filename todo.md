@@ -63,7 +63,7 @@ Processing/other
 |ZONEMD| Message Digests for DNS Zones|8976|pending|
 
 Other types
-- [ ] OPT
+- [x] OPT
 - [X] AXFR
 - [ ] IXFR
 

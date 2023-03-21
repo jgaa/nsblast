@@ -351,8 +351,16 @@ void Slave::doAxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
             }
 
             if (!has_second_rr) {
+                const auto type = rr.type();
                 // Copy the RR
-                sb->createRr(key, rr.type(), rr.ttl(), rr.rdata());
+                if (type == TYPE_OPT) [[unlikely]] {
+                    LOG_WARN << "Slave::sync - During AXFR payload for " << fqdn_
+                             << " from master at " << current_remote_ep_
+                             << " Ignoring OPT RR for " << current_fqdn;
+                } else {
+                    // All is well
+                    sb->createRr(key, type, rr.ttl(), rr.rdata());
+                }
             } else {
                 // The fqdn must have changed back, and
                 // triggered the emplace() above.

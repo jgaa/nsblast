@@ -11,7 +11,8 @@ using namespace ::std::string_literals;
 using namespace ::std;
 
 constexpr int MAX_PTRS_IN_A_ROW = 16;
-constexpr auto START_OF_POINTER_TAG = 0xC0; // Binary: 11000000
+constexpr auto START_OF_POINTER_TAG = 0xC0;     // Binary: 11000000
+constexpr auto START_OF_EXT_LABEL_TAG =  0x40;  // Binary: 01000000;
 constexpr char BUFFER_HEADER_LEN = 8;
 
 inline constexpr auto createLookupTableForCharsInLabelName() {
@@ -211,6 +212,15 @@ boost::asio::ip::address bufferToAddr(const B& buffer) {
 // NB: existing breaks (undefined behaviour) if the buffer is re-allocated as all
 template <typename P, typename B>
 uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) {
+    // Is it a root-label?
+    if (fqdn.bytes() == 1) {
+        if (buffer.size() + 1 > maxLen) {
+            LOG_TRACE << "writeLabels: Exeeded maxLen";
+            return 0;
+        }
+        buffer.push_back(0);
+        return 1;
+    }
 
     // We need to search from the end, while Labels only provide forward iterators
 
@@ -270,7 +280,7 @@ uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) 
     }
 
     if (maxLen && (len >= maxLen)) {
-        LOG_TRACE << "writeLabels: Exeeded mexLen";
+        LOG_TRACE << "writeLabels: Exeeded maxLen";
         return 0;
     }
 

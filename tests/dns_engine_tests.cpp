@@ -162,6 +162,175 @@ TEST(DnsEngine, requestAllRespHinfo) {
     EXPECT_TRUE(hinfo.os().empty());
 }
 
+TEST(DnsEngine, ednsWithoutOpt) {
+
+    // "A" query without edns, captured with Wireshark
+    const char query[] = "\x7c\x0a\x01\x20\x00\x01\x00\x00\x00\x00\x00\x00\x07\x65\x78\x61" \
+"\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01";
+
+
+    TmpDb db;
+    db.createTestZone();
+
+    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine::Request req;
+    req.span = query;
+
+    Message orig{query};
+
+    shared_ptr<MessageBuilder> mb;
+    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+        mb = data;
+        EXPECT_TRUE(final);
+    };
+
+    dns.processRequest(req, cb);
+    Message msg{mb->span()};
+
+    EXPECT_EQ(msg.header().id(), orig.header().id());
+    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+    if (msg.getQuestions().count() > 0) {
+        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+    }
+    EXPECT_EQ(msg.getAnswers().count(), 2);
+    EXPECT_EQ(msg.getAdditional().count(), 0);
+}
+
+TEST(DnsEngine, ednsWithOpt) {
+
+    // "A" query with edns (version 0), captured with Wireshark
+    const char query[] = "\xe2\xe2\x01\x20\x00\x01\x00\x00\x00\x00\x00\x01\x07\x65\x78\x61" \
+"\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01\x00\x00\x29" \
+"\x10\x00\x00\x00\x00\x00\x00\x0c\x00\x0a\x00\x08\xdd\x00\x69\x66" \
+"\xc4\x23\x4f\x8f";
+
+
+    TmpDb db;
+    db.createTestZone();
+
+    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine::Request req;
+    req.span = query;
+
+    Message orig{query};
+
+    shared_ptr<MessageBuilder> mb;
+    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+        mb = data;
+        EXPECT_TRUE(final);
+    };
+
+    dns.processRequest(req, cb);
+    Message msg{mb->span()};
+
+    EXPECT_EQ(msg.header().id(), orig.header().id());
+    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+    if (msg.getQuestions().count() > 0) {
+        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+    }
+    EXPECT_EQ(msg.getAnswers().count(), 2);
+    EXPECT_EQ(msg.getAdditional().count(), 1);
+    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+    EXPECT_EQ(opt.rcode(), 0);
+    EXPECT_EQ(opt.version(), 0);
+    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
+}
+
+TEST(DnsEngine, ednsWithUnsupportedVersion) {
+
+    // "A" query with edns (version 0), captured with Wireshark
+    const char query[] = "\xee\x19\x01\x20\x00\x01\x00\x00\x00\x00\x00\x01\x07\x65\x78\x61" \
+"\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01\x00\x00\x29" \
+"\x10\x00\x00\x01\x00\x00\x00\x0c\x00\x0a\x00\x08\x8a\xa3\x33\x1b" \
+"\x02\x06\xeb\xff";
+
+    TmpDb db;
+    db.createTestZone();
+
+    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine::Request req;
+    req.span = query;
+
+    Message orig{query};
+
+    shared_ptr<MessageBuilder> mb;
+    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+        mb = data;
+        EXPECT_TRUE(final);
+    };
+
+    dns.processRequest(req, cb);
+    Message msg{mb->span()};
+
+    EXPECT_EQ(msg.header().id(), orig.header().id());
+    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+    if (msg.getQuestions().count() > 0) {
+        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+    }
+    EXPECT_EQ(msg.getAnswers().count(), 0);
+    EXPECT_EQ(msg.getAdditional().count(), 1);
+    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+    EXPECT_EQ(opt.rcode(), 1);
+    EXPECT_EQ(opt.version(), 0);
+    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
+}
+
+TEST(DnsEngine, ednsWithTwoOptRrs) {
+
+    // "A" query with edns (version 0), and two OPT RR's
+    const char query[] = "\x9c\x68\x01\x20\x00\x01\x00\x00\x00\x00\x00\x02\x07\x65\x78\x61" \
+"\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01\x00\x00\x29" \
+"\x10\x00\x00\x00\x00\x00\x00\x0c\x00\x0a\x00\x08\x99\x4e\xb2\x53" \
+"\xce\x04\x49\x81\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x0c\x00\x0a\x00\x08\x99" \
+"\x4e\xb2\x53\xce\x04\x49\x81";
+
+
+    TmpDb db;
+    db.createTestZone();
+
+    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine::Request req;
+    req.span = query;
+
+    Message orig{query};
+
+    shared_ptr<MessageBuilder> mb;
+    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+        mb = data;
+        EXPECT_TRUE(final);
+    };
+
+    dns.processRequest(req, cb);
+    Message msg{mb->span()};
+
+    EXPECT_EQ(msg.header().id(), orig.header().id());
+    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::FORMAT_ERROR);
+    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+    if (msg.getQuestions().count() > 0) {
+        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+    }
+    EXPECT_EQ(msg.getAnswers().count(), 0);
+    EXPECT_EQ(msg.getAdditional().count(), 1);
+    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+    EXPECT_EQ(opt.rcode(), 0);
+    EXPECT_EQ(opt.version(), 0);
+    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
+}
+
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

@@ -212,15 +212,6 @@ TEST(CreateMessageHeader, CheckingInvalidOpcode) {
                  runtime_error);
 }
 
-TEST(CreateMessageHeader, CheckingInvalidRcode) {
-
-    MessageBuilder mb;
-
-    auto nh = mb.createHeader(1, true, Message::Header::OPCODE::QUERY, false);
-    EXPECT_THROW(nh.setRcode(Message::Header::RCODE::RESERVED_),
-                 runtime_error);
-}
-
 
 TEST(CreateMessageHeader, CheckingBitsAndCounters) {
 
@@ -528,6 +519,10 @@ TEST(Labels, With2ManyPtr2Ptr) {
     EXPECT_THROW(Labels(data, 0), runtime_error);
 }
 
+TEST(Labels, ExtLabelType) {
+    string_view illegal = "\100abc";
+    EXPECT_THROW(Labels(illegal, 0), runtime_error);
+}
 
 TEST(Rr, CreateGeneral) {
     optional<StorageBuilder::NewRr> rr;
@@ -1145,6 +1140,58 @@ TEST(Rr, Srv) {
     EXPECT_EQ(srv.target().string(), target);
 }
 
+TEST(Rr, Opt) {
+
+    RrOpt newOpt{0, 1, 1024};
+
+    EXPECT_EQ(newOpt.version(), 0);
+    EXPECT_EQ(newOpt.rcode(), 0);
+    EXPECT_EQ(newOpt.maxBufferLen(), 1024);
+    EXPECT_EQ(newOpt.fullRcode(1), 1);
+
+    auto rcb = RrOpt::rcodeBits(1);
+    EXPECT_EQ(rcb.hdr, 1);
+    EXPECT_EQ(rcb.opt, 0);
+}
+
+TEST(Rr, OptExtRcode) {
+
+    uint16_t rcode = 201;
+    RrOpt newOpt{0, rcode, 1024};
+
+    EXPECT_EQ(newOpt.version(), 0);
+    EXPECT_EQ(newOpt.maxBufferLen(), 1024);
+    EXPECT_EQ(newOpt.fullRcode(9), rcode);
+
+    auto rcb = RrOpt::rcodeBits(rcode);
+    EXPECT_EQ(rcb.hdr, 9);
+    EXPECT_EQ(rcb.opt, 12);
+}
+
+TEST(Rr, OptErrVersion) {
+
+    uint16_t rcode = static_cast<uint16_t>(Message::Header::RCODE::BADVERS);
+    RrOpt newOpt{0, rcode, 1024};
+
+    EXPECT_EQ(newOpt.version(), 0);
+    EXPECT_EQ(newOpt.maxBufferLen(), 1024);
+    EXPECT_EQ(newOpt.rcode(), 1);
+    EXPECT_EQ(newOpt.fullRcode(0), rcode);
+
+    auto rcb = RrOpt::rcodeBits(rcode);
+    EXPECT_EQ(rcb.hdr, 0);
+    EXPECT_EQ(rcb.opt, 1);
+}
+
+TEST(Rr, RootLabel) {
+
+    RrOpt newOpt{0, 0, 0};
+
+    Rr rr{newOpt.selfSpan(), 0};
+    EXPECT_EQ(rr.labels().string(), "");
+    EXPECT_EQ(rr.labels().bytes(), 1);
+}
+
 TEST(StorageBuilder, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
@@ -1582,9 +1629,8 @@ TEST(Message, singleQueryOk) {
     EXPECT_EQ(rrset.count(), 1);
     EXPECT_EQ(rrset.begin()->type(), nsblast::TYPE_A);
     EXPECT_EQ(rrset.begin()->labels().string(), fqdn);
-
-
 }
+
 
 // TODO: Add more tests with pointers
 

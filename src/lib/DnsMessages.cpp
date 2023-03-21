@@ -71,6 +71,7 @@ void setHdrFlags(T& b, hdrbits newBits) {
     *bits = newBits;
 }
 
+
 } // anon ns
 
 MessageBuilder::NewHeader
@@ -157,9 +158,50 @@ bool MessageBuilder::addQuestion(string_view fqdn, uint16_t type)
     return true;
 }
 
+void MessageBuilder::addOpt(uint16_t maxBufferSize, uint16_t version)
+{
+    if (opt_) {
+        throw runtime_error{"MessageBuilder::addOpt: Can only be called once on a message."};
+    }
+    opt_ = OptValues{maxBufferSize, version};
+}
+
+void MessageBuilder::setRcode(uint16_t rcode)
+{
+    if (!rcode_) {
+        rcode_ = rcode;
+    } else {
+        LOG_DEBUG << "Ignoring another rcode on a message where the rcode is already set.";
+    }
+}
+
+void MessageBuilder::setRcode(Message::Header::RCODE rcode)
+{
+    setRcode(static_cast<uint16_t>(rcode));
+}
+
 void MessageBuilder::finish()
 {
+    handleOpt();
     createIndex();
+}
+
+void MessageBuilder::handleOpt()
+{
+    const auto rcb = RrOpt::rcodeBits(rcode_);
+    NewHeader hdr{buffer_};
+    hdr.setRcode(rcb.hdr);
+
+    if (!opt_) {
+        if (rcb.opt) {
+            LOG_ERROR << "RCODE is 12 bits, but there is no OPT record in reply!";
+            hdr.setRcode(Message::Header::RCODE::SERVER_FAILURE);
+        }
+        return;
+    }
+
+    RrOpt opt{opt_->version, rcode_, opt_->bufferSize};
+    addRr(opt, hdr, Segment::ADDITIONAL);
 }
 
 StorageBuilder::NewRr
@@ -173,10 +215,6 @@ StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<c
     }
 
     const auto start_offset = buffer_.size();
-
-//    if (fqdn.empty()) {
-//        throw runtime_error{"createRr: fqdn is empty"};
-//    }
 
     size_t labels_len = 0;
     if (!fqdn.empty()) {
@@ -695,10 +733,10 @@ bool Message::Header::validate() const
             return false;
         }
 
-        if (flags.rcode > static_cast<uint8_t>(Header::RCODE::RESERVED_)) {
-            LOG_TRACE << "Message::Header::validate(): Invalid rcode";
-            return false;
-        }
+//        if (flags.rcode > static_cast<uint8_t>(Header::RCODE::RESERVED_)) {
+//            LOG_TRACE << "Message::Header::validate(): Invalid rcode";
+//            return false;
+//        }
     }
 
     if (!flags.qr) {
@@ -762,20 +800,16 @@ void MessageBuilder::NewHeader::setRa(bool flag)
     setHdrFlags(*mutable_buffer_, bits);
 }
 
-void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode, bool onlyIfUnset)
+void MessageBuilder::NewHeader::setRcode(uint8_t rcode)
 {
     auto bits = getHdrFlags(*mutable_buffer_);
-
-    const auto newRcode = static_cast<uint8_t>(rcode);
-    if (newRcode >= static_cast<uint8_t>(Message::Header::RCODE::RESERVED_)) {
-        throw runtime_error{"setRcode: Invalid rcode: "s + to_string(newRcode)};
-    }
-
-    if (onlyIfUnset && bits.rcode) {
-        return;
-    }
-    bits.rcode = newRcode;
+    bits.rcode = rcode;
     setHdrFlags(*mutable_buffer_, bits);
+}
+
+void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
+{
+    setRcode(static_cast<uint8_t>(rcode));
 }
 
 Message::Message(span_t span)
@@ -952,10 +986,14 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
                 assert(in_header);
                 continue;
             }
-            if (ch > 63) {
+            if ((ch & START_OF_EXT_LABEL_TAG) == START_OF_EXT_LABEL_TAG) [[unlikely]] {
+                // Depricated in RFC 6891
+                throw runtime_error{"Deprecated: Extended Label Type 0x40"};
+            }
+            if (ch > 63) [[unlikely]]  {
                 throw runtime_error("Labels::parse: Max label size is 63 bytes: This label is "s + to_string(ch));
             }
-            if (offset + ch >= buffer.size()) {
+            if (offset + ch >= buffer.size()) [[unlikely]] {
                 throw runtime_error("Labels::parse: Labels exeed the containing buffer-size");
             }
 
@@ -1130,7 +1168,10 @@ void Rr::parse(bool isQuery)
     // Only parse the labels at this time if it's not a pointer.
     // If it's a pointer, we know that the buffer size for the label section
     // is 2 bytes.
-    if ((buffer_view_[offset_] & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
+    if (buffer_view_[offset_] == 0) {
+        // Root. Only one byte
+        labelLen = 1;
+    } else if ((buffer_view_[offset_] & START_OF_POINTER_TAG) != START_OF_POINTER_TAG) {
         labels_.emplace(buffer_view_, offset_);
         labelLen = labels_->bytes();
     }
@@ -1139,22 +1180,20 @@ void Rr::parse(bool isQuery)
     offset_to_type_ = labelLen;
 
     if (isQuery) {
-        // Th query has only labels, qtype and qclass.
+        // The query has only labels, qtype and qclass.
          self_view_ =  buffer_view_.subspan(offset_, offset_to_type_ + 4);
          return;
     }
 
     const auto rdlenSizeOffset = offset_ + offset_to_type_ + 2 +  2 + 4;
 
-    if ((rdlenSizeOffset + 2) >= buffer_view_.size()) {
+    if ((rdlenSizeOffset + 2) > buffer_view_.size()) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold rdtata section!"};
     }
 
     const auto rdlen = get16bValueAt(buffer_view_,  rdlenSizeOffset);
     const auto len = labelLen + (2 + 2 + 4 + 2 + rdlen);
 
-//    LOG_DEBUG << "Rr::parse: len=" << len << ", max_window_size=" << max_window_size
-//              << ", rdlen=" << rdlen << ", rdlenSizeOffset=" << rdlenSizeOffset;
     if (len > max_window_size) {
         throw runtime_error{"Rr::parse: Buffer-window is too small to hold the full RR!"};
     }
@@ -1491,6 +1530,93 @@ uint32_t RrSrv::port() const
         throw runtime_error{"Not a TYPE_SRV"};
     }
     return get16bValueAt(rdata(), 4);
+}
+
+
+RrOpt::RrOpt(span_t span, uint16_t offset)
+    : Rr(span, offset)
+{
+}
+
+RrOpt::RrOpt(span_t span, uint32_t offset)
+    : Rr(span, offset)
+{
+    if (offset > numeric_limits<uint16_t>::max()) {
+        throw runtime_error{"offset out of 16 bit range: "s + to_string(offset)};
+    }
+}
+
+RrOpt::RrOpt(uint16_t version, uint16_t rcode, uint16_t bufferLen)
+{
+    buffer_.resize(1 + 2 + 2 + 4 + 2);
+
+    uint16_t offset = 0;
+    buffer_[offset] = 0; // Root / no labels
+    ++offset;
+    offset_to_type_ = offset;
+    setValueAt(buffer_, offset, TYPE_OPT);
+    offset += 2;
+    setValueAt(buffer_, offset, bufferLen);
+    offset += 2;
+
+    auto rcb = rcodeBits(rcode);
+
+    TtlBits ttlbits = {};
+    ttlbits.extRcode = rcb.opt;
+    ttlbits.version = version;
+
+    assert(sizeof(ttlbits) == 4);
+    memcpy(buffer_.data() + offset, &ttlbits, 4);
+    offset += 4;
+    setValueAt(buffer_, offset, static_cast<uint16_t>(0)); // rdlength
+    offset += 2;
+    assert(offset == buffer_.size());
+    buffer_view_ = buffer_;
+    self_view_ = buffer_;
+}
+
+uint16_t RrOpt::version() const
+{
+    auto bits = reinterpret_cast<const TtlBits *>(self_view_.data() + offset_to_type_ + 4);
+    return bits->version;
+}
+
+uint8_t RrOpt::rcode() const
+{
+    auto bits = reinterpret_cast<const TtlBits *>(self_view_.data() + offset_to_type_ + 4);
+    return bits->extRcode;
+}
+
+uint16_t RrOpt::maxBufferLen() const
+{
+    return clas();
+}
+
+uint16_t RrOpt::fullRcode(u_int8_t hdrRcode) const
+{
+    return rcodeBits(hdrRcode, rcode());
+}
+
+RrOpt::RcodeBits RrOpt::rcodeBits(uint16_t rcode)
+{
+    RcodeUn bu = {};
+    bu.val = rcode;
+    bu.bits.unused = 0;
+    return bu.bits;
+}
+
+uint16_t RrOpt::rcodeBits(RcodeBits bits) {
+    return rcodeBits(bits.hdr, bits.opt);
+}
+
+uint16_t RrOpt::rcodeBits(uint8_t hdrValue, uint8_t optValue)
+{
+    RcodeUn bu = {};
+    bu.bits.hdr = hdrValue;
+    bu.bits.opt = optValue;
+    bu.bits.unused = 0;
+
+    return bu.val;
 }
 
 Entry::Iterator::Iterator(const Entry &entry, bool begin)

@@ -104,6 +104,10 @@ public:
 
     QtypeAllResponse getQtypeAllResponse(const Request& req, uint16_t type) const;
 
+    uint16_t getMaxUdpBufferSizeWithOpt() const noexcept {
+        return std::max<uint16_t>(config_.udp_max_buffer_size_with_opt_, MAX_UDP_QUERY_BUFFER);
+    }
+
 private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;
 

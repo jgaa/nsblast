@@ -442,6 +442,71 @@ public:
     uint32_t subtype() const;
 };
 
+/*! Constructor for and wrapper over RR OPT
+ *
+ *  For now, we only support RFC 6891 / version 0 (buffer-lenght).
+ */
+
+class RrOpt : public Rr{
+public:
+#pragma pack(1)
+    // The data in the 32 bit ttl field in network order
+    struct TtlBits {
+        uint32_t extRcode: 8;
+        uint32_t version: 8;
+        uint32_t do_: 1;
+        uint32_t z: 15;
+    };
+
+    struct RcodeBits { // 12 bits
+        uint8_t hdr : 4;
+        uint8_t opt : 8;
+        uint8_t unused: 4;
+    };
+
+    union RcodeUn {
+        uint16_t val;
+        RcodeBits bits;
+    };
+
+#pragma pack(0)
+    RrOpt() = delete;
+
+    /*! Construct from existing data, f.eks. received in a query
+     */
+    explicit RrOpt(span_t span, uint16_t offset);
+
+    explicit RrOpt(span_t span, uint32_t offset);
+
+    /*! Construct self-contained instance
+     *
+     *  normally to copy to a reply
+     *
+     *  \param version Currently we support version 0
+     *  \param rcode Full, 12 bit rcode in host byte order
+     *  \param bufferLen Max buffer len
+     */
+    RrOpt(uint16_t version, uint16_t rcode, uint16_t bufferLen);
+
+    uint16_t version() const; // from part of ttl field
+    uint8_t rcode() const; // from part of ttl field
+    uint16_t maxBufferLen() const; // from class field
+
+    /*! Calculate the full rcode
+     *
+     *  \param hdrRcode 4 bit value from the message header
+     *  \return The 12 bit return code in host byte order.
+     */
+    uint16_t fullRcode(u_int8_t hdrRcode) const;
+
+    /*! Get the rcode bits from a normal rcode in host byte order */
+    static RcodeBits rcodeBits(uint16_t rcode);
+    static uint16_t  rcodeBits(RcodeBits bits);
+    static uint16_t  rcodeBits(uint8_t hdrValue, uint8_t optValue);
+
+private:
+    std::vector<char> buffer_; // Used when self-contained
+};
 
 /*! Wrapper / view over a list of result sets
  *
@@ -607,7 +672,7 @@ public:
             NAME_ERROR,
             NOT_IMPLEMENTED,
             REFUSED,
-            RESERVED_
+            BADVERS = 16
         };
 
         /*! Reply code from server */
@@ -708,6 +773,11 @@ public:
         ADDITIONAL
     };
 
+    struct OptValues {
+        uint16_t bufferSize = 0;
+        uint16_t version = 0;
+    };
+
     class NewHeader {
     public:
         NewHeader(buffer_t& b)
@@ -728,10 +798,27 @@ public:
         void setAa(bool flag);
         void setTc(bool flag);
         void setRa(bool flag);
-        void setRcode(Header::RCODE rcode, bool onlyIfUnset = true);
+        void setRcode(uint8_t rcode);
+        void setRcode(Header::RCODE rcode);
+
 
     private:
         buffer_t *mutable_buffer_;
+    };
+
+    class NewOpt {
+        NewOpt(buffer_t& b, uint16_t offset)
+                    : mutable_buffer_{&b}, offset_{offset} {}
+
+        // Set the high 12 bits of the rcode
+        void setRcode(uint16_t partial);
+
+        void setVersion(uint16_t version);
+        void setMaxBufLen(uint16_t buflen);
+
+    private:
+        buffer_t *mutable_buffer_ = {};
+        uint16_t offset_ = {};
     };
 
     MessageBuilder() = default;
@@ -759,10 +846,19 @@ public:
 
     bool addQuestion(std::string_view fqdn, uint16_t type);
 
+    /*! Add and enable OPT in the reply.
+     *
+     * The actual RrOpt will be added by finish().
+     */
+    void addOpt(uint16_t maxBufferSize, uint16_t version = 0);
+
     void setMaxBufferSize(uint32_t limit) {
         maxBufferSize_ = limit;
         buffer_.reserve(limit);
     }
+
+    void setRcode(uint16_t rcode);
+    void setRcode(Header::RCODE rcode);
 
     void finish();
 
@@ -781,10 +877,13 @@ protected:
         }
         span_ = buffer_;
     }
+    void handleOpt();
 
     buffer_t buffer_;
     size_t maxBufferSize_ = 0; // Not enforced if zero
     std::deque<Labels> labels_; // Labels in the buffer. For compression.
+    uint16_t rcode_ = 0;
+    std::optional<OptValues> opt_;
 };
 
 

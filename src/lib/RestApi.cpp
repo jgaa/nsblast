@@ -503,6 +503,10 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 throw Response{400, "Invalid or missing type in rr in "s + string{fqdn}};
             }
 
+            if (type == TYPE_OPT) {
+                throw Response{400, "OPT (41) is not a valid RR-type for storage"};
+            }
+
             sb.createBase64(fqdn, type, ttl, rdata);
         }
     }}
