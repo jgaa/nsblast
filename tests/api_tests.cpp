@@ -46,6 +46,13 @@ auto getAJson() {
    return boost::json::serialize(json);
 }
 
+auto getAJsonZeroTtl() {
+   boost::json::object json;
+   json["a"] = {"127.0.0.1", "127.0.0.2"};
+   json["ttl"] = 0;
+   return boost::json::serialize(json);
+}
+
 auto getHinfoJson() {
    boost::json::object json, hinfo;
 
@@ -148,6 +155,13 @@ uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {
     }
 
     return 0;
+}
+
+auto lookup(string_view fqdn, ResourceIf& db) {
+    auto trx = db.transaction();
+    auto e = trx->lookup(fqdn);
+
+    return e;
 }
 
 } // anon ns
@@ -571,6 +585,30 @@ TEST(ApiRequest, postSubRr) {
     EXPECT_EQ(res.code, 201);
     EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
     EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+}
+
+TEST(ApiRequest, postSubRrZeroTtl) {
+    const string_view fqdn{"zero.example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+
+    auto json = getAJsonZeroTtl();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+
+    auto entry = lookup(fqdn, *db);
+    EXPECT_EQ(entry.count(), 2);
+
+    for(auto rr : entry) {
+        EXPECT_EQ(rr.ttl(), 0);
+        EXPECT_EQ(rr.type(), TYPE_A);
+    }
 }
 
 TEST(ApiRequest, postSubRrExists) {

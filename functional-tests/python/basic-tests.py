@@ -134,3 +134,22 @@ TeSt1 3600 IN A 127.0.0.4
 www 2592000 IN A 127.0.0.3
 www 2592000 IN A 127.0.0.4
 """
+
+def test_zero_ttl(global_data):
+    entry = """
+      ttl: 0
+      a:
+        - 127.0.0.5
+        - 127.0.0.6
+    """
+
+    print('Creating zero.example.com A entry')
+    url = global_data['url'] + '/rr/zero.example.com'
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body)
+    print(r.text)
+    assert r.ok
+
+    dns = global_data['dns']
+    answer = dns.resolve('zero.example.com', 'A')
+    assert answer.rrset.ttl == 0

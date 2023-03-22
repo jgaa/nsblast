@@ -20,7 +20,7 @@ namespace nsblast::lib {
 
 namespace {
 
-uint32_t getTtl(const boost::json::value& json) {
+optional<uint32_t> getTtl(const boost::json::value& json) {
     if (json.is_object()) {
         try {
             auto ttl = json.at("ttl");
@@ -43,7 +43,7 @@ uint32_t getTtl(const boost::json::value& json) {
 
     }
 
-    return 0;
+    return {};
 }
 
 template <typename T>
@@ -517,7 +517,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
               << ", json=" << boost::json::serialize(json);
 
     if (auto jttl = getTtl(json)) {
-        ttl = jttl;
+        ttl = *jttl;
     }
 
     for(const auto& obj : json.as_object()) {
