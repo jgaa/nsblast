@@ -42,7 +42,7 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 - [x] [RFC 4701](https://www.rfc-editor.org/rfc/rfc4701) A DNS Resource Record (RR) for Encoding Dynamic Host Configuration Protocol (DHCP) Information (DHCID RR)
 - [x] [RFC 5936](https://www.rfc-editor.org/rfc/rfc5936) DNS Zone Transfer Protocol (AXFR)
 - [x] [RFC 6891](https://www.rfc-editor.org/rfc/rfc6891) Extension Mechanisms for DNS (EDNS(0))
-- [ ] [RFC 7766](https://www.rfc-editor.org/rfc/rfc7766) DNS Transport over TCP - Implementation Requirements
+- [x] [RFC 7766](https://www.rfc-editor.org/rfc/rfc7766) DNS Transport over TCP - Implementation Requirements
 - [x] [RFC 7929](https://www.rfc-editor.org/rfc/rfc7929) DNS-Based Authentication of Named Entities (DANE) Bindings for OpenPGP
 - [x] [RFC 8482](https://www.rfc-editor.org/rfc/rfc8482) Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY
 
