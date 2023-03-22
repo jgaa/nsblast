@@ -73,6 +73,11 @@ Other types
 - [ ] See if a cache in front of rocksdb significantly speeds the server up.
 - [x] Handle child zones during zone-transfers if we happen to own both.
 - [ ] Handle parallel TCP requests. (Use task-based work-flow in stead of connection based?).
+- [ ] Add TCP keep-alive option (mentioned in RFC 5966)
+
+# Security
+- [ ] Limit the numb er of concurrent UDP connections
+- [ ] Limit the numb er of concurrent TCP connections
 
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
