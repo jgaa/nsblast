@@ -870,6 +870,33 @@ TEST(ApiRequest, postRr) {
     EXPECT_EQ(a.rdataAsBase64(), "fwAAAQ==");
 }
 
+TEST(ApiRequest, deleteRr) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+
+    req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+    parsed = api.parse(req);
+    res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 200);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 2);
+}
+
+
 // TODO: Make a series of tests to validate PATCH
 
 int main(int argc, char **argv) {

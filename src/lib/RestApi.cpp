@@ -610,7 +610,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         }
     }
 
-    // TODO: Check that the user has write access toi the zone
+    // TODO: Check that the user has write access to the zone
     if (!existing.hasSoa()) {
         return {404, "Not authorative for zone"};
     }
@@ -619,8 +619,11 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         assert(existing.soa().begin()->type() == TYPE_SOA);
         sb.setZoneLen(existing.soa().begin()->labels().size() -1);
     }
-    build(parsed.fqdn, config_.default_ttl, sb, parseJson(req.body));
-    checkSrv(sb.buffer(), *trx);
+
+    if (req.expectBody()) {
+        build(parsed.fqdn, config_.default_ttl, sb, parseJson(req.body));
+        checkSrv(sb.buffer(), *trx);
+    }
 
     bool need_version_increment = false;
 
@@ -697,6 +700,7 @@ put:
         }
         try {
             trx->remove(lowercaseFqdn, false);
+            need_version_increment = true;
         } catch(const ResourceIf::NotFoundException&) {
             return {404, "The rr don't exist"};
         }
