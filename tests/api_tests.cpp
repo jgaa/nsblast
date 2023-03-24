@@ -896,6 +896,69 @@ TEST(ApiRequest, deleteRr) {
     EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 2);
 }
 
+TEST(ApiRequest, deleteZoneViaRrError) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+
+    req = makeRequest("rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
+    parsed = api.parse(req);
+    res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 409);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+}
+
+TEST(ApiRequest, deleteZone) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    db.createTestZone();
+    db.createTestZone("nsblast.com");
+    db.createTestZone("awesomeexample.com");
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    RestApi api{db.config(), db.resource()};
+    // Set up the test
+    {
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    }
+
+    // Delete the zone
+    {
+        auto req = makeRequest("zone", soa_fqdn, {}, yahat::Request::Type::DELETE);
+        auto parsed = api.parse(req);
+        auto res = api.onZone(req, parsed);
+        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), 0);
+        EXPECT_TRUE(lookup(soa_fqdn, *db).empty());
+        EXPECT_FALSE(lookup("nsblast.com", *db).empty());
+        EXPECT_FALSE(lookup("awesomeexample.com", *db).empty());
+    }
+}
+
 
 // TODO: Make a series of tests to validate PATCH
 

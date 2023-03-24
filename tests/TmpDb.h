@@ -67,12 +67,12 @@ public:
         return db_;
     }
 
-    void createTestZone() {
+    void createTestZone(const std::string zone = "example.com") {
         StorageBuilder sb;
-        string_view fqdn = "example.com";
-        string_view nsname = "ns1.example.com";
-        string_view rname = "hostmaster.example.com";
-        string_view mxname = "mail.example.com";
+        string fqdn = zone;
+        string nsname = "ns1."s + zone;
+        string rname = "hostmaster."s + zone;
+        string mxname = "mail.example."s + zone;
         auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
         auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
         auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
@@ -83,16 +83,16 @@ public:
         sb.createA(fqdn, 1000, ip3);
         sb.createA(fqdn, 1000, ip2);
         sb.createA(fqdn, 1000, ip4);
-        sb.createNs(fqdn, 1000, "ns1.example.com");
-        sb.createNs(fqdn, 1000, "ns2.example.com");
-        sb.createNs(fqdn, 1000, "ns3.example.com");
-        sb.createNs(fqdn, 1000, "ns4.example.com");
+        sb.createNs(fqdn, 1000, "ns1."s + zone);
+        sb.createNs(fqdn, 1000, "ns2."s + zone);
+        sb.createNs(fqdn, 1000, "ns3."s + zone);
+        sb.createNs(fqdn, 1000, "ns4."s + zone);
         sb.createSoa(fqdn, 5003, nsname, rname, 1000, 1001, 1002, 1003, 1004);
         sb.createMx(fqdn, 9999, 10, mxname);
         sb.finish();
 
         auto tx = db_.transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -112,7 +112,7 @@ public:
         sb.finish();
 
         auto tx = db_.transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -125,7 +125,7 @@ public:
         sb.finish();
 
         auto tx = db_.transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 

@@ -138,6 +138,11 @@ namespace nsblast::lib {
             return key();
         }
 
+        operator std::string_view () const noexcept {
+            auto s = key();
+            return {s.data(), s.size()};
+        }
+
         bool ownsBuffer() const noexcept {
             return std::holds_alternative<std::string>(d_);
         }
@@ -200,23 +205,23 @@ namespace nsblast::lib {
         return boost::asio::const_buffer{b.data(), b.size()};
     }
 
-    // Very simple, does not handle utf8
-    template<typename T>
-    std::string toPrintable(const T& data) {
-        std::ostringstream o;
+//    // Very simple, does not handle utf8
+//    template<typename T>
+//    std::string toPrintable(const T& data) {
+//        std::ostringstream o;
 
-        for(auto ch : data) {
-            if (ch >= ' ' && ch <= '~') {
-                o << ch;
-            } else if (ch == '\t') {
-                o << ' ';
-            } else {
-                o << '.';
-            }
-        }
+//        for(auto ch : data) {
+//            if (ch >= ' ' && ch <= '~') {
+//                o << ch;
+//            } else if (ch == '\t') {
+//                o << ' ';
+//            } else {
+//                o << '.';
+//            }
+//        }
 
-        return o.str();
-    }
+//        return o.str();
+//    }
 
     /*! Get a text segment from rdata.
      *

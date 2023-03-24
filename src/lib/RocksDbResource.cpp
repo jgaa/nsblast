@@ -55,13 +55,14 @@ RocksDbResource::Transaction::~Transaction()
     }
 }
 
-ResourceIf::TransactionIf::RrAndSoa RocksDbResource::Transaction::lookupEntryAndSoa(ResourceIf::TransactionIf::key_t fqdn)
+ResourceIf::TransactionIf::RrAndSoa
+RocksDbResource::Transaction::lookupEntryAndSoa(string_view fqdn)
 {
     EntryWithBuffer rr;
-    string_view key = {fqdn.data(), fqdn.size()};
+    string_view key = fqdn;
     bool first = true;
     while(!key.empty()) {
-        LOG_TRACE << "lookupEntryAndSoa: key=" << toPrintable(key);
+        LOG_TRACE << "lookupEntryAndSoa: key=" << key;
         if (auto e = lookup(key)) {
             if (e.flags().soa) {
                 if (first) {
@@ -101,10 +102,11 @@ ResourceIf::TransactionIf::RrAndSoa RocksDbResource::Transaction::lookupEntryAnd
     return {}; // Not found
 }
 
-ResourceIf::TransactionIf::EntryWithBuffer RocksDbResource::Transaction::lookup(ResourceIf::TransactionIf::key_t fqdn)
+ResourceIf::TransactionIf::EntryWithBuffer
+RocksDbResource::Transaction::lookup(std::string_view fqdn)
 {
     try {
-        auto buffer = read(fqdn);
+        auto buffer = read(key_t{fqdn});
         return {move(buffer)};
     }  catch (const ResourceIf::NotFoundException&) {
         ;
@@ -119,19 +121,17 @@ void RocksDbResource::Transaction::iterate(ResourceIf::TransactionIf::key_t key,
 {
     auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
     for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
-        if (!fn(it->key(), it->value())) {
+        if (!fn({it->key(), key.kClass(), true}, it->value())) {
             return;
         }
     }
-
-    //fn({}, {}); // Notify end
 }
 
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key, Category category)
 {
     rocksdb::PinnableSlice ps;
 
-    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key), &ps);
+    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key.key()), &ps);
 
     if (status.ok()) {
         return true;
@@ -149,7 +149,7 @@ bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t ke
 bool RocksDbResource::Transaction::exists(string_view fqdn, uint16_t type)
 {
     try {
-        auto b = read(fqdn);
+        auto b = read(key_t{fqdn});
         Entry entry{b->data()};
 
         if (type == TYPE_SOA) {
@@ -174,13 +174,13 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
                                          bool isNew, Category category)
 {
     LOG_TRACE << "RocksDbResource::Transaction::write - Write to transaction "
-              << uuid() << " key: " << toPrintable(key)
+              << uuid() << " key: " <<  key
               << ", category " << category;
 
     if (isNew && keyExists(key)) {
         throw AlreadyExistException{"Key exists"};
     }
-    const auto status = trx_->Put(owner_.handle(category), toSlice(key), toSlice(data));
+    const auto status = trx_->Put(owner_.handle(category), toSlice(key.key()), toSlice(data));
 
     if (!status.ok()) {
         throw runtime_error{"Rocksdb write failed: "s + status.ToString()};
@@ -197,12 +197,12 @@ ResourceIf::TransactionIf::read_ptr_t
 RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Category category)
 {
     LOG_TRACE << "RocksDbResource::Transaction::read - Read from transaction "
-              << uuid() << " key: " << toPrintable(key)
+              << uuid() << " key: " << key
               << ", category " << category;
 
     auto rval = make_unique<BufferImpl>();
 
-    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key), &rval->ps_);
+    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key.key()), &rval->ps_);
 
     if (status.ok()) {
         rval->prepare();
@@ -214,7 +214,7 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
     }
 
     LOG_WARN << "RocksDbResource::Transaction::read - Read from transaction "
-              << uuid() << " key: " << toPrintable(key)
+              << uuid() << " key: " << key
               << ", category " << category
               << " failed with status: " << status.ToString();
 
@@ -224,10 +224,10 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
 void RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, string &buffer, ResourceIf::Category category)
 {
     LOG_TRACE << "RocksDbResource::Transaction::read (string) - Read from transaction "
-              << uuid() << " key: " << toPrintable(key)
+              << uuid() << " key: " << key
               << ", category " << category;
 
-    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key), &buffer);
+    const auto status = trx_->Get({}, owner_.handle(category), toSlice(key.key()), &buffer);
 
     if (status.ok()) {
         return;
@@ -238,7 +238,7 @@ void RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, st
     }
 
     LOG_WARN << "RocksDbResource::Transaction::read (string) - Read from transaction "
-              << uuid() << " key: " << toPrintable(key)
+              << uuid() << " key: " << key
               << ", category " << category
               << " failed with status: " << status.ToString();
     throw runtime_error{status.ToString()};
@@ -249,7 +249,7 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
 {
     if (recursive) {
         LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
-                  << toPrintable(key) << ", category " << category
+                  << key << ", category " << category
                   << " recursively.";
 
         // Assumption: The iterator starts at key, and we can do a memcmp to
@@ -259,16 +259,36 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
         // Unfortunately, it's not yet available in transactions
         rocksdb::ReadOptions options = {};
         auto it = trx_->GetIterator(options, owner_.handle(category));
-        for(it->Seek(toSlice(key)); it->Valid() ; it->Next()) {
+        for(it->Seek(toSlice(key.key())); it->Valid() ; it->Next()) {
             const auto ck = it->key();
-            if (ck.size() < key.size() || memcmp(ck.data(), key.data(), key.size()) != 0) {
+            const int extra_len = ck.size() - key.size();
+            if (extra_len < 0) {
+                break;
+            }
+            if (extra_len > 0) {
+                // Validate that ck is a desecndent of key
+                assert(ck.size() > key.size() - 1);
+                if (ck[ck.size() - key.size() - 1] != '.') {
+                    break;
+                }
+                if (extra_len > 1) {
+                    // Corner-case - escaped dot in the same location as the zone-dot, but for a different zone
+                    if (ck[ck.size() - key.size() - 2] == '\\') {
+                        break;
+                    }
+                }
+            }
+
+            assert(extra_len >= 0);
+            // Check that the zone-part of ck is equal to the zone (that we have not skipped beoynd the zone)
+            if (memcmp(ck.data() + extra_len, key.data(), key.size()) != 0) {
                 break;
             }
             trx_->Delete(owner_.handle(category), it->key());
         }
     } else {
         LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
-                  << toPrintable(key) << ", category " << category;
+                  << key << ", category " << category;
 
         trx_->Delete(owner_.handle(category), toSlice(key));
     }

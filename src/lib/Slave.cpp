@@ -306,7 +306,7 @@ void Slave::doAxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
                 first = false;
 
                 // Delete all existing Entries in the local database for this zone
-                trx->remove(fqdn_, true);
+                trx->remove({fqdn_}, true);
 
             } /* first */ else {
                 if (rr.type() == TYPE_SOA) {
@@ -342,7 +342,7 @@ void Slave::doAxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
                         LOG_TRACE << "Slave::sync - During AXFR payload for " << fqdn_
                                   << " from master at " << current_remote_ep_
                                   << " Writing " << sb->rrCount() << " RR's for " << current_fqdn;
-                        trx->write(current_fqdn, sb->buffer(), false); // set new flag??
+                        trx->write({current_fqdn}, sb->buffer(), false); // set new flag??
                     }
                 }
 

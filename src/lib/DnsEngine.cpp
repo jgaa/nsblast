@@ -684,7 +684,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
             vector<char> zone_buffer; // To keep the SOA we need as the latest RR in the reply
             optional<Entry> zone;
             vector<char> cut;
-            trx->iterate(key, [&]
+            trx->iterate({key}, [&]
                          (auto db_key, auto value) mutable {
 
                 // Skip child-zones if they happen to be hosted by me (and the keys appears here)
@@ -697,7 +697,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
                            LOG_TRACE << "DnsEngine::processRequest for request "
                                      << request.uuid
                                      << " in AXFR; ignoring child Entry at "
-                                     << toPrintable(db_key);
+                                     << db_key;
                            return true;
                        }
                    }
@@ -736,7 +736,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
                     if (flags.ns && !flags.soa) {
                         // Start of a cut
                         cut.reserve(db_key.size());
-                        copy(db_key.begin(), db_key.end(), back_inserter(cut));
+                        copy(db_key.bytes().begin(), db_key.bytes().end(), back_inserter(cut));
                     }
 
                     // For now, copy all the RR's. I don't think we have any RR's
@@ -838,7 +838,7 @@ again:
             bool is_referral = false;
             if (auto prev = getNextKey(key); !prev.empty()) {
                 // Is it a referral?
-                if (auto entry = trx->lookup(prev); !entry.empty()) {
+                if (auto entry = trx->lookup({prev.data(), prev.size()}); !entry.empty()) {
                     const auto& e_hdr = entry.header();
                     if (e_hdr.flags.ns && !e_hdr.flags.soa) {
                         // Yap, it's a referral

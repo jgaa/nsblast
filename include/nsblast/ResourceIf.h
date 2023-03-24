@@ -18,10 +18,54 @@ public:
         ENTRY
     };
 
+    /*! Real index key.
+     *
+     *  For fqdn's, we have to reverse the strings to sort them correctly.
+     *
+     *  We also add a prefix byte in the key so we can have different data-types/indexes
+     *  in the same table/collection.
+     */
+    class RealKey {
+    public:
+        enum class Class {
+            ENTRY
+        };
+
+        RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
+
+        span_t key() const noexcept;
+
+        size_t size() const noexcept {
+            return bytes_.size();
+        }
+
+        bool empty() const noexcept;
+
+        Class kClass() const noexcept;
+
+        /*! Return the data-part (not the byte-prefix) as a string.
+         *
+         *  Typically, this means a fqdn that is re-reversed.
+         */
+        std::string dataAsString() const;
+
+        auto data() const noexcept {
+            return bytes_.data();
+        }
+
+        const auto& bytes() const noexcept {
+            return bytes_;
+        }
+
+    protected:
+        static std::string init(span_t key, Class kclass);
+
+        const std::string bytes_;
+    };
 
     class TransactionIf {
     public:
-        using key_t = boost::span<const char>;
+        using key_t = const RealKey&;
         using data_t = boost::span<const char>;
 
         /// Buffer that can be specialized by derived classes to reduce memory allocations and memcpy's
@@ -151,14 +195,14 @@ public:
          *          the zone was not found.
          *
          */
-        virtual RrAndSoa lookupEntryAndSoa(key_t fqdn) = 0;
+        virtual RrAndSoa lookupEntryAndSoa(std::string_view fqdn) = 0;
 
         /*! Get the entry for a fqdn
          *
          *  \return EntryWithBuffer that may or may not be empty. If it is empty,
          *          the key was not found.
          */
-        virtual EntryWithBuffer lookup(key_t fqdn) = 0;
+        virtual EntryWithBuffer lookup(std::string_view fqdn) = 0;
 
         /*! Check if an RR exists */
         virtual bool exists(std::string_view fqdn, uint16_t type = QTYPE_ALL) = 0;
@@ -231,4 +275,5 @@ public:
 } // ns
 
 std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::Category& cat);
+std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::RealKey& key);
 

@@ -26,8 +26,8 @@ public:
         ~Transaction();
 
         // TransactionIf interface
-        RrAndSoa lookupEntryAndSoa(key_t fqdn) override;
-        EntryWithBuffer lookup(key_t fqdn) override;
+        RrAndSoa lookupEntryAndSoa(std::string_view fqdn) override;
+        EntryWithBuffer lookup(std::string_view fqdn) override;
         void iterate(key_t, iterator_fn_t fn, Category category = Category::ENTRY) override;
         bool keyExists(key_t key, Category category = Category::ENTRY) override;
         bool exists(std::string_view fqdn, uint16_t type) override;

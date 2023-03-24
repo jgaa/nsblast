@@ -22,7 +22,7 @@ void SlaveMgr::getZone(string_view fqdn, pb::Zone &zone)
     auto trx = db_.transaction();
 
     string buffer;
-    trx->read(fqdn, buffer, ResourceIf::Category::ZONE);
+    trx->read({fqdn}, buffer, ResourceIf::Category::ZONE);
     zone.ParseFromString(buffer);
 }
 
@@ -32,7 +32,7 @@ void SlaveMgr::addZone(string_view fqdn, const pb::Zone& zone)
     zone.SerializeToString(&r);
 
     auto trx = db_.transaction();
-    trx->write(fqdn, r, true, ResourceIf::Category::ZONE);
+    trx->write({fqdn}, r, true, ResourceIf::Category::ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -43,7 +43,7 @@ void SlaveMgr::replaceZone(string_view fqdn, const pb::Zone& zone)
     zone.SerializeToString(&r);
 
     auto trx = db_.transaction();
-    trx->write(fqdn, r, false, ResourceIf::Category::ZONE);
+    trx->write({fqdn}, r, false, ResourceIf::Category::ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -56,7 +56,7 @@ void SlaveMgr::mergeZone(string_view fqdn, const pb::Zone& zone)
 void SlaveMgr::deleteZone(string_view fqdn)
 {
     auto trx = db_.transaction();
-    trx->remove(fqdn, false, ResourceIf::Category::ZONE);
+    trx->remove({fqdn}, false, ResourceIf::Category::ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -67,7 +67,7 @@ void SlaveMgr::init()
     //       create Slave objects and set timers.
 
     auto trx = db_.transaction();
-    trx->iterate("", [this](ResourceIf::TransactionIf::key_t key, span_t value) {
+    trx->iterate({""}, [this](ResourceIf::TransactionIf::key_t key, span_t value) {
 
         pb::Zone z;
         if (z.ParseFromArray(value.data(), value.size())) {
@@ -75,7 +75,7 @@ void SlaveMgr::init()
                 reload({key.data(), key.size()}, z);
             }
         } else {
-            LOG_ERROR << "SlaveMgr::init Failed to deserialize Zone: " << toPrintable(key);
+            LOG_ERROR << "SlaveMgr::init Failed to deserialize Zone: " << key;
         }
 
         return true;

@@ -39,7 +39,7 @@ TEST(DbWriteZone, newZone) {
     sb.finish();
 
     auto tx = db->transaction();
-    EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+    EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
     EXPECT_NO_THROW(tx->commit());
 }
 
@@ -55,15 +55,15 @@ TEST(DbWriteZone, newZoneOnExisting) {
 
     {
         auto tx = db->transaction();
-        EXPECT_FALSE(tx->keyExists(fqdn));
-        EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+        EXPECT_FALSE(tx->keyExists({fqdn}));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
 
     {
         auto tx = db->transaction();
-        EXPECT_TRUE(tx->keyExists(fqdn));
-        EXPECT_THROW(tx->write(fqdn, sb.buffer(), true), ResourceIf::AlreadyExistException);
+        EXPECT_TRUE(tx->keyExists({fqdn}));
+        EXPECT_THROW(tx->write({fqdn}, sb.buffer(), true), ResourceIf::AlreadyExistException);
         tx->commit();
     }
 }
@@ -79,12 +79,12 @@ TEST(DbDeleteZone, existing) {
 
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->remove(fqdn));
+        EXPECT_NO_THROW(tx->remove({fqdn}));
         EXPECT_NO_THROW(tx->commit());
     }
 }
@@ -100,12 +100,12 @@ TEST(DbDeleteZone, existingRecursive) {
 
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->remove(fqdn, true));
+        EXPECT_NO_THROW(tx->remove({fqdn}, true));
         EXPECT_NO_THROW(tx->commit());
     }
 }
@@ -116,7 +116,7 @@ TEST(DbDeleteZone, nonexisting) {
     const string_view fqdn = "example.com";
 
     auto tx = db->transaction();
-    EXPECT_NO_THROW(tx->remove(fqdn));
+    EXPECT_NO_THROW(tx->remove({fqdn}));
     tx->commit();
 }
 
@@ -131,13 +131,13 @@ TEST(DbReadZone, exists) {
 
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
 
     {
         auto tx = db->transaction();
-        EXPECT_TRUE(tx->keyExists(fqdn));
+        EXPECT_TRUE(tx->keyExists({fqdn}));
         EXPECT_TRUE(tx->zoneExists(fqdn));
     }
 }
@@ -162,13 +162,13 @@ TEST(DbReadZone, read) {
 
     {
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->write(fqdn, sb.buffer(), true));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
 
     {
         auto tx = db->transaction();
-        auto b = tx->read(fqdn);
+        auto b = tx->read({fqdn});
         EXPECT_TRUE(b);
 
         Entry entry{b->data()};
@@ -197,7 +197,7 @@ TEST(DbReadZone, readNoExist) {
     const string_view fqdn = "example.com";
 
     auto tx = db->transaction();
-    EXPECT_THROW(tx->read(fqdn), ResourceIf::NotFoundException);
+    EXPECT_THROW(tx->read({fqdn}), ResourceIf::NotFoundException);
 }
 
 TEST(DbLookup, ok) {
@@ -214,7 +214,7 @@ TEST(DbLookup, ok) {
 
     {
         auto tx = db->transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -243,7 +243,7 @@ TEST(DbLookup, notFound) {
 
     {
         auto tx = db->transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -270,7 +270,7 @@ TEST(lookupEntryAndSoa, sameOk) {
         sb.finish();
 
         auto tx = db->transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -305,7 +305,7 @@ TEST(lookupEntryAndSoa, notSameOk) {
         sb.finish();
 
         auto tx = db->transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -316,7 +316,7 @@ TEST(lookupEntryAndSoa, notSameOk) {
         sb.finish();
 
         auto tx = db->transaction();
-        tx->write(www, sb.buffer(), true);
+        tx->write({www}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -353,7 +353,7 @@ TEST(lookupEntryAndSoa, noRrOk) {
         sb.finish();
 
         auto tx = db->transaction();
-        tx->write(fqdn, sb.buffer(), true);
+        tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
 
