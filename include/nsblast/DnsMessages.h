@@ -241,6 +241,14 @@ public:
 
     std::string rdataAsBase64() const;
 
+    void reset() {
+        labels_.reset();
+        buffer_view_ = {};
+        offset_ = 0;
+        offset_to_type_ = 0;
+        self_view_ = {};
+    }
+
 protected:
     void parse(bool isQuery);
 
@@ -273,6 +281,17 @@ public:
     /*! Offset of serial from the start of the original buffer */
     uint16_t serialOffset() const;
 };
+
+class MutableRrSoa : public RrSoa {
+
+    MutableRrSoa(const RrSoa& from);
+
+    void incVersion();
+
+private:
+    std::vector<char> buffer_;
+};
+
 
 /*! Wrapper over a RR RrSrv instance.
  *
@@ -946,7 +965,7 @@ public:
 
         reference operator*() const { return crr_; }
 
-        pointer operator->() { return &crr_; }
+        pointer operator->() const { return &crr_; }
 
         Iterator& operator++();
 
@@ -1286,11 +1305,13 @@ public:
      *  \param ttl time to live in seconds. This is ignored for all but the first record.
      *  \param rdata The data to store. The data is in binary format, ready to be send in
      *         DNS answers.
+     *  \param isOneEntity The fdqn for the Rr is the same as the other Rr's
      *
      *  \return An NewRr object referencing the new record.
      *  \exception std::runtime_error and other exceptions thrown by the C++ standard library and asio.
      */
-    NewRr createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+    NewRr createRr(span_t fqdn, uint16_t type, uint32_t ttl, span_t rdata,
+                   bool isOneEntity = true);
 
     /*! Create a new resource record
      *
@@ -1308,6 +1329,9 @@ public:
      *
      */
     NewRr createRr(uint16_t nameOffset, uint16_t type, uint32_t ttl, boost::span<const char> rdata);
+
+    /*! Add a copy of an existing rr */
+    NewRr addRr(const Rr& rr);
 
     /*! Get the raw data buffer for the message
      *
@@ -1337,6 +1361,33 @@ public:
     /*! Convenience method to increment the soa version from the version in the original soa */
     uint32_t incrementSoaVersion(const Entry& entry);
 
+    auto && stealBuffer() {
+        return std::move(buffer_);
+    }
+
+    /*! Get the soa record if it exist */
+    std::optional<RrSoa> soa() const {
+        if (soa_offset_) {
+            return RrSoa{buffer_, soa_offset_};
+        }
+        return {};
+    }
+
+    Labels defaultLabels() const {
+        if (name_ptr_) {
+            return {buffer_, name_ptr_};
+        }
+        return {};
+    }
+
+    void doSort(bool sort) {
+        sort_ = sort;
+    }
+
+    void oneSoa(bool value) {
+        one_soa_ = value;
+    }
+
 private:
     NewRr createDomainNameInRdata(std::string_view fqdn,
                                   uint16_t type,
@@ -1362,6 +1413,8 @@ private:
     uint8_t zonelen_ = 0;
     uint16_t soa_offset_ = 0;
     bool finished_ = false;
+    bool sort_ = true;
+    bool one_soa_ = true;
 };
 
 } // ns

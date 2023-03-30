@@ -959,8 +959,140 @@ TEST(ApiRequest, deleteZone) {
     }
 }
 
+TEST(ApiRequest, diffCreatedForPostNewChild) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
 
-// TODO: Make a series of tests to validate PATCH
+    TmpDb db;
+    db.config().dns_enable_ixfr = true;
+    db.createTestZone();
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto json = getAJson();
+    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 201);
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+
+    auto trx = db->transaction();
+
+    ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
+    auto data = trx->read(key, ResourceIf::Category::DIFF);
+    Entry entry{data->data()};
+    EXPECT_EQ(entry.count(), 4);
+    auto it = entry.begin();
+
+    // Start of deleted sequence, old soa
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_SOA);
+    if (it->type() == TYPE_SOA)
+    {
+        RrSoa soa(entry.buffer(), it->offset());
+        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+    }
+
+    ++it;
+    // Start of new entries sequence, new soa
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_SOA);
+    if (it->type() == TYPE_SOA)
+    {
+        RrSoa soa(entry.buffer(), it->offset());
+        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
+    }
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_A);
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_A);
+
+    ++it;
+    // End of this difference sequence
+    EXPECT_EQ(it, entry.end());
+}
+
+TEST(ApiRequest, diffCreatedForDeleteChild) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    TmpDb db;
+    db.config().dns_enable_ixfr = true;
+    db.createTestZone();
+    db.createWwwA();
+
+    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+    auto req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+
+    RestApi api{db.config(), db.resource()};
+    auto parsed = api.parse(req);
+    auto res = api.onResourceRecord(req, parsed);
+
+    EXPECT_EQ(res.code, 200);
+    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    auto trx = db->transaction();
+
+    ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
+    auto data = trx->read(key, ResourceIf::Category::DIFF);
+    Entry entry{data->data()};
+    EXPECT_EQ(entry.count(), 6);
+    auto it = entry.begin();
+
+    // Start of deleted sequence, old soa
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_SOA);
+    if (it->type() == TYPE_SOA)
+    {
+        RrSoa soa(entry.buffer(), it->offset());
+        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+    }
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_A);
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_A);
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_AAAA);
+
+    ++it;
+    // A record
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_AAAA);
+
+    ++it;
+    // Start of new entries sequence, new soa
+    EXPECT_NE(it, entry.end());
+    EXPECT_EQ(it->type(), TYPE_SOA);
+    if (it->type() == TYPE_SOA)
+    {
+        RrSoa soa(entry.buffer(), it->offset());
+        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
+    }
+
+    ++it;
+    // End of this difference sequence
+    EXPECT_EQ(it, entry.end());
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

@@ -107,6 +107,14 @@ struct Config {
      */
     uint32_t dns_default_zone_pull_interval_ = 600;
 
+    /*! Enable inremental Zone updates via IXFR
+     *
+     *  This will cause the server to use a little more CPU and disk space
+     *  each time a Zone changes, as it neets to store the differences in the
+     *  database as well as the new values.
+     */
+    bool dns_enable_ixfr = true;
+
     ///@}
 
     /*! \name HTTP */

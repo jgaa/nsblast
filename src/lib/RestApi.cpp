@@ -1,5 +1,6 @@
 
 #include <set>
+#include <execution>
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
@@ -94,6 +95,105 @@ string_view toDnsEmail(string_view email, std::string& buffer) {
     }
 
     return email;
+}
+
+// Create a difference sequence. RFC 1995
+void createDiffSequence(StorageBuilder& sb,
+                        const RrSoa& oldSoa,
+                        const RrSoa& newSoa,
+                        const Entry& oldContent,
+                        const Entry& newContent)
+{
+    static const auto compare_rr = [](const Entry::Iterator& left, const Entry::Iterator& right) {
+        const auto ls = left->selfSpan();
+        const auto rs = right->selfSpan();
+
+        auto res = memcmp(ls.data(), rs.data(), min(ls.size(), rs.size()));
+        if (res == 0) {
+            return ls.size() < rs.size();
+        }
+        return res < 0;
+    };
+
+    vector<Entry::Iterator> older, newer;
+    for(auto it = oldContent.begin(); it != oldContent.end(); ++it) {
+        older.push_back(it);
+    }
+    sort(older.begin(), older.end(), compare_rr);
+
+    for(auto it = newContent.begin(); it != newContent.end(); ++it) {
+        newer.push_back(it);
+    }
+    sort(newer.begin(), newer.end(), compare_rr);
+
+    // Get deleted/changed entries
+    vector<Entry::Iterator> deleted;
+    set_difference(older.begin(), older.end(), newer.begin(), newer.end(),
+                   back_inserter(deleted), compare_rr);
+
+    // Get new/changed entries
+    vector<Entry::Iterator> added;
+    set_difference(newer.begin(), newer.end(), older.begin(), older.end(),
+                   back_inserter(added), compare_rr);
+
+
+    auto add_rrs = [&sb](const auto& seq) {
+        for(const auto& it : seq) {
+            if (it->type() == TYPE_SOA) {
+                continue; // Must be in the start of *any* segment, and never inside a segment.
+            }
+
+            sb.addRr(*it);
+        }
+    };
+
+    sb.addRr(oldSoa);
+
+    add_rrs(deleted);
+
+    sb.addRr(newSoa);
+
+    add_rrs(added);
+}
+
+// Create and add a complete diff transaction for a normal update (one serial increment).
+void addDiff(string_view zoneName,
+             const RrSoa& oldSoa,
+             const RrSoa& newSoa,
+             const Entry& oldContent,
+             const Entry& newContent,
+             ResourceIf::TransactionIf& trx) {
+
+    assert(newSoa.serial() > oldSoa.serial());
+
+    LOG_TRACE << "addDiff: Creating diff for zone: " << zoneName;
+
+    StorageBuilder sb;
+
+    // We need to store the entries in the order that we added them.
+    sb.doSort(false);
+    // We need to store multiple soa's (something that is invalid in a normal Zone or Entity)
+    sb.oneSoa(false);
+
+    createDiffSequence(sb, oldSoa, newSoa, oldContent, newContent);
+
+    sb.finish();
+
+    ResourceIf::RealKey key{zoneName, newSoa.serial(), ResourceIf::RealKey::Class::DIFF};
+
+    // Don't enforce uniqueness, even if this is a unique key.
+    // In case the server crash and fails to correctly reach a consistent state
+    // from the wal log, we don't want to block the zone from ever being updated again.
+    // A reasonable final solution could be to set a state on the zone to enforce full
+    // zone transfers if this situation actually arise.
+    // TODO: Fixme
+
+    if (trx.keyExists(key, ResourceIf::Category::DIFF)) {
+        LOG_ERROR << "The DIFF key " << key
+                  << " already exists in the DIFF storage. These keys are supposed to be unique!"
+                  << " I will oevrwrite the existing data.";
+    }
+    trx.write(key, sb.buffer(), false, ResourceIf::Category::DIFF);
 }
 
 } // anon ns
@@ -627,6 +727,11 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     bool need_version_increment = false;
 
+    const auto& oldData = existing.rr();
+    Entry newData;
+    std::optional<RrSoa> newSoa;
+    const auto oldSoa = existing.soa().getSoa();
+
     // Apply change
     switch(req.type) {
     case Request::Type::POST: {
@@ -640,19 +745,30 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
         try {
             trx->write({lowercaseFqdn}, sb.buffer(), true);
+
+            if (config_.dns_enable_ixfr) {
+                newData = {sb.buffer()};
+            }
         } catch(const ResourceIf::AlreadyExistException&) {
             return {409, "The rr already exists"};
         }
+
     } break;
 
     case Request::Type::PUT: {
 put:
         if (existing.isSame()) {
             sb.incrementSoaVersion(existing.soa());
+            newSoa = sb.soa();
+            assert(newSoa.has_value());
         } else {
             need_version_increment = true;
         }
         trx->write({lowercaseFqdn}, sb.buffer(), false);
+
+        if (config_.dns_enable_ixfr) {
+            newData = {sb.buffer()};
+        }
     } break;
 
     case Request::Type::PATCH: {
@@ -692,6 +808,10 @@ put:
         merged.finish();
 
         trx->write({lowercaseFqdn}, merged.buffer(), false);
+
+        if (config_.dns_enable_ixfr) {
+            newData = {merged.buffer()};
+        }
     } break;
 
     case Request::Type::DELETE: {
@@ -709,11 +829,13 @@ put:
         return {405, "Operation is not implemented"};
     }
 
+    string lowercaseSoaFqdn;
+
+    StorageBuilder soaSb;
     if (need_version_increment) {
         assert(!existing.isSame());
 
         // We need to copy the Entry containing the soa and then increment the version
-        StorageBuilder soaSb;
         auto soa_fqdn = labelsToFqdnKey(existing.soa().begin()->labels());
         for(const auto& rr : existing.soa()) {
             soaSb.createRr(soa_fqdn, rr.type(), rr.ttl(), rr.rdata());
@@ -721,9 +843,19 @@ put:
         soaSb.incrementSoaVersion(existing.soa());
         soaSb.finish();
 
-        const auto lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
+        lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
         LOG_TRACE << "Incrementing soa version for " << lowercaseSoaFqdn;
         trx->write({lowercaseSoaFqdn}, soaSb.buffer(), false);
+        newSoa = soaSb.soa();
+    }
+
+    if (config_.dns_enable_ixfr) {
+        if (lowercaseSoaFqdn.empty()) {
+            lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
+        }
+        assert(newSoa.has_value());
+        assert(newSoa->serial() > oldSoa.serial());
+        addDiff(lowercaseSoaFqdn, oldSoa, newSoa.value(), oldData, newData, *trx);
     }
 
     trx->commit();

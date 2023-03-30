@@ -1,5 +1,7 @@
 /*!
-    \page binary_storage_format Binary Storage Format
+    \page binary_storage_format 
+    
+    Binary Storage Format for Entries
 
     The idea is to store the data as Rr's, (almost) ready to be
     sent on the wire in a DNS reply, after they are copied
@@ -80,4 +82,26 @@
     /                                               /
     +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
     \endverbatim
+    
+    The keys for entries is: 0 fdqn-str
+    
+    The 0 is a 8-bit tag that identifies the key-type (Entry as fqdn)
+    and the fdqn is a string with the full fdqn to the Entry in question
+    with the bytes reversed. For example: 0 moc.elpmaxe.www for "www.example.com"
+    
+    
+    Binary storage format for diff's (IXFR)
+    
+    The changes are saved in DNS messages in the same
+    format that the server will use to reply to a IXFR
+    request. Idelly, the server should only need to 
+    iterate over a zone from start to end version and send
+    all the messages in that set. 
+    
+    Diffs's keys are: 1 zone-name 0 version
+    
+    The 1 is a 8-bit tag that identifies the key-type (Diff as zone-name).
+    The Zone-name has it's bytes reversed.
+    Version is a 32 bit integer in big endian format, and the value is the 
+    soa version for these changes (compared to the previous version).
 */

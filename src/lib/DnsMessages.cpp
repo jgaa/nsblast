@@ -205,13 +205,25 @@ void MessageBuilder::handleOpt()
 }
 
 StorageBuilder::NewRr
-StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<const char> rdata)
+StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, span_t rdata,
+                         bool isOneEntity)
 {
     assert(!finished_);
     if (name_ptr_) {
-        // A list of rr's (RRSet) always contain the same fqdn,
-        // so if we already have the name, we re-use it.
-        return createRr(name_ptr_, type, ttl, rdata);
+
+        if (isOneEntity) {
+            // A list of rr's (RRSet) always contain the same fqdn,
+            // so if we already have the name, we re-use it.
+            return createRr(name_ptr_, type, ttl, rdata);
+        }
+
+        // If we already have the fdqn, use the pointer.
+        // However, this is not the common case, so for now
+        // we only check against the first fqdn added.
+        const auto dl = defaultLabels().string();
+        if (!dl.empty() && (dl == string_view{fqdn.data(), fqdn.size()})) {
+            return createRr(name_ptr_, type, ttl, rdata);
+        }
     }
 
     const auto start_offset = buffer_.size();
@@ -231,14 +243,17 @@ StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, boost::span<c
 
     {
         const auto rlen = writeName(buffer_, start_offset, {fqdn.data(), fqdn.size()});
-        assert(name_ptr_ == 0);
+        //assert(name_ptr_ == 0);
         assert(start_offset != 0);
-        name_ptr_ = start_offset;
+        if (!name_ptr_) {
+            name_ptr_ = start_offset;
+        }
         assert(rlen == labels_len);
     }
 
-    assert(label_len_ == 0);
-    label_len_ = labels_len;
+    if (label_len_ == 0) {
+        label_len_ = labels_len;
+    }
     return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
@@ -416,6 +431,12 @@ StorageBuilder::createRr(uint16_t nameOffset, uint16_t type,
     return finishRr(start_offset, labels_len, type, ttl, rdata);
 }
 
+StorageBuilder::NewRr StorageBuilder::addRr(const Rr &rr)
+{
+    const auto fqdn = rr.labels().string();
+    return createRr(fqdn, rr.type(), rr.ttl(), rr.rdata(), false);
+}
+
 /* Update the header to it's correct binary value.
  * Sort and add the index to the buffer
  */
@@ -428,40 +449,42 @@ void StorageBuilder::finish()
         throw runtime_error{"StorageBuilder::finish: No room in buffer_ for the header."};
     }
 
-    sort(index_.begin(), index_.end(), [](const auto& left, const auto& right) {
-        static constexpr array<uint8_t, 255> sorting_table = {
-            9, /* a */ 3, /* ns */ 2, 9, 9, /* cname */ 5, /* soa */ 1, 9, 9, 9, // 0
-            9, 9, 9, 9, 9, /* mx */ 6, /* txt */ 7, 9, 9, 9,                     // 10
-            9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 4, 9,                             // 20
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
-            16, 16, 16, 16, 16
-        };
+    if (sort_) {
+        sort(index_.begin(), index_.end(), [](const auto& left, const auto& right) {
+            static constexpr array<uint8_t, 255> sorting_table = {
+                9, /* a */ 3, /* ns */ 2, 9, 9, /* cname */ 5, /* soa */ 1, 9, 9, 9, // 0
+                9, 9, 9, 9, 9, /* mx */ 6, /* txt */ 7, 9, 9, 9,                     // 10
+                9, 9, 9, 9, 9, 9, 9, 9, /* aaaa */ 4, 9,                             // 20
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16
+            };
 
-        assert(left.type < sorting_table.size());
-        assert(right.type < sorting_table.size());
-        return sorting_table.at(left.type) < sorting_table.at(right.type);
-    });
+            assert(left.type < sorting_table.size());
+            assert(right.type < sorting_table.size());
+            return sorting_table.at(left.type) < sorting_table.at(right.type);
+        });
+    }// sort
 
     boost::span index{reinterpret_cast<const char *>(&index_[0]), index_.size() * sizeof(Index)};
 
@@ -471,7 +494,7 @@ void StorageBuilder::finish()
         e.type = htons(e.type);
     }
 
-    // Append the sorted and converted index to the buffer.
+    // Append the (may be) sorted and converted index to the buffer.
     index_offset_ = buffer_.size();
     buffer_.insert(buffer_.end(), index.begin(), index.end());
 
@@ -548,8 +571,11 @@ StorageBuilder::finishRr(uint16_t startOffset, uint16_t labelLen, uint16_t type,
                          uint32_t ttl, boost::span<const char> rdata)
 {
     if (type == TYPE_SOA) {
-        assert(soa_offset_ == 0);
-        soa_offset_ = startOffset;
+        if (soa_offset_ == 0) {
+            soa_offset_ = startOffset;
+        } else if (one_soa_) {
+            throw runtime_error{"StorageBuilder::finishRr: More than one SOA!"};
+        }
         assert(soa_offset_ > 0);
     }
 
@@ -1619,6 +1645,41 @@ uint16_t RrOpt::rcodeBits(uint8_t hdrValue, uint8_t optValue)
     return bu.val;
 }
 
+MutableRrSoa::MutableRrSoa(const RrSoa &from)
+    : RrSoa(span_t(), 0)
+{
+    // For now, use the StorageBuilder to create a copy of the soa
+    StorageBuilder soaSb;
+    auto soa_fqdn = labelsToFqdnKey(from.labels());
+    const auto nh = soaSb.createRr(soa_fqdn, from.type(), from.ttl(), from.rdata());
+
+    // No need to call finish(). We don't need the index and the extras.
+
+    // Take ownership of the buffer with the soa,
+    buffer_ = move(soaSb.stealBuffer());
+
+    // Now, do what the RR's constructor does to get the internals right...
+    reset();
+    buffer_view_ = buffer_;
+    offset_ = nh.offset();
+    parse(false);
+}
+
+void MutableRrSoa::incVersion()
+{
+    auto ser = serial();
+    ++ser;
+    const auto rd = rdata();
+    assert(rd.size() >= 24);
+
+    auto rd_offset = rd.data() - buffer_.data();
+    assert(rd_offset > 0);
+    assert(static_cast<size_t>(rd_offset) < buffer_.size());
+
+    setValueAt(buffer_, (rd_offset + rd.size()) - 20, ser);
+}
+
+
 Entry::Iterator::Iterator(const Entry &entry, bool begin)
     : entry_{&entry}
     , ix_{begin ? entry.index().begin() : entry.index().end()}
@@ -1658,6 +1719,7 @@ void Entry::Iterator::increment()
 {
     ++ix_;
 }
+
 
 
 } // ns

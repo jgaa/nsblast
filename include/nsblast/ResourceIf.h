@@ -15,7 +15,8 @@ class ResourceIf {
 public:
     enum class Category {
         ZONE,
-        ENTRY
+        ENTRY,
+        DIFF
     };
 
     /*! Real index key.
@@ -28,10 +29,12 @@ public:
     class RealKey {
     public:
         enum class Class {
-            ENTRY
+            ENTRY,
+            DIFF
         };
 
         RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
+        RealKey(span_t key, uint32_t version, Class kclass = Class::DIFF);
 
         span_t key() const noexcept;
 
@@ -58,7 +61,7 @@ public:
         }
 
     protected:
-        static std::string init(span_t key, Class kclass);
+        static std::string init(span_t key, Class kclass, std::optional<uint32_t> version);
 
         const std::string bytes_;
     };

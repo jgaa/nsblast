@@ -81,36 +81,16 @@ public:
 private:
     static constexpr size_t ZONE = 1;
     static constexpr size_t ENTRY = 2;
-    static constexpr size_t ACCOUNT = 3;
+    static constexpr size_t DIFF = 3;
+    static constexpr size_t ACCOUNT = 4;
 
-    auto handle(const Category category) {
-        if (category == Category::ENTRY) {
-            return cfh_[ENTRY];
-        }
-        if (category == Category::ZONE) {
-            return cfh_[ZONE];
-        }
-
-        throw std::runtime_error{"handle: Unknown Category"};
-    }
+    rocksdb::ColumnFamilyHandle * handle(const Category category);
 
     void prepareDirs();
     void open();
     void bootstrap();
     bool needBootstrap() const;
     std::string getDbPath() const;
-
-    auto zoneHandle() noexcept {
-        return cfh_[ZONE];
-    }
-
-    auto entryHandle() noexcept {
-        return cfh_[ENTRY];
-    }
-
-    auto accountHandle() noexcept {
-        return cfh_[ACCOUNT];
-    }
 
     const Config& config_;
     rocksdb::TransactionDB *db_ = {};

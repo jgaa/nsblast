@@ -35,6 +35,7 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 - [x] [RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) Requirements for Internet Hosts -- Application and Support
 - [x] [RFC 1183](https://www.rfc-editor.org/rfc/rfc1183) New DNS RR Definitions (Rr, Asfdb)
 - [ ] [RFC 1995](https://www.rfc-editor.org/rfc/rfc1995) Incremental Zone Transfer in DNS
+- [ ] [RFC 1996](https://www.rfc-editor.org/rfc/rfc1996) A Mechanism for Prompt Notification of Zone Changes (DNS NOTIFY)
 - [ ] [RFC 2181](https://www.rfc-editor.org/rfc/rfc2181) Clarifications to the DNS Specification
 - [x] [RFC 2782](https://www.rfc-editor.org/rfc/rfc2782) A DNS RR for specifying the location of services (DNS SRV)
 - [x] [RFC 3596](https://www.rfc-editor.org/rfc/rfc3596) DNS Extensions to Support IP Version 6

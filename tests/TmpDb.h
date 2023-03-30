@@ -109,6 +109,7 @@ public:
         sb.createA(fqdn, 1000, ip3);
         sb.createA(fqdn, 1000, ip2);
         sb.createA(fqdn, 1000, ip4);
+        sb.setZoneLen(fqdn.size() - 4);
         sb.finish();
 
         auto tx = db_.transaction();
