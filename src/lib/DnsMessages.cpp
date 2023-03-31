@@ -771,10 +771,10 @@ bool Message::Header::validate() const
             return false;
         }
 
-        if (nscount()) {
-            LOG_TRACE << "Message::Header::validate(): nscount in query";
-            return false;
-        }
+//        if (nscount()) {
+//            LOG_TRACE << "Message::Header::validate(): nscount in query";
+//            return false;
+//        }
     }
 
     return true;
@@ -1347,35 +1347,35 @@ Labels RrSoa::rname() const
 uint32_t RrSoa::serial() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 24);
+    assert(rd.size() >= 22);
     return get32bValueAt(rd, rd.size() - 20);
 }
 
 uint32_t RrSoa::refresh() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 24);
+    assert(rd.size() >= 22);
     return get32bValueAt(rd, rd.size() - 16);
 }
 
 uint32_t RrSoa::retry() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 24);
+    assert(rd.size() >= 22);
     return get32bValueAt(rd, rd.size() - 12);
 }
 
 uint32_t RrSoa::expire() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 24);
+    assert(rd.size() >= 22);
     return get32bValueAt(rd, rd.size() - 8);
 }
 
 uint32_t RrSoa::minimum() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 24);
+    assert(rd.size() >= 22);
     return get32bValueAt(rd, rd.size() - 4);
 }
 

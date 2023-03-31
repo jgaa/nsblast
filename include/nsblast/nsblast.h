@@ -144,6 +144,7 @@ static constexpr std::uint16_t TYPE_OPENPGPKEY = 61;
 // RFC 6891
 static constexpr std::uint16_t TYPE_OPT = 41;
 
+static constexpr std::uint16_t QTYPE_IXFR = 251;
 static constexpr std::uint16_t QTYPE_AXFR = 252;
 //static constexpr std::uint16_t QTYPE_MAILB = 253;
 static constexpr std::uint16_t QTYPE_ALL= 255;

@@ -63,7 +63,28 @@ string nsblast::ResourceIf::RealKey::dataAsString() const {
         fqdn.assign(bytes_.begin() + 1, end);
         std::reverse(fqdn.begin(), fqdn.end());
     }
-    return fqdn + postfix;
+                      return fqdn + postfix;
+}
+
+bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcept
+{
+    size_t lstart_offset = 1;
+    size_t lend_offset = 0;
+    if (kClass() == Class::DIFF) {
+        lend_offset = 5;
+    }
+    assert(bytes_.size() >= (lstart_offset + lend_offset));
+    string_view left = {bytes_.data() + lstart_offset, bytes_.size() - (lstart_offset + lend_offset)};
+
+    size_t rstart_offset = 1;
+    size_t rend_offset = 0;
+    if (k.kClass() == Class::DIFF) {
+      rend_offset = 5;
+    }
+    assert(k.bytes_.size() >= (rstart_offset + rend_offset));
+    string_view right = {k.bytes_.data() + rstart_offset, k.bytes_.size() - (rstart_offset + rend_offset)};
+
+    return left == right;
 }
 
 string nsblast::ResourceIf::RealKey::init(nsblast::span_t key,

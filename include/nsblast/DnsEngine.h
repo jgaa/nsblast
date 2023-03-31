@@ -35,6 +35,7 @@ public:
         uint32_t maxReplyBytes = MAX_UDP_QUERY_BUFFER;
         bool is_tcp = false;
         mutable bool is_axfr = false;
+        mutable bool is_ixfr = false;
     };
 
     class Endpoint {
@@ -113,6 +114,29 @@ private:
 
     void startEndpoints();
     void startIoThreads();
+    void doAxfr(const Request& request,
+                const send_t& send,
+                const Message& message,
+                std::shared_ptr<MessageBuilder>& mb,
+                const ResourceIf::RealKey& key,
+                ResourceIf::TransactionIf& trx);
+    void doIxfr(const Request& request,
+                const send_t& send,
+                const Message& message,
+                std::shared_ptr<MessageBuilder>& mb,
+                const ResourceIf::RealKey& key,
+                ResourceIf::TransactionIf& trx);
+
+    // For TCP IXFR/AXFR - Send what's in the buffer and
+    // create a new buffer for 'rr' if the buffer is
+    // too small to add 'rr'.
+    void flushIf(std::shared_ptr<MessageBuilder>& mb,
+                 MessageBuilder::NewHeader& hdr,
+                 const Rr& rr,
+                 const DnsEngine::Request &request,
+                 const Message& message,
+                 size_t outBufLen,
+                 const DnsEngine::send_t &send);
 
     ResourceIf& resource_;
     boost::asio::io_context ctx_;

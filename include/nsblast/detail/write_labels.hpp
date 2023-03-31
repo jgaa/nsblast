@@ -249,7 +249,7 @@ uint16_t writeLabels(const Labels& fqdn, P& existing, B& buffer, size_t maxLen) 
 
         auto count = 0;
         auto h = haystack.rbegin();
-        for(auto n = needle.rbegin(); n != needle.rend() && **n == **h; ++n, ++h) {
+        for(auto n = needle.rbegin(); n != needle.rend() && h != haystack.rend() && **n == **h; ++n, ++h) {
             if (++count > best_count) {
                 best_match = h->location();
                 best_count = count;

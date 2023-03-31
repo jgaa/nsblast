@@ -264,7 +264,9 @@ createBuilder(const DnsEngine::Request &request, const Message& message,
             return {false, mb};
         }
 
-        if (query.type() == QTYPE_AXFR) {
+        const auto qtype = query.type();
+
+        if (qtype == QTYPE_AXFR) {
             LOG_DEBUG << "createBuilder: " << "Processing AXFR query. Request: " << request.uuid;
 
             if (message.header().qdcount() != 1) {
@@ -284,6 +286,18 @@ createBuilder(const DnsEngine::Request &request, const Message& message,
             if (!request.is_axfr) {
                 LOG_TRACE << "Setting is_axfr flag to true";
                 request.is_axfr = true;
+            }
+        } else if (qtype == QTYPE_IXFR) {
+            if (message.header().qdcount() != 1) {
+                LOG_WARN << "Refusing IXFR request " << request.uuid
+                         << " because the QUERY section has more than 1 entry. That is not valid DNS!";
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+                return {false, mb};
+            }
+
+            if (!request.is_axfr) {
+                LOG_TRACE << "Setting is_ixfr flag to true";
+                request.is_ixfr = true;
             }
         }
 
@@ -478,8 +492,9 @@ public:
                             return;
                         }
 
-                        LOG_TRACE << "Reply to request: is_axfr =" << req->is_axfr;
-                        if (req->is_axfr) {
+                        LOG_TRACE << "Reply to request: is_axfr =" << req->is_axfr
+                                  << ", is_ixfr=" << req->is_ixfr;
+                        if (req->is_axfr || req->is_ixfr) {
                             if (final) {
                                 axfrResetTimeout();
                             } else {
@@ -614,6 +629,268 @@ DnsEngine::getQtypeAllResponse(const Request &req, uint16_t type) const
     return parse(req.is_tcp ? config_.tcp_qany_response : config_.udp_qany_response);
 }
 
+void DnsEngine::doAxfr(const DnsEngine::Request &request,
+                       const DnsEngine::send_t &send,
+                       const Message& message,
+                       shared_ptr<MessageBuilder>& mb,
+                       const ResourceIf::RealKey& key,
+                       ResourceIf::TransactionIf& trx)
+{
+    LOG_DEBUG << "DnsEngine::doAxfr - Starting request "
+              << request.uuid
+              << " regarding " << key;
+
+    // TODO: Check if the caller is allowed to do AXFR!
+    const auto out_buffer_len = config_.dns_max_large_tcp_buffer_size;
+    auto hdr = mb->getMutableHeader();
+
+    size_t count = 0;
+    vector<char> zone_buffer; // To keep the SOA we need as the latest RR in the reply
+    optional<Entry> zone;
+    vector<char> cut;
+    trx.iterate({key}, [&]
+                 (auto db_key, auto value) mutable {
+
+        // Skip child-zones if they happen to be hosted by me (and the keys appears here)
+        if (!cut.empty()) {
+           if (cut.size() <= db_key.size()) {
+               if (memcmp(cut.data(), db_key.data(), cut.size()) == 0) {
+                   // The key is after the cut, inside the child-zone
+                   // We only want to send RR's from inside the requested zone,
+                   // so we have to ignore this key.
+                   LOG_TRACE << "DnsEngine::processRequest for request "
+                             << request.uuid
+                             << " in AXFR; ignoring child Entry at "
+                             << db_key;
+                   return true;
+               }
+           }
+
+           // If we got here, we are outside the cut and should be back inside the zone.
+           cut.clear();
+        }
+
+        Entry entry{value};
+
+        if (++count == 1) {
+            if (key != db_key) {
+                LOG_WARN << "Cannot do AXFR for " << key
+                         << ". Fqdn not found.";
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+                return false;
+            }
+
+            // Expect SOA for the zone
+            if (!entry.header().flags.soa) {
+                LOG_WARN << "Cannot do AXFR for " << key
+                         << ". Not a zone.";
+                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+                return false;
+            }
+
+            zone_buffer.reserve(value.size());
+            std::copy(value.begin(), value.end(), back_inserter(zone_buffer));
+            assert(!zone);
+            zone.emplace(zone_buffer);
+            assert(zone->begin()->type() == TYPE_SOA);
+        }
+
+        for(const auto& rr : entry) {
+            const auto flags = entry.header().flags;
+            if (flags.ns && !flags.soa) {
+                // Start of a cut
+                cut.reserve(db_key.size());
+                copy(db_key.bytes().begin(), db_key.bytes().end(), back_inserter(cut));
+            }
+
+            // For now, copy all the RR's. I don't think we have any RR's
+            // in the database Entry's that require special treatment.
+            flushIf(mb, hdr, rr, request, message, out_buffer_len, send);
+            auto ok = mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER);
+            assert(ok);
+        }
+
+        return true; // We are ready for the next Entry
+    });
+
+    if (!zone) {
+        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+        return;
+    }
+
+    // Add soa. The transfer must end with the soa record it started with
+    assert(zone);
+    assert(!zone->empty());
+    assert(zone_buffer.size() == zone->buffer().size());
+    assert(zone_buffer.data() == zone->buffer().data());
+    auto rr = zone->begin();
+    assert(rr->type() == TYPE_SOA);
+    flushIf(mb, hdr, *rr, request, message, out_buffer_len, send);
+    auto ok = mb->addRr(*rr, hdr, MessageBuilder::Segment::ANSWER);
+    assert(ok);
+    return;
+}
+
+void DnsEngine::doIxfr(const DnsEngine::Request &request,
+                       const DnsEngine::send_t &send,
+                       const Message &message,
+                       std::shared_ptr<MessageBuilder> &mb,
+                       const ResourceIf::RealKey &key,
+                       ResourceIf::TransactionIf &trx)
+{
+    LOG_DEBUG << "DnsEngine::doIxfr - Starting request "
+              << request.uuid
+              << " regarding " << key;
+
+    // See if the request is OK and get the start serial.
+    if (message.getAuthority().count() == 0) {
+        LOG_DEBUG << "DnsEngine::doIxfr " << " for request "
+                  << request.uuid
+                  << " regarding " << key
+                  << " does not contain a SOA record. That is not valid DNS.";
+        mb->setRcode(Message::Header::RCODE::FORMAT_ERROR);
+        return;
+    }
+
+    auto hdr = mb->getMutableHeader();
+
+    uint32_t from_serial = 0;
+    for(const auto& rr : message.getAuthority()) {
+        if (rr.type() == TYPE_SOA) {
+            RrSoa soa{message.span(), rr.offset()};
+            from_serial = soa.serial();
+        }
+    }
+
+    // Check that the zone exists
+    const auto fqdn = key.dataAsString();
+    auto zone = trx.lookup(fqdn);
+    if (zone.empty() || !zone.flags().soa) {
+        LOG_DEBUG << "DnsEngine::doIxfr " << " for request "
+                  << request.uuid
+                  << " regarding " << key
+                  << ". The zone was not found.";
+        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+        return;
+    }
+
+    // TODO: Validate that the client has access to this operation on this zone
+
+    // Check if there is a newer version
+    const auto currentSoa = zone.getSoa();
+    if (from_serial >= currentSoa.serial()) {
+        LOG_DEBUG << "DnsEngine::doIxfr " << " for request "
+                  << request.uuid
+                  << " regarding " << key
+                  << ". There is no newer version of the zone.";
+
+        // Send an empty full transfer.
+        mb->addRr(currentSoa, hdr, MessageBuilder::Segment::ANSWER);
+        return;
+    }
+
+    // Create the DIFF key
+    const ResourceIf::RealKey dkey{fqdn, from_serial, ResourceIf::RealKey::Class::DIFF};
+
+    auto flush_if = [&](const Rr& rr) -> bool {
+        if (request.is_tcp) {
+            flushIf(mb, hdr, rr, request, message, config_.dns_max_large_tcp_buffer_size, send);
+            return true;
+        }
+
+        // For UDP, we can't get more buffer-space.
+        // Stop, and politely ask the client to re-try over TCP.
+        if (mb->size() + rr.size() >= mb->maxBufferSize()) {
+            hdr.setTc(true);
+            return false;
+        }
+
+        return true;
+    };
+
+    // Iterate over the diff's
+    size_t diff_count = 0;
+    trx.iterate(dkey, [&] (auto db_key, auto value) mutable {
+        if (!dkey.isSameFqdn(db_key)) {
+            return false; // No longer at the relevant key
+        }
+
+        if (++diff_count == 1) {
+            // Create the first Soa with the current serial.
+            // From now on we will complete the IXFR or send an error or TC bit.
+            mb->addRr(currentSoa, hdr, MessageBuilder::Segment::ANSWER);
+        }
+
+        const Entry entry{value};
+        size_t count = 0;
+        for(const auto& rr : entry) {
+            const auto type = rr.type();
+            if (++count == 1) {
+                // Most be soa, start of deletions (old version)
+                if (type != TYPE_SOA) {
+                    LOG_ERROR << "DnsEngine::doIxfr " << " for request "
+                              << request.uuid
+                              << " regarding " << key
+                              << ". The DIFF data is invalid. First entry must be a SOA.";
+                    mb->setRcode(Message::Header::RCODE::SERVER_FAILURE);
+                    return false;
+                }
+            }
+            if (!flush_if(rr)) {
+                return false;
+            }
+            mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER);
+        }
+
+        // Stop at the current version of the zone in question
+        return true;
+    }, ResourceIf::Category::DIFF);
+
+    if (!diff_count) {
+        LOG_TRACE << "DnsEngine::doIxfr " << " for request "
+                  << request.uuid
+                  << " regarding " << key
+                  << ". No first match was aquired.";
+
+        if (!request.is_tcp) {
+            hdr.setTc(true); // Ask the client to use TCP
+            return;
+        }
+
+        // Do a full zone transfer
+        return doAxfr(request, send, message, mb, key, trx);
+    }
+
+    // Is the reply valid? Did we get the changes for the current zone?
+    // Add the current soa as the end-marker
+    if (!flush_if(currentSoa)) {
+        return;
+    }
+    mb->addRr(currentSoa, hdr, MessageBuilder::Segment::ANSWER);
+}
+
+void DnsEngine::flushIf(std::shared_ptr<MessageBuilder> &mb,
+                        MessageBuilder::NewHeader &hdr,
+                        const Rr &rr,
+                        const DnsEngine::Request &request,
+                        const Message &message,
+                        size_t outBufLen,
+                        const DnsEngine::send_t &send)
+{
+    if (mb->size() + rr.size() >= mb->maxBufferSize()) {
+        // Flush
+        LOG_TRACE << "DnsEngine::flushIf Flushing full reply-buffer";
+        mb->finish();
+        send(mb, false);
+
+        bool ok = true;
+        tie(ok, mb) = createBuilder(request, message, outBufLen,
+                                    getMaxUdpBufferSizeWithOpt());
+        assert(ok); // Should not fail here when we just call it again!
+        hdr = mb->getMutableHeader();
+    }
+}
+
 void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngine::send_t &send)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
@@ -661,110 +938,12 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
 
         auto key = labelsToFqdnKey(orig_fqdn);
 
-        if (query.type() == QTYPE_AXFR) {
-            // TODO: Check if the caller is allowed to do AXFR!
-            out_buffer_len = config_.dns_max_large_tcp_buffer_size;
+        if (qtype == QTYPE_AXFR) {
+            return doAxfr(request, send, message, mb, {key}, *trx);
+        }
 
-            auto flush_if = [&](const Rr& rr) {
-                if (mb->size() + rr.size() >= mb->maxBufferSize()) {
-                    // Flush
-                    LOG_TRACE << "DnsEngine::processRequest Flushing full reply-buffer";
-                    mb->finish();
-                    send(mb, false);
-
-                    bool ok = true;
-                    tie(ok, mb) = createBuilder(request, message, out_buffer_len,
-                                                getMaxUdpBufferSizeWithOpt());
-                    assert(ok); // Should not fail here when we just call it again!
-                    hdr = mb->getMutableHeader();
-                }
-            };
-
-            size_t count = 0;
-            vector<char> zone_buffer; // To keep the SOA we need as the latest RR in the reply
-            optional<Entry> zone;
-            vector<char> cut;
-            trx->iterate({key}, [&]
-                         (auto db_key, auto value) mutable {
-
-                // Skip child-zones if they happen to be hosted by me (and the keys appears here)
-                if (!cut.empty()) {
-                   if (cut.size() <= db_key.size()) {
-                       if (memcmp(cut.data(), db_key.data(), cut.size()) == 0) {
-                           // The key is after the cut, inside the child-zone
-                           // We only want to send RR's from inside the requested zone,
-                           // so we have to ignore this key.
-                           LOG_TRACE << "DnsEngine::processRequest for request "
-                                     << request.uuid
-                                     << " in AXFR; ignoring child Entry at "
-                                     << db_key;
-                           return true;
-                       }
-                   }
-
-                   // If we got here, we are outside the cut and should be back inside the zone.
-                   cut.clear();
-                }
-
-                Entry entry{value};
-
-                if (++count == 1) {
-                    if (key != db_key) {
-                        LOG_WARN << "Cannot do AXFR for " << query.labels().string()
-                                 << ". Fqdn not found.";
-                        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
-                        return false;
-                    }
-
-                    // Expect SOA for the zone
-                    if (!entry.header().flags.soa) {
-                        LOG_WARN << "Cannot do AXFR for " << query.labels().string()
-                                 << ". Not a zone.";
-                        mb->setRcode(Message::Header::RCODE::NAME_ERROR);
-                        return false;
-                    }
-
-                    zone_buffer.reserve(value.size());
-                    std::copy(value.begin(), value.end(), back_inserter(zone_buffer));
-                    assert(!zone);
-                    zone.emplace(zone_buffer);
-                    assert(zone->begin()->type() == TYPE_SOA);
-                }
-
-                for(const auto& rr : entry) {
-                    const auto flags = entry.header().flags;
-                    if (flags.ns && !flags.soa) {
-                        // Start of a cut
-                        cut.reserve(db_key.size());
-                        copy(db_key.bytes().begin(), db_key.bytes().end(), back_inserter(cut));
-                    }
-
-                    // For now, copy all the RR's. I don't think we have any RR's
-                    // in the database Entry's that require special treatment.
-                    flush_if(rr);
-                    auto ok = mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER);
-                    assert(ok);
-                }
-
-                return true; // We are ready for the next Entry
-            });
-
-            if (!zone) {
-                mb->setRcode(Message::Header::RCODE::NAME_ERROR);
-                return;
-            }
-
-            // Add soa. The transfer must end with the soa record it started with
-            assert(zone);
-            assert(!zone->empty());
-            assert(zone_buffer.size() == zone->buffer().size());
-            assert(zone_buffer.data() == zone->buffer().data());
-            auto rr = zone->begin();
-            assert(rr->type() == TYPE_SOA);
-            flush_if(*rr);
-            ok = mb->addRr(*rr, hdr, MessageBuilder::Segment::ANSWER);
-            assert(ok);
-            return;
+        if (qtype == QTYPE_IXFR) {
+            return doIxfr(request, send, message, mb, {key}, *trx);
         }
 again:
         auto rr_set = trx->lookup(key);

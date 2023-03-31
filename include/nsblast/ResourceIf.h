@@ -60,6 +60,16 @@ public:
             return bytes_;
         }
 
+        bool isSameFqdn(const RealKey& k) const noexcept;
+
+        bool operator == (const RealKey& k) const noexcept {
+            return bytes_ == k.bytes_;
+        }
+
+        bool operator != (const RealKey& k) const noexcept {
+            return bytes_ != k.bytes_;
+        }
+
     protected:
         static std::string init(span_t key, Class kclass, std::optional<uint32_t> version);
 
