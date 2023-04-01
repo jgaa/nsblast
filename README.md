@@ -49,6 +49,33 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 
 *note*: Things in old RFC's that has later been obsoleted are ignored.
 
+# Building
+The project use CMake.
+
+It require boost version 1.81 or newer.
+
+Other dependencies that are handled automatically by CMake:
+
+- logfault:  For logging
+- yahat-cpp: Embedded HTTP server for the REST API interface
+- rocksdb:   Database-engine
+
+## Debian dependencies
+```sh
+sudo apt install googletest libgtest-dev protobuf-compiler libprotobuf-dev libicu-dev libsnappy-dev libssl-dev libz3-dev
+```
+
+Example on building the application (with custom built boost-library in /opt):
+```sh
+cd nsblast
+mkdir build
+cd build
+cmake -DBOOST_ROOT=/opt/boost/boost_1_81_0 ..
+make -j `nproc`
+LD_LIBRARY_PATH=/opt/boost/boost_1_81_0/stage/lib/ ctest
+LD_LIBRARY_PATH=/opt/boost/boost_1_81_0/stage/lib/ ./bin/nsblast --help
+```
+
 # Docker image
 
 Building:
