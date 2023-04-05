@@ -22,6 +22,7 @@ int main(int argc, char* argv[]) {
 
     Config config;
     std::string log_level = "info";
+    std::string log_file;
 
     namespace po = boost::program_options;
     po::options_description general("Options");
@@ -36,6 +37,9 @@ int main(int argc, char* argv[]) {
         ("log-level,l",
              po::value<string>(&log_level)->default_value(log_level),
              "Log-level to use; one of 'info', 'debug', 'trace'")
+        ("log-file,L",
+             po::value<string>(&log_file),
+             "Log-file to write a log to. Default is to use the console.")
     ;
     po::options_description http("HTTP/API server");
     http.add_options()
@@ -104,8 +108,13 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    logfault::LogManager::Instance().AddHandler(
+    if (!log_file.empty()) {
+        logfault::LogManager::Instance().AddHandler(
+                make_unique<logfault::StreamHandler>(log_file, llevel));
+    } else {
+        logfault::LogManager::Instance().AddHandler(
                 make_unique<logfault::StreamHandler>(clog, llevel));
+    }
 
     LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
 
