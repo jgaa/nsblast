@@ -37,7 +37,8 @@ private:
     uint32_t interval() const noexcept;
 
     /*! Send a question via the TCP socket */
-    void sendQuestion(tcp_t::socket& socket, uint16_t question, yield_t& yield);
+    void sendQuestion(tcp_t::socket& socket, uint16_t question,
+                      uint32_t serial, yield_t& yield);
 
     /*! Get one reply for a question via the TCP socket
      *
@@ -47,6 +48,14 @@ private:
     void checkIfDone();
     bool isZoneUpToDate(tcp_t::socket& socket, yield_t& yield);
     void doAxfr(tcp_t::socket& socket, yield_t& yield);
+    void doIxfr(tcp_t::socket& socket, yield_t& yield);
+
+    // Handle isfr and axfr payloads. If mySerial is > 0,
+    // it is a for an ixfr request.
+    void handleIxfrPayloads(ResourceIf::TransactionIf& trx,
+                            tcp_t::socket& socket,
+                            uint32_t mySerial,
+                            yield_t& yield);
 
     SlaveMgr& mgr_;
     const std::string fqdn_;

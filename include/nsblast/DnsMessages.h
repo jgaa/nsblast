@@ -12,6 +12,7 @@ namespace nsblast::lib {
 
 static constexpr uint32_t TTL_MAX = 2147483647; // RFC 2181 8
 uint32_t sanitizeTtl(uint32_t ttl) noexcept;
+struct RrInfo;
 
 /*! Representation of RFC1035 labels
  *
@@ -249,6 +250,8 @@ public:
         self_view_ = {};
     }
 
+    RrInfo rrInfo() const noexcept;
+
 protected:
     void parse(bool isQuery);
 
@@ -258,6 +261,35 @@ protected:
     uint32_t offset_to_type_ = 0;
     buffer_t self_view_;
 };
+
+#pragma pack(1)
+struct RrInfo {
+    uint16_t offset;
+    uint16_t size;
+    uint16_t labelLen;
+
+    /*! The buffer after label and until (including) rdata) */
+    span_t dataSpanAfterLabel(span_t buffer) const noexcept {
+        span_t b{buffer.data() + offset + labelLen,
+                    static_cast<size_t>(size - labelLen)};
+        assert(b.data() >= buffer.data() && b.data() < buffer.data() + buffer.size());
+        assert(b.data() + b.size() <= buffer.data() + buffer.size());
+        return b;
+    }
+
+    span_t span(span_t buffer) const noexcept {
+        span_t b{buffer.data() + offset, static_cast<size_t>(size)};
+        assert(b.data() >= buffer.data() && b.data() < buffer.data() + buffer.size());
+        assert(b.data() + b.size() <= buffer.data() + buffer.size());
+        return b;
+    }
+
+    Rr rr(span_t buffer) const {
+        return {buffer, offset};
+    }
+};
+#pragma pack(0)
+
 
 /*! Wrapper over a RR SOA instance.
  *
@@ -283,8 +315,11 @@ public:
 };
 
 class MutableRrSoa : public RrSoa {
-
+public:
     MutableRrSoa(const RrSoa& from);
+    MutableRrSoa(uint32_t serial = 0);
+
+    MutableRrSoa& operator = (const RrSoa& soa);
 
     void incVersion();
 
@@ -1107,6 +1142,12 @@ public:
             return {buffer_.data() + offset_, size_};
         }
 
+        RrInfo rrInfo() const noexcept {
+            assert(rdataOffset_ - offset_ > 10);
+            return {offset_, size_,
+                        static_cast<uint8_t>(rdataOffset_ - offset_ - 10)};
+        }
+
     private:
         const uint16_t size_ = {};
         const uint16_t offset_ = {};
@@ -1332,6 +1373,15 @@ public:
 
     /*! Add a copy of an existing rr */
     NewRr addRr(const Rr& rr);
+
+    /*! In place replace of the soa
+     *
+     *  The labels are not touched. Only the fixed size
+     *  data after the labels are copied.
+     *
+     *  \param New soa.
+     */
+    void replaceSoa(const RrSoa& soa);
 
     /*! Get the raw data buffer for the message
      *

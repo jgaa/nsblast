@@ -304,7 +304,7 @@ definitions:
       strategy:
         type: string
         default: axfr
-        description: "How to update the local zone-data from the master-server. Can be one of: axfr,  "
+        description: "How to update the local zone-data from the master-server. Can be one of: axfr, ixfr "
         
   Contact:
     type: object

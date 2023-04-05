@@ -16,6 +16,199 @@ using namespace std::string_literals;
 
 namespace nsblast::lib {
 
+namespace {
+
+class ZoneMerge {
+public:
+    using rr_info_t = RrInfo;
+
+    ZoneMerge() = default;
+
+    void addExisting(ResourceIf::TransactionIf& trx, string_view fqdn) {
+        const auto e = trx.lookup(fqdn);
+        if (!e.empty()) {
+            for(const auto& rr : e) {
+                existing_.push_back(sb_.addRr(rr).rrInfo());
+            }
+        }
+    }
+
+    void addDeleted(const Rr& rr) {
+       deleted_.push_back(rr.rrInfo());
+    };
+
+    void addAdded(const Rr& rr) {
+       added_.push_back(rr.rrInfo());
+    };
+
+    /*! Merge the three sources.
+     *
+     *  Delete the deleted from the existing.
+     *  Add the added to the existing.
+     *  Make sure there is only instance of any RR in existing when done.
+     *
+     *  After the merge, deleted_ and added_ are reset.
+     */
+    void merge() {
+        if (added_.empty() && deleted_.empty()) {
+            return;
+        }
+
+        changed_ = true;
+        span_t dleft = {}, dright = {};
+
+        auto compare = [&dleft, &dright](const RrInfo& left, const RrInfo& right) {
+            const auto ls = left.dataSpanAfterLabel(dleft);
+            const auto rs = right.dataSpanAfterLabel(dright);
+
+            auto res = memcmp(ls.data(), rs.data(), min(ls.size(), rs.size()));
+            if (res == 0) {
+                return ls.size() < rs.size();
+            }
+            return res < 0;
+        };
+
+        dleft = deleted_span_;
+        dright = deleted_span_;
+        sort(deleted_.begin(), deleted_.end(), compare);
+
+        dleft = added_span_;
+        dright = added_span_;
+        sort(added_.begin(), added_.end(), compare);
+
+        // Erase any deleted items from existing_.
+        dleft = sb_.buffer();
+        dright = deleted_span_;
+
+        if (!deleted_.empty()) {
+            need_new_builder_ = true;
+            existing_.erase(
+                        remove_if(existing_.begin(), existing_.end(),
+                                  [&](const rr_info_t& left) {
+                            return find_if(deleted_.begin(), deleted_.end(),
+                                        [&](const rr_info_t& right) {
+                                return compare(left, right);
+                            }) != deleted_.end();
+            }));
+        }
+
+        // Make a list of "added" items, not currentlyh in existing_
+        // Get new/changed entries
+        vector<rr_info_t> add;
+        dleft = added_span_;
+        dright = sb_.buffer();;
+        set_difference(added_.begin(), added_.end(), existing_.begin(), existing_.end(),
+                       back_inserter(add), compare);
+
+        for(const auto& i: add) {
+            existing_.push_back(sb_.addRr(i.rr(added_span_)).rrInfo());
+        }
+
+        added_.clear();
+        deleted_.clear();
+    }
+
+    void save(ResourceIf::TransactionIf& trx, string_view fqdn) {
+        // Must already be merged
+        assert(deleted_.empty());
+        assert(added_.empty());
+
+        span_t data = {};
+        optional<StorageBuilder> sb;
+
+        if (need_new_builder_) {
+            // We have deleted entries. We need a new builder.
+            sb.emplace();
+            for(const auto& i: existing_) {
+                sb->addRr(i.rr(data));
+            }
+
+            sb->finish();
+            if (sb->rrCount() > 0) {
+                data = sb->buffer();
+            }
+        } else {
+            sb_.finish();
+            if (sb_.rrCount() > 0) {
+                data = sb_.buffer();
+            }
+        }
+
+        if (data.empty()) {
+            trx.remove({fqdn});
+        } else {
+            trx.write({fqdn}, data, false);
+        }
+    }
+
+    void replaceSoa(const RrSoa& soa) {
+        sb_.replaceSoa(soa);
+    }
+
+    std::vector<rr_info_t> deleted_;
+    std::vector<rr_info_t> added_;
+    std::vector<rr_info_t> existing_;
+    span_t deleted_span_;
+    span_t added_span_;
+    StorageBuilder sb_;
+    bool need_new_builder_ = false;
+    bool changed_ = false;
+};
+
+// Cache for all changes received during the processing a AXFR or IXFR reply.
+// Cannot deal with really large zones. That's probably fine, since
+// we will use non-standard methods to handle incremental updates
+// for a nsblast cluster.
+class ZoneMerger {
+public:
+
+    ZoneMerger(ResourceIf::TransactionIf& trx, string_view zoneFqdn, bool fetchExisting = true)
+        :trx_{trx}, zone_fqdn_{zoneFqdn}, fetch_existing_{fetchExisting} {
+        get(zone_fqdn_);
+    }
+
+    ZoneMerge& get(string_view fqdn) {
+        auto key = toLower(fqdn);
+
+        if (auto it = changes_.find(key); it != changes_.end()) {
+            return it->second;
+        }
+
+        auto& z = changes_[key];
+        if (fetch_existing_) {
+            z.addExisting(trx_, key);
+        }
+        return z;
+    }
+
+    void merge() {
+        for(auto& [_, z] : changes_) {
+            z.merge();
+        }
+    }
+
+    void save() {
+        for(auto& [key, z] : changes_) {
+            z.save(trx_, key);
+        }
+    }
+
+    void setSoa(const RrSoa& soa) {
+        if (fetch_existing_) {
+            get(zone_fqdn_).replaceSoa(soa);
+        } else {
+            get(zone_fqdn_).addAdded(soa);
+        }
+    }
+
+    std::map<std::string, ZoneMerge> changes_;
+    ResourceIf::TransactionIf& trx_;
+    string_view zone_fqdn_;
+    bool fetch_existing_ = true;
+};
+
+} // anon ns
+
 Slave::Slave(SlaveMgr &mgr, std::string_view fqdn, const pb::Zone& zone)
     : mgr_{mgr}, fqdn_{fqdn}, zone_{zone}, schedule_{mgr.ctx()}
 {
@@ -87,11 +280,25 @@ void Slave::sync(boost::asio::yield_context &yield)
     //   - Check for connection, read or write timeouts
     //   - Check if the Slave object is obsolete (done_ == true)
 
-    if (isZoneUpToDate(socket, yield)) {
-        return;
+    const auto strategy = PB_GET(zone_.master(), strategy, "axfr");
+
+    if (strategy == "ixfr") {
+        return doIxfr(socket, yield);
+    } else if (strategy == "axfr") {
+        if (isZoneUpToDate(socket, yield)) {
+            return;
+        }
+
+        return doAxfr(socket, yield);
     }
 
-    doAxfr(socket, yield);
+    LOG_ERROR << "Slave::sync: Unknown sync strategy '" << strategy
+              << "' for zone " << fqdn_
+              << ". The zone can not be synced with the master server at "
+              << current_remote_ep_
+              << " until the configuration has been corrected.";
+
+    throw runtime_error{"Unknown sync strategy: "s + strategy};
 }
 
 uint32_t Slave::localSerial()
@@ -111,7 +318,10 @@ uint32_t Slave::interval() const noexcept
     return PB_GET(zone_.master(), refresh, mgr_.config().dns_default_zone_pull_interval_);
 }
 
-void Slave::sendQuestion(boost::asio::ip::tcp::socket &socket, uint16_t question, Slave::yield_t &yield)
+void Slave::sendQuestion(boost::asio::ip::tcp::socket &socket,
+                         uint16_t question,
+                         uint32_t serial, // for ixfr
+                         Slave::yield_t &yield)
 {
     const auto current_remote_ep_ = socket.remote_endpoint();
     boost::system::error_code ec;
@@ -123,8 +333,13 @@ void Slave::sendQuestion(boost::asio::ip::tcp::socket &socket, uint16_t question
 
     MessageBuilder mb;
     mb.setMaxBufferSize(512);
-    mb.createHeader(++next_id, false, MessageBuilder::Header::OPCODE::QUERY, false);
+    auto hdr = mb.createHeader(++next_id, false, MessageBuilder::Header::OPCODE::QUERY, false);
     mb.addQuestion(fqdn_, question);
+
+    if (question == QTYPE_IXFR) {
+        MutableRrSoa soa{serial};
+        mb.addRr(soa, hdr, MessageBuilder::Segment::AUTHORITY);
+    }
     mb.finish();
 
     // Send question
@@ -203,7 +418,7 @@ void Slave::checkIfDone()
     if (done_) {
         LOG_DEBUG << "Slave::sync - Aborting AXFR zone for " << fqdn_
                   << " because the instance on this replicator is obsolete.";
-        throw runtime_error{"Slave::sync - Aborting AXFR. My instance is obsolete!"};
+        throw runtime_error{"Slave::sync - Aborting IXFR/AXFR. My instance is obsolete!"};
     }
 }
 
@@ -213,7 +428,7 @@ bool Slave::isZoneUpToDate(boost::asio::ip::tcp::socket &socket, Slave::yield_t 
     auto serial = localSerial();
     if (serial) {
         // Get master's soa so we can compare
-        sendQuestion(socket, TYPE_SOA, yield);
+        sendQuestion(socket, TYPE_SOA, 0, yield);
 
         buffer_t buffer;
         auto reply = getReply(socket, buffer, yield);
@@ -248,142 +463,202 @@ bool Slave::isZoneUpToDate(boost::asio::ip::tcp::socket &socket, Slave::yield_t 
     return false;
 }
 
-// Note: This implementation assumes that the RR's arrive sorted,
-//       with all relevant RR's for a fqdn in one block (potentially
-//       carried in multiple messages).
-//       The RR's are not validated, like ensuring that a CNAME is not
-//       mixed with other RR's.
 void Slave::doAxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
 {
     // Send question
     checkIfDone();
-    sendQuestion(socket, QTYPE_AXFR, yield);
-
-    // Read all the replies.
-    bool first = true;
-    uint16_t id = 0; // All messages must be for this id
-    buffer_t buffer;
-    string rsoa_fqdn;
-    uint32_t rsoa_serial = 0;
-    bool has_second_rr = false;
+    sendQuestion(socket, QTYPE_AXFR, 0, yield);
 
     auto trx = mgr_.db().transaction();
+    trx->remove({fqdn_}, true);
+    handleIxfrPayloads(*trx, socket, 0, yield);
+}
 
-    optional<StorageBuilder> sb;
-    string current_fqdn;
+void Slave::doIxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
+{
+    checkIfDone();
 
-    while(!has_second_rr) {
+    auto current_serial = 0;
+    auto trx =  mgr_.db().transaction();
+    {
+        auto e = trx->lookup(fqdn_);
+        if (e.empty() || !e.flags().soa) {
+            LOG_INFO << "Slave::doIxfr: Failed to lookup existing SOA. "
+                     << "Falling back to a full zone transfer for " << fqdn_;
+            trx.reset();
+            return doAxfr(socket, yield);
+        }
+
+        auto soa = e.getSoa();
+        current_serial = soa.serial();
+        if (!current_serial) {
+            LOG_WARN << "Slave::doIxfr: Current SOA serial is zero. "
+                     << "Falling back to a full zone transfer for " << fqdn_;
+            trx.reset();
+            return doAxfr(socket, yield);
+        }
+    }
+
+    sendQuestion(socket, QTYPE_IXFR, current_serial, yield);
+    handleIxfrPayloads(*trx, socket, current_serial, yield);
+}
+
+void Slave::handleIxfrPayloads(ResourceIf::TransactionIf &trx,
+                               boost::asio::ip::tcp::socket &socket,
+                               uint32_t mySerial, Slave::yield_t &yield)
+{
+    bool isIxfr = mySerial != 0;
+
+    enum class Stage {
+        NEED_FIRST_SOA,
+        HAVE_FIRST_SOA,
+        HAVE_IXFR_DEL_SOA,
+        HAVE_IXFR_ADD_SOA,
+        HAVE_FINAL_SOA
+    } stage = Stage::NEED_FIRST_SOA;
+
+    buffer_t buffer;
+    string rsoa_fqdn;
+    uint32_t rsoa_current_serial = 0;
+    uint32_t prev_serial = 0;
+    uint16_t id = 0; // All messages must be for this id
+    MutableRrSoa firstSoa;
+
+    optional<ZoneMerger> merger;
+    merger.emplace(trx, fqdn_, isIxfr);
+
+    while(stage != Stage::HAVE_FINAL_SOA) {
         checkIfDone();
         auto reply = getReply(socket, buffer, yield);
+        checkIfDone();
 
         for(auto& rr : reply.getAnswers()) {
-            if (has_second_rr) {
-                LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
+            if (stage == Stage::HAVE_FINAL_SOA) [[unlikely]] {
+                LOG_ERROR << "Slave::handleIxfrPayloads - Invalid I/AXFR payload for " << fqdn_
                           << " from master at " << current_remote_ep_
                           << " There are more answers after the second SOA!";
-                throw runtime_error{"Slave::sync - Invalid AXFR payload. More RR's after second SOA."};
+                throw runtime_error{"Slave::sync - Invalid I/AXFR payload. More RR's after second SOA."};
             }
 
-            if (first) {
+            if (stage == Stage::NEED_FIRST_SOA) [[unlikely]] {
                 if (rr.type() != TYPE_SOA) {
-                    LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
+                    LOG_ERROR << "Slave::handleIxfrPayloads - Invalid I/AXFR payload for " << fqdn_
                               << " from master at " << current_remote_ep_
-                              << ". AXFR must start with SOA RR!";
-                    throw runtime_error{"Slave::sync - Invalid AXFR payload."};
+                              << ". I/AXFR must start with SOA RR!";
+                    throw runtime_error{"Slave::sync - Invalid I/AXFR payload."};
                 }
 
+
                 RrSoa soa{reply.span(), rr.offset()};
-                rsoa_serial = soa.serial();
+                rsoa_current_serial = soa.serial();
                 rsoa_fqdn = toLower(soa.labels().string());
                 if (fqdn_ != rsoa_fqdn) {
-                    LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
+                    LOG_ERROR << "Slave::handleIxfrPayloads - Invalid AXFR payload for " << fqdn_
                               << " from master at " << current_remote_ep_
                               << ". fqdn in first received SOA is " << rsoa_fqdn
                               << ". I expected " << fqdn_;
                     throw runtime_error{"Slave::sync - Invalid AXFR payload. Unexpected fqdn in first SOA."};
                 }
                 id = reply.header().id();
-                first = false;
+                firstSoa = soa;
+                stage = Stage::HAVE_FIRST_SOA;
+                continue;
+            } // NEED_FIRST_SOA
 
-                // Delete all existing Entries in the local database for this zone
-                trx->remove({fqdn_}, true);
+            if (rr.type() == TYPE_SOA) [[unlikely]] {
+                // Try to figure out which soa this is...
 
-            } /* first */ else {
-                if (rr.type() == TYPE_SOA) {
-                    // There can only be two SOA RR's in the reply, the first and the last
-                    // entry, and they must be the same.
-                    RrSoa soa{reply.span(), rr.offset()};
-                    auto fsoa_fqdn = toLower(soa.labels().string());
-                    if (fsoa_fqdn != rsoa_fqdn) {
-                        LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
-                                  << " from master at " << current_remote_ep_
-                                  << ". fqdn in first received SOA is " << rsoa_fqdn
-                                  << ". fqdn in second received SOA is " << fsoa_fqdn;
-                        throw runtime_error{"Slave::sync - Invalid AXFR payload. First and second SOA has different labels."};
-                    }
-                    if (soa.serial() != rsoa_serial) {
-                        LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
-                                  << " from master at " << current_remote_ep_
-                                  << ". serial in first received SOA was " << rsoa_serial
-                                  << ". fqdn in second received SOA is " << soa.serial();
-                        throw runtime_error{"Slave::sync - Invalid AXFR payload. First and second SOA has different serials."};
-                    }
-
-                    has_second_rr = true;
-                }
-            } // Not first
-
-
-            auto key = labelsToFqdnKey(rr.labels());
-            if (current_fqdn.empty() || key != current_fqdn) {
-                if (sb) {
-                    sb->finish();
-                    if (sb->rrCount()) {
-                        LOG_TRACE << "Slave::sync - During AXFR payload for " << fqdn_
-                                  << " from master at " << current_remote_ep_
-                                  << " Writing " << sb->rrCount() << " RR's for " << current_fqdn;
-                        trx->write({current_fqdn}, sb->buffer(), false); // set new flag??
-                    }
-                }
-
-                sb.emplace();
-                current_fqdn = key.string();
-            }
-
-            if (!has_second_rr) {
-                const auto type = rr.type();
-                // Copy the RR
-                if (type == TYPE_OPT) [[unlikely]] {
-                    LOG_WARN << "Slave::sync - During AXFR payload for " << fqdn_
-                             << " from master at " << current_remote_ep_
-                             << " Ignoring OPT RR for " << current_fqdn;
-                } else {
-                    // All is well
-                    sb->createRr(key, type, rr.ttl(), rr.rdata());
-                }
-            } else {
-                // The fqdn must have changed back, and
-                // triggered the emplace() above.
-                if(sb->rrCount() != 0) {
-                    LOG_ERROR << "Slave::sync - Invalid AXFR payload for " << fqdn_
+                RrSoa soa{reply.span(), rr.offset()};
+                rsoa_fqdn = toLower(soa.labels().string());
+                if (fqdn_ != rsoa_fqdn) {
+                    LOG_ERROR << "Slave::handleIxfrPayloads - Invalid I/AXFR payload for " << fqdn_
                               << " from master at " << current_remote_ep_
-                              << ". Server is sending RR's after second SOA. That is not valid DNS speak!";
-                    throw runtime_error{"Slave::sync - Invalid AXFR payload. Received RR's after second SOA!"};
+                              << ". fqdn in received SOA is " << rsoa_fqdn
+                              << ". I expected " << fqdn_;
+                    throw runtime_error{"Slave::sync - Invalid AXFR payload. SOA's must have the same labels."};
+                }
+                const auto this_serial = soa.serial();
+                if (this_serial == rsoa_current_serial) {
+                    if (isIxfr && stage == Stage::HAVE_IXFR_DEL_SOA) {
+                        // For IXFR, we get the current soa twice, first
+                        // as the lead-in for the last ADD segment, and
+                        // this looks like the case here.
+                        stage = Stage::HAVE_IXFR_ADD_SOA;
+                    } else {
+                        stage = Stage::HAVE_FINAL_SOA;
+                        merger->setSoa(soa); // This must be the soa in the final result.
+                    }
+                } else if (this_serial < rsoa_current_serial) {
+                    if (!isIxfr) {
+                        LOG_ERROR << "Slave::handleIxfrPayloads - Invalid AXFR payload for " << fqdn_
+                                  << " from master at " << current_remote_ep_
+                                  << ". serial in received SOA is " << this_serial
+                                  << ". I expected " << rsoa_current_serial;
+                        throw runtime_error{"Slave::sync - Invalid AXFR payload. SOA's must have the same serial."};
+                    }
+                    if (stage == Stage::HAVE_FIRST_SOA
+                            || stage == Stage::HAVE_IXFR_ADD_SOA ) {
+                        stage = Stage::HAVE_IXFR_DEL_SOA;
+                    } else if (stage == Stage::HAVE_IXFR_DEL_SOA) {
+                        stage = Stage::HAVE_IXFR_ADD_SOA;
+                        if (this_serial <= prev_serial) {
+                            LOG_ERROR << "Slave::handleIxfrPayloads - Invalid IXFR payload for " << fqdn_
+                                      << " from master at " << current_remote_ep_
+                                      << " sent IXFR ADD sequence in the wrong order. "
+                                      << ". Prev serial was " << prev_serial
+                                      << ", this serial is " << this_serial;
+                            throw runtime_error{"Slave::sync - Invalid IXFR payload. IXFR ADD sequence in the wrong order."};
+                        }
+                    }
+                } else {
+                    LOG_ERROR << "Slave::handleIxfrPayloads - Invalid I/AXFR payload for " << fqdn_
+                              << " from master at " << current_remote_ep_
+                              << " sent an invalid I/AXFR SOA. "
+                              << ", this serial is " << this_serial
+                              << ". It cannot be higher than the lead-in serial "
+                              << rsoa_current_serial;
+                    throw runtime_error{"Slave::sync - Invalid I/AXFR payload. Trailing SOA has higher serial than first SOA."};
+                }
+
+                prev_serial = soa.serial();
+            } /* if TYPE_SOA */ else [[likely]] {
+                if (stage == Stage::HAVE_IXFR_ADD_SOA) {
+add:
+                    merger->get(rr.labels().string()).addAdded(rr);
+                } else if (stage == Stage::HAVE_IXFR_DEL_SOA) {
+                    merger->get(rr.labels().string()).addDeleted(rr);
+                } else if (stage == Stage::HAVE_FIRST_SOA) [[unlikely]] {
+                    if (isIxfr) {
+                        // This looks like an AXFR reply to an IXFR request.
+                        // Fall back to AXFR mode.
+
+                        LOG_TRACE << "Slave::handleIxfrPayloads - Receiving AXFR payload to IXFR request for " << fqdn_
+                                  << " from master at " << current_remote_ep_
+                                  << ". (This is OK).";
+
+                        isIxfr = false;
+                        merger.emplace(trx, fqdn_, false);
+                        trx.remove({fqdn_}, true);
+                    }
+
+                    // Not pretty, but avoiding passing trough two if's for the same operation
+                    stage = Stage::HAVE_IXFR_ADD_SOA;
+                    goto add;
                 }
             }
-        } // RR's in one reply-message
-    } // Reply message(s)
 
+        } // loop over all answer rr's in one (of several) reply
+
+        merger->merge();
+    } // while not finished
+
+    merger->save();
     checkIfDone();
 
-    LOG_DEBUG << "Slave::sync - Committing AXFR zone for " << fqdn_
-              << " received from from master at " << current_remote_ep_;
-    trx->commit();
-
-    // TODO: In the future, may be better to cache small zones in memory and
-    //       do a fast transaction update, and cache large zones on local storage
-    //       so we don't keeps the transaction open for a long time.
+    LOG_DEBUG << "Slave - Committing zone update for " << fqdn_
+              << " received from from master at " << current_remote_ep_
+              << " using " << (isIxfr ? "IXFR" : "AXFR");
+    trx.commit();
 }
-
 
 } // ns

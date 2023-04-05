@@ -437,6 +437,28 @@ StorageBuilder::NewRr StorageBuilder::addRr(const Rr &rr)
     return createRr(fqdn, rr.type(), rr.ttl(), rr.rdata(), false);
 }
 
+void StorageBuilder::replaceSoa(const RrSoa &soa)
+{
+    for(auto it = index_.begin(); it != index_.end(); ++it) {
+        if (it->type == TYPE_SOA) {
+            RrSoa old_soa{buffer_, it->offset};
+
+            auto old_area = old_soa.dataSpanAfterLabel();
+            auto new_area = soa.dataSpanAfterLabel();
+
+            if (old_area.size() != new_area.size()) {
+                throw runtime_error{"StorageBuilder::replaceSoa: SOA records not same size!"};
+            }
+
+            auto ptr = const_cast<char *>(old_area.data());
+            memcpy(ptr, new_area.data(), old_area.size());
+            return;
+        }
+    }
+
+    throw runtime_error{"StorageBuilder::replaceSoa: SOA record not found!"};
+}
+
 /* Update the header to it's correct binary value.
  * Sort and add the index to the buffer
  */
@@ -1182,6 +1204,14 @@ string Rr::rdataAsBase64() const
     return Base64Encode(rdata());
 }
 
+RrInfo Rr::rrInfo() const noexcept {
+    assert(!self_view_.empty());
+    assert(offset_to_type_ - offset_ > 0);
+    return {static_cast<uint16_t>(offset_),
+                static_cast<uint16_t>(size()),
+                static_cast<uint16_t>(offset_to_type_ - offset_)};
+}
+
 void Rr::parse(bool isQuery)
 {
     const auto max_window_size = buffer_view_.size() - offset_;
@@ -1648,10 +1678,36 @@ uint16_t RrOpt::rcodeBits(uint8_t hdrValue, uint8_t optValue)
 MutableRrSoa::MutableRrSoa(const RrSoa &from)
     : RrSoa(span_t(), 0)
 {
+   *this = from;
+}
+
+MutableRrSoa::MutableRrSoa(uint32_t serial)
+    : RrSoa(span_t(), 0)
+{
+    StorageBuilder soaSb;
+    std::array<char, 22> rdata = {};
+    setValueAt(rdata, rdata.size() - 20, serial);
+
+    const auto nh = soaSb.createRr({}, TYPE_SOA, 0, rdata);
+
+    // No need to call finish(). We don't need the index and the extras.
+
+    // Take ownership of the buffer with the soa,
+    buffer_ = move(soaSb.stealBuffer());
+
+    // Now, do what the RR's constructor does to get the internals right...
+    reset();
+    buffer_view_ = buffer_;
+    offset_ = nh.offset();
+    parse(false);
+}
+
+MutableRrSoa &MutableRrSoa::operator =(const RrSoa &soa)
+{
     // For now, use the StorageBuilder to create a copy of the soa
     StorageBuilder soaSb;
-    auto soa_fqdn = labelsToFqdnKey(from.labels());
-    const auto nh = soaSb.createRr(soa_fqdn, from.type(), from.ttl(), from.rdata());
+    auto soa_fqdn = labelsToFqdnKey(soa.labels());
+    const auto nh = soaSb.createRr(soa_fqdn, TYPE_SOA, soa.ttl(), soa.rdata());
 
     // No need to call finish(). We don't need the index and the extras.
 
