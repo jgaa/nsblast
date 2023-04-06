@@ -1206,10 +1206,9 @@ string Rr::rdataAsBase64() const
 
 RrInfo Rr::rrInfo() const noexcept {
     assert(!self_view_.empty());
-    assert(offset_to_type_ - offset_ > 0);
-    return {static_cast<uint16_t>(offset_),
-                static_cast<uint16_t>(size()),
-                static_cast<uint16_t>(offset_to_type_ - offset_)};
+    assert(offset_to_type_ > 0);
+    const auto llen = static_cast<uint16_t>(offset_to_type_);
+    return {static_cast<uint16_t>(offset_), static_cast<uint16_t>(size()), llen};
 }
 
 void Rr::parse(bool isQuery)

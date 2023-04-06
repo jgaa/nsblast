@@ -34,11 +34,19 @@ public:
     }
 
     void addDeleted(const Rr& rr) {
-       deleted_.push_back(rr.rrInfo());
+        if (deleted_span_.empty()) {
+            // Assume all RR's in the same merge() is from the same buffer
+            deleted_span_ = rr.span();
+        }
+        deleted_.push_back(rr.rrInfo());
     };
 
     void addAdded(const Rr& rr) {
-       added_.push_back(rr.rrInfo());
+        if (added_span_.empty()) {
+            // Assume all RR's in the same merge() is from the same buffer
+            added_span_ = rr.span();
+        }
+        added_.push_back(rr.rrInfo());
     };
 
     /*! Merge the three sources.
@@ -55,50 +63,51 @@ public:
         }
 
         changed_ = true;
-        span_t dleft = {}, dright = {};
 
-        auto compare = [&dleft, &dright](const RrInfo& left, const RrInfo& right) {
-            const auto ls = left.dataSpanAfterLabel(dleft);
-            const auto rs = right.dataSpanAfterLabel(dright);
+        struct Compare {
+            Compare(span_t dleft, span_t dright)
+                : dleft_{dleft}, dright_{dright} {}
 
-            auto res = memcmp(ls.data(), rs.data(), min(ls.size(), rs.size()));
-            if (res == 0) {
-                return ls.size() < rs.size();
+            bool operator()(const RrInfo& left, const RrInfo& right) const noexcept {
+                const auto ls = left.dataSpanAfterLabel(dleft_);
+                const auto rs = right.dataSpanAfterLabel(dright_);
+
+                auto res = memcmp(ls.data(), rs.data(), min(ls.size(), rs.size()));
+                if (res == 0) {
+                    return ls.size() < rs.size();
+                }
+                return res < 0;
             }
-            return res < 0;
+
+        private:
+            const span_t dleft_, dright_;
         };
 
-        dleft = deleted_span_;
-        dright = deleted_span_;
-        sort(deleted_.begin(), deleted_.end(), compare);
+        sort(deleted_.begin(), deleted_.end(), Compare(deleted_span_, deleted_span_));
 
-        dleft = added_span_;
-        dright = added_span_;
-        sort(added_.begin(), added_.end(), compare);
+        sort(added_.begin(), added_.end(), Compare(added_span_, added_span_));
 
         // Erase any deleted items from existing_.
-        dleft = sb_.buffer();
-        dright = deleted_span_;
-
-        if (!deleted_.empty()) {
-            need_new_builder_ = true;
-            existing_.erase(
-                        remove_if(existing_.begin(), existing_.end(),
-                                  [&](const rr_info_t& left) {
-                            return find_if(deleted_.begin(), deleted_.end(),
-                                        [&](const rr_info_t& right) {
-                                return compare(left, right);
-                            }) != deleted_.end();
-            }));
+        {
+            Compare cmp{sb_.buffer(), deleted_span_};
+            if (!deleted_.empty()) {
+                need_new_builder_ = true;
+                existing_.erase(
+                            remove_if(existing_.begin(), existing_.end(),
+                                      [&](const rr_info_t& left) {
+                                return find_if(deleted_.begin(), deleted_.end(),
+                                            [&](const rr_info_t& right) {
+                                    return cmp(left, right);
+                                }) != deleted_.end();
+                }));
+            }
         }
 
         // Make a list of "added" items, not currentlyh in existing_
         // Get new/changed entries
         vector<rr_info_t> add;
-        dleft = added_span_;
-        dright = sb_.buffer();;
         set_difference(added_.begin(), added_.end(), existing_.begin(), existing_.end(),
-                       back_inserter(add), compare);
+                       back_inserter(add), Compare(added_span_, sb_.buffer()));
 
         for(const auto& i: add) {
             existing_.push_back(sb_.addRr(i.rr(added_span_)).rrInfo());
@@ -106,6 +115,8 @@ public:
 
         added_.clear();
         deleted_.clear();
+        added_span_ = {};
+        deleted_span_ = {};
     }
 
     void save(ResourceIf::TransactionIf& trx, string_view fqdn) {
@@ -455,8 +466,9 @@ bool Slave::isZoneUpToDate(boost::asio::ip::tcp::socket &socket, Slave::yield_t 
                       << ". I need to isZoneUpToDate against the master for zone " << fqdn_
                       << " at " << current_remote_ep_;
         } else {
-            LOG_DEBUG << "Slave::isZoneUpToDate - SOA serial for " << fqdn_
-                      << " are in isZoneUpToDate with the master at " << current_remote_ep_;
+            LOG_DEBUG << "Slave::isZoneUpToDate - SOA serial " << serial
+                      << " for " << fqdn_
+                      << " is in sync with the master at " << current_remote_ep_;
             return true;
         }
     }
@@ -656,6 +668,7 @@ add:
     checkIfDone();
 
     LOG_DEBUG << "Slave - Committing zone update for " << fqdn_
+              << " with serial " << rsoa_current_serial
               << " received from from master at " << current_remote_ep_
               << " using " << (isIxfr ? "IXFR" : "AXFR");
     trx.commit();

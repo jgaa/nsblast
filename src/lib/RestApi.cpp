@@ -1,6 +1,5 @@
 
 #include <set>
-#include <execution>
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>

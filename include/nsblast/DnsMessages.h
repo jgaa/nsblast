@@ -191,7 +191,9 @@ public:
     Rr(const Rr&) = default;
     Rr(buffer_t bufferView, uint32_t offset, bool isQuery = false)
         : buffer_view_{bufferView}, offset_{offset} {
-        parse(isQuery);
+        if (!bufferView.empty()) [[likely]] {
+            parse(isQuery);
+        }
     }
 
     Rr& operator = (const Rr&) = default;
@@ -214,6 +216,11 @@ public:
 
     auto view() const noexcept {
         return self_view_;
+    }
+
+    /*! Return the span for the buffer that RR resides in */
+    auto span() const noexcept {
+        return buffer_view_;
     }
 
     auto isQuery() const noexcept {
@@ -1143,9 +1150,9 @@ public:
         }
 
         RrInfo rrInfo() const noexcept {
-            assert(rdataOffset_ - offset_ > 10);
-            return {offset_, size_,
-                        static_cast<uint8_t>(rdataOffset_ - offset_ - 10)};
+            assert(rdataOffset_ > 10);
+            const auto llen = static_cast<uint16_t>(rdataOffset_ - 10);
+            return {offset_, size_, llen};
         }
 
     private:
