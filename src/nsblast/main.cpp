@@ -23,6 +23,7 @@ int main(int argc, char* argv[]) {
     Config config;
     std::string log_level = "info";
     std::string log_file;
+    bool trunc_log = true;
 
     namespace po = boost::program_options;
     po::options_description general("Options");
@@ -39,6 +40,9 @@ int main(int argc, char* argv[]) {
              "Log-level to use; one of 'info', 'debug', 'trace'")
         ("log-file,L",
              po::value<string>(&log_file),
+             "Log-file to write a log to. Default is to use the console.")
+        ("truncate-log-file,T",
+             po::value<bool>(&trunc_log)->default_value(trunc_log),
              "Log-file to write a log to. Default is to use the console.")
     ;
     po::options_description http("HTTP/API server");
@@ -110,7 +114,7 @@ int main(int argc, char* argv[]) {
 
     if (!log_file.empty()) {
         logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(log_file, llevel));
+                make_unique<logfault::StreamHandler>(log_file, llevel, trunc_log));
     } else {
         logfault::LogManager::Instance().AddHandler(
                 make_unique<logfault::StreamHandler>(clog, llevel));
