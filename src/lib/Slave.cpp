@@ -156,6 +156,7 @@ public:
         sb_.replaceSoa(soa);
     }
 
+private:
     std::vector<rr_info_t> deleted_;
     std::vector<rr_info_t> added_;
     std::vector<rr_info_t> existing_;
@@ -457,7 +458,7 @@ bool Slave::isZoneUpToDate(boost::asio::ip::tcp::socket &socket, Slave::yield_t 
         }
 
         const auto rserial = soa->serial();
-        LOG_TRACE << "Slave::isZoneUpToDate locval serial is " << serial
+        LOG_TRACE << "Slave::isZoneUpToDate local serial is " << serial
                   << ", remote serial is " << rserial;
 
         if (rserial != serial) {
