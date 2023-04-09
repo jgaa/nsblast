@@ -9,6 +9,8 @@
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
 #include "SlaveMgr.h"
+#include "Notifications.h"
+#include "nsblast/DnsEngine.h"
 #include "proto/nsblast.pb.h"
 #include "google/protobuf/util/json_util.h"
 
@@ -858,9 +860,19 @@ put:
     }
 
     trx->commit();
+    trx.reset();
 
     if (!existing.hasRr()) {
         return {201, "OK"};
+    }
+
+    if (config_.dns_enable_notify) {
+        try {
+            api_engine_->dns().notifications().notify(lowercaseSoaFqdn);
+        } catch(const exception& ex) {
+            LOG_WARN << "RestApi::onResourceRecord - Failed to notify slave servers about update of zone "
+                     << lowercaseSoaFqdn;
+        }
     }
 
     return  {};

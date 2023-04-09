@@ -359,9 +359,9 @@ public:
     RrA(buffer_t bufferView, uint32_t offset)
         : Rr(bufferView, offset) {}
 
-    boost::asio::ip::address address();
+    boost::asio::ip::address address() const;
 
-    std::string string();
+    std::string string() const;
 };
 
 
@@ -705,6 +705,7 @@ public:
             QUERY,
             IQUERY,
             STATUS,
+            NOTIFY = 4,
             RESERVED_
         };
 

@@ -37,6 +37,8 @@ add_library(${PROJECT_NAME}
     swagger_res.cpp
     swagger_res.h
     util.cpp
+    Notifications.cpp
+    Notifications.h
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

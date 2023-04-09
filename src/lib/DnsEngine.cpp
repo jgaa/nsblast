@@ -9,6 +9,7 @@
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
 
+#include "Notifications.h"
 
 using namespace std;
 using namespace std::chrono_literals;
@@ -57,6 +58,30 @@ public:
 
     void start() override {
         next();
+    }
+
+    void send(span_t data,  DnsEngine::udp_t::endpoint ep,
+              std::function<void(boost::system::error_code ec)> cb) {
+
+        if (socket_.is_open()) {
+
+             boost::asio::const_buffer cb{data.data(), data.size()};
+            socket_.async_send_to(cb, ep, [this, ep] (const boost::system::error_code& error,
+                                  std::size_t /*bytes*/) mutable {
+                if (error) {
+                    LOG_DEBUG << "DNS message to " << ep
+                             << " on UDP " << socket_.local_endpoint()
+                             << " failed: " << error.message();
+                    return;
+                }
+
+                LOG_TRACE << "Successfully SENT DNS message to "
+                          << ep << " on UDP " << socket_.local_endpoint();
+            });
+
+        } else {
+            throw runtime_error{"UdpEndpoint::send: Socket is closed"};
+        }
     }
 
     void next() {
@@ -139,6 +164,10 @@ public:
                          << " failed processing: " << ex.what();
             }
         });
+    }
+
+    DnsEngine::udp_t::endpoint localEndpoint() const {
+        return socket_.local_endpoint();
     }
 
 private:
@@ -594,6 +623,7 @@ DnsEngine::~DnsEngine()
 
 void DnsEngine::start()
 {
+    notifications_ = make_shared<Notifications>(*this);
     startEndpoints();
     startIoThreads();
 }
@@ -627,6 +657,44 @@ DnsEngine::getQtypeAllResponse(const Request &req, uint16_t type) const
     };
 
     return parse(req.is_tcp ? config_.tcp_qany_response : config_.udp_qany_response);
+}
+
+uint32_t DnsEngine::getNewId()
+{
+    lock_guard<mutex> lock{ids_mutex_};
+    for(auto i = 0; i < 4096; ++i) {
+        auto id = getRandomNumber32();
+        auto [_, added] = current_request_ids_.emplace(id);
+        if (added) {
+            return id;
+        }
+    }
+
+    LOG_WARN << "DnsEngine::getNewId(): Failed to aquire an unused ID";
+    throw runtime_error{"DnsEngine::getNewId: Failed to aquire an unused ID"};
+}
+
+void DnsEngine::idDone(uint32_t id)
+{
+    lock_guard<mutex> lock{ids_mutex_};
+    current_request_ids_.erase(id);
+}
+
+void DnsEngine::send(span_t data, boost::asio::ip::udp::endpoint ep,
+                     std::function<void (boost::system::error_code)> cb)
+{
+    // TODO: We may need to find the best/correct interface for the message based on
+    //       subnet or public/private network
+    for(auto& h : endpoints_) {
+        if (h->isUdp()) {
+            auto& handler = dynamic_cast<UdpEndpoint&>(*h);
+
+            if (handler.localEndpoint().protocol() == ep.protocol()) {
+                handler.send(data, ep, cb);
+                return;
+            }
+        }
+    }
 }
 
 void DnsEngine::doAxfr(const DnsEngine::Request &request,

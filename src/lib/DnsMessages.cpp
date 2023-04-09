@@ -101,6 +101,10 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
     b->rd = rd;
     b->opcode = static_cast<uint8_t>(opcode);
 
+    if (opcode == Message::Header::OPCODE::NOTIFY) {
+        b->aa = true;
+    }
+
     *v = bits;
 
     return NewHeader{buffer_};
@@ -1471,7 +1475,7 @@ RrSoa Entry::getSoa() const
 
 
 
-boost::asio::ip::address RrA::address()
+boost::asio::ip::address RrA::address() const
 {
     if (rdata().size() == 4) {
         return bufferToAddr<boost::asio::ip::address_v4>(rdata());
@@ -1480,7 +1484,7 @@ boost::asio::ip::address RrA::address()
     return bufferToAddr<boost::asio::ip::address_v6>(rdata());
 }
 
-string RrA::string()
+string RrA::string() const
 {
     return address().to_string();
 }

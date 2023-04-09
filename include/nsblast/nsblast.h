@@ -115,6 +115,13 @@ struct Config {
      */
     bool dns_enable_ixfr = true;
 
+    /*! Enable RFC 1996 NOTIFY messages
+     *
+     *  This causes a master server to send NOTIFY messages over UDP when a
+     *  zone is changed.
+     */
+    bool dns_enable_notify = false;
+
     ///@}
 
     /*! \name HTTP */

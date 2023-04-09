@@ -1,6 +1,7 @@
 #pragma once
 
- #include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsMessages.h"
@@ -12,6 +13,7 @@
 namespace nsblast::lib {
 
 class DnsTcpSession;
+class Notifications;
 
 class DnsEngine {
 public:
@@ -46,6 +48,9 @@ public:
         virtual ~Endpoint() = default;
 
         virtual void start() = 0;
+        virtual bool isUdp() const noexcept {
+            return false;
+        }
 
         auto& parent() {
             return parent_;
@@ -60,7 +65,6 @@ public:
 
         DnsEngine& parent_;
     };
-
 
     DnsEngine(const Config& config, ResourceIf& resource);
 
@@ -98,6 +102,10 @@ public:
         return config_;
     }
 
+    ResourceIf& resource() noexcept {
+        return resource_;
+    }
+
     /*! Create and start a TCP session */
     tcp_session_t createTcpSession(tcp_t::socket && socket);
 
@@ -107,6 +115,20 @@ public:
 
     uint16_t getMaxUdpBufferSizeWithOpt() const noexcept {
         return std::max<uint16_t>(config_.udp_max_buffer_size_with_opt_, MAX_UDP_QUERY_BUFFER);
+    }
+
+    /*! Get an unused ID for a request */
+    uint32_t getNewId();
+
+    /*! Release the id from the repository of active ID's */
+    void idDone(uint32_t id);
+
+    // Send an UDP message
+    void send(span_t data, udp_t::endpoint ep,
+              std::function<void(boost::system::error_code ec)> cb);
+
+    Notifications& notifications() {
+        return *notifications_;
     }
 
 private:
@@ -147,6 +169,9 @@ private:
 
     boost::unordered_flat_map<boost::uuids::uuid, tcp_session_t> tcp_sessions_; // Own the TCP session instances
     std::mutex tcp_session_mutex_;
+    boost::unordered_flat_set<uint32_t> current_request_ids_;
+    std::mutex ids_mutex_;
+    std::shared_ptr<Notifications> notifications_;
 };
 
 

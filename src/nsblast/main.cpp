@@ -80,6 +80,9 @@ int main(int argc, char* argv[]) {
         ("dns-num-threads",
             po::value<size_t>(&config.num_dns_threads)->default_value(config.num_dns_threads),
             "Threads for the DNS server")
+        ("dns-enable-notify",
+            po::value<bool>(&config.dns_enable_notify)->default_value(config.dns_enable_notify),
+            "A master server sens DNS NOTIFY messages to slave servers when a zone is changed.")
         ;
 
     po::options_description cmdline_options;
@@ -126,6 +129,7 @@ int main(int argc, char* argv[]) {
         ApiEngine api{config};
         api.initRocksdb();
         lib::DnsEngine dns{config, api.resource()};
+        api.set(dns); // TODO: X-dependency. Refactor it away!
         dns.start();
         api.run();
         ;

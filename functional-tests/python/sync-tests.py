@@ -70,7 +70,7 @@ def test_setup_axfr_slave(global_data):
             "hostname": "127.0.0.1",
             "port": 5353,
             "refresh": 5,
-            "strategy": "axfr"
+            "strategy": "ixfr"
         }
     }
     """

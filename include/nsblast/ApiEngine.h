@@ -10,6 +10,7 @@ namespace nsblast {
 namespace lib {
     class RestApi;
     class SlaveMgr;
+    class DnsEngine;
 }
 
 class ApiEngine {
@@ -34,10 +35,21 @@ public:
         return config_;
     }
 
+    void set(lib::DnsEngine& dns) {
+        assert(!dns_engine_);
+        dns_engine_ = &dns;
+    }
+
+    lib::DnsEngine& dns() {
+        assert(dns_engine_);
+        return *dns_engine_;
+    }
+
 private:
     const Config config_;
     std::shared_ptr<ResourceIf> resource_;
     std::shared_ptr<lib::SlaveMgr> slave_mgr_;
+    lib::DnsEngine *dns_engine_ = {};
 };
 
 

@@ -103,7 +103,7 @@ public:
             }
         }
 
-        // Make a list of "added" items, not currentlyh in existing_
+        // Make a list of "added" items, not currently in existing_
         // Get new/changed entries
         vector<rr_info_t> add;
         set_difference(added_.begin(), added_.end(), existing_.begin(), existing_.end(),
