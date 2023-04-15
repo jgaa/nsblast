@@ -216,9 +216,11 @@ void Server::handleSignals()
         LOG_INFO << "Server::handleSignals: Received signal #" << signalNumber;
         if (signalNumber == SIGHUP) {
             LOG_WARN << "Server::handleSignals: Ignoring SIGHUP. Note - config is not re-loaded.";
-        } else if ((signalNumber == SIGQUIT || signalNumber == SIGINT) && !isDone()) {
-            LOG_INFO << "Server::handleSignals: Stopping the services.";
-            stop();
+        } else if (signalNumber == SIGQUIT || signalNumber == SIGINT) {
+            if (!isDone()) {
+                LOG_INFO << "Server::handleSignals: Stopping the services.";
+                stop();
+            }
             return;
         } else {
             LOG_WARN << "Server::handleSignals: Ignoring signal #" << signalNumber;
