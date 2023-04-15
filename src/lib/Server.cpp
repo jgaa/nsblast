@@ -192,7 +192,16 @@ void Server::runWorker(const string &name)
 
 void Server::handleSignals()
 {
-    signals_.emplace(ctx(), SIGINT, SIGQUIT);
+    if (isDone()) {
+        return;
+    }
+
+    if (!signals_) {
+        signals_.emplace(ctx(), SIGINT, SIGQUIT);
+        signals_->add(SIGUSR1);
+        signals_->add(SIGHUP);
+    }
+
     signals_->async_wait([this](const boost::system::error_code& ec, int signalNumber) {
 
         if (ec) {
@@ -204,11 +213,18 @@ void Server::handleSignals()
             return;
         }
 
-        LOG_INFO << "Server::handleSignals:  received signal #" << signalNumber;
-        if (signalNumber && !isDone()) {
+        LOG_INFO << "Server::handleSignals: Received signal #" << signalNumber;
+        if (signalNumber == SIGHUP) {
+            LOG_WARN << "Server::handleSignals: Ignoring SIGHUP. Note - config is not re-loaded.";
+        } else if ((signalNumber == SIGQUIT || signalNumber == SIGINT) && !isDone()) {
             LOG_INFO << "Server::handleSignals: Stopping the services.";
             stop();
+            return;
+        } else {
+            LOG_WARN << "Server::handleSignals: Ignoring signal #" << signalNumber;
         }
+
+        handleSignals();
     });
 }
 
