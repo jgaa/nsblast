@@ -117,6 +117,7 @@ public:
             }
 
             req->setBufferLen(bytes);
+            req->endpoint = req->sender_endpoint;
 
             LOG_DEBUG << "Received a DNS message of " << bytes << " bytes from "
                       << req->sender_endpoint.address()
@@ -450,6 +451,7 @@ public:
         if (!validate(*req, "next")) {
             return;
         }
+        req->endpoint = socket_.remote_endpoint();
 
         boost::asio::spawn([this, req](auto yield) {
 
@@ -603,36 +605,25 @@ private:
 };
 
 
-DnsEngine::DnsEngine(const Config &config, ResourceIf &resource)
-    : resource_{resource}, config_{config}
+DnsEngine::DnsEngine(Server &server)
+    : server_{server}
 {
-
 }
 
 DnsEngine::~DnsEngine()
 {
     stop();
-
-    LOG_DEBUG << "~DnsEngine(): Waiting for workers to end...";
-    for(auto& thd : workers_) {
-        thd.join();
-    }
-
     LOG_DEBUG << "~DnsEngine(): Done.";
 }
 
 void DnsEngine::start()
 {
-    notifications_ = make_shared<Notifications>(*this);
     startEndpoints();
-    startIoThreads();
 }
 
 void DnsEngine::stop()
 {
-    call_once(stop_once_, [this]{
-        ctx_.stop();
-    });
+
 }
 
 
@@ -656,28 +647,7 @@ DnsEngine::getQtypeAllResponse(const Request &req, uint16_t type) const
         return QtypeAllResponse::HINFO;
     };
 
-    return parse(req.is_tcp ? config_.tcp_qany_response : config_.udp_qany_response);
-}
-
-uint32_t DnsEngine::getNewId()
-{
-    lock_guard<mutex> lock{ids_mutex_};
-    for(auto i = 0; i < 4096; ++i) {
-        auto id = getRandomNumber32();
-        auto [_, added] = current_request_ids_.emplace(id);
-        if (added) {
-            return id;
-        }
-    }
-
-    LOG_WARN << "DnsEngine::getNewId(): Failed to aquire an unused ID";
-    throw runtime_error{"DnsEngine::getNewId: Failed to aquire an unused ID"};
-}
-
-void DnsEngine::idDone(uint32_t id)
-{
-    lock_guard<mutex> lock{ids_mutex_};
-    current_request_ids_.erase(id);
+    return parse(req.is_tcp ? config().tcp_qany_response : config().udp_qany_response);
 }
 
 void DnsEngine::send(span_t data, boost::asio::ip::udp::endpoint ep,
@@ -697,6 +667,58 @@ void DnsEngine::send(span_t data, boost::asio::ip::udp::endpoint ep,
     }
 }
 
+void DnsEngine::handleNotify(const DnsEngine::Request &request,
+                             const Message &message,
+                             const Message::Header& mhdr,
+                             std::shared_ptr<MessageBuilder>& mb)
+{
+    const auto is_reply = mhdr.qr();
+
+    if (is_reply) {
+        mb.reset(); // Don't reply to a reply
+    }
+
+    if (mhdr.qdcount() != 1) {
+        LOG_DEBUG << "Request " << request.uuid << " has opcode NOTIFY "
+                  << " but not excactely 1 query. That is not valid DNS.";
+
+        if (mb) {
+            mb->setRcode(Message::Header::RCODE::FORMAT_ERROR);
+        }
+        return;
+    }
+
+    const auto rr = *message.getQuestions().begin();
+    if (rr.type() != TYPE_SOA) {
+        LOG_DEBUG << "Request " << request.uuid << " has opcode NOTIFY "
+                  << " but the query is not for TYPE_SOA. That is not valid DNS.";
+        if (mb) {
+            mb->setRcode(Message::Header::RCODE::FORMAT_ERROR);
+        }
+        return;
+    }
+
+    if (rr.clas() != CLASS_IN) {
+        if (rr.type() != TYPE_SOA) {
+            LOG_DEBUG << "Request " << request.uuid << " has opcode NOTIFY "
+                      << " but the querry is not for CLASS_IN. I don't support that.";
+            if (mb) {
+                mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            }
+            return;
+        }
+    }
+
+    const auto fqdn = toLower(rr.labels().string());
+
+    if (is_reply) {
+        server_.notifications().notified(fqdn, request.endpoint, mhdr.id());
+    } else {
+        // Tell slavemgr to handle it
+        // Reply
+    }
+}
+
 void DnsEngine::doAxfr(const DnsEngine::Request &request,
                        const DnsEngine::send_t &send,
                        const Message& message,
@@ -709,7 +731,7 @@ void DnsEngine::doAxfr(const DnsEngine::Request &request,
               << " regarding " << key;
 
     // TODO: Check if the caller is allowed to do AXFR!
-    const auto out_buffer_len = config_.dns_max_large_tcp_buffer_size;
+    const auto out_buffer_len = config().dns_max_large_tcp_buffer_size;
     auto hdr = mb->getMutableHeader();
 
     size_t count = 0;
@@ -862,7 +884,7 @@ void DnsEngine::doIxfr(const DnsEngine::Request &request,
 
     auto flush_if = [&](const Rr& rr) -> bool {
         if (request.is_tcp) {
-            flushIf(mb, hdr, rr, request, message, config_.dns_max_large_tcp_buffer_size, send);
+            flushIf(mb, hdr, rr, request, message, config().dns_max_large_tcp_buffer_size, send);
             return true;
         }
 
@@ -959,7 +981,8 @@ void DnsEngine::flushIf(std::shared_ptr<MessageBuilder> &mb,
     }
 }
 
-void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngine::send_t &send)
+void DnsEngine::processRequest(const DnsEngine::Request &request,
+                               const DnsEngine::send_t &send)
 {
     LOG_TRACE << "processRequest: Processing request " << request.uuid;
 
@@ -974,7 +997,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
 
     bool do_reply = true;
     BOOST_SCOPE_EXIT(&mb, &send, &do_reply) {
-        if (do_reply) {
+        if (do_reply && mb) {
             mb->finish();
             send(mb, true);
         }
@@ -984,7 +1007,16 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
         return;
     }
 
-    auto trx = resource_.transaction();
+    const auto mhdr = message.header();
+    const auto opcode = mhdr.opcode();
+    if (opcode == Message::Header::OPCODE::NOTIFY) [[unlikely]] {
+        return handleNotify(request, message, mhdr, mb);
+    } else if (opcode != Message::Header::OPCODE::QUERY) [[unlikely]] {
+        mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+        return;
+    }
+
+    auto trx = server_.resource().transaction();
 
     LOG_TRACE << "DnsEngine::processRequest " << request.uuid
               << ". qcount=" << message.header().qdcount();
@@ -992,7 +1024,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
     // Iterate over the queries and add our answers
     for(const auto& query : message.getQuestions()) {
         if (query.clas() != CLASS_IN) {
-            LOG_WARN << "I can only handle CLASS_IN. Client requested " << query.clas()
+            LOG_DEBUG << "I can only handle CLASS_IN. Client requested " << query.clas()
                      << " in request " << request.uuid;
             mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
             return;
@@ -1013,6 +1045,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request, const DnsEngin
         if (qtype == QTYPE_IXFR) {
             return doIxfr(request, send, message, mb, {key}, *trx);
         }
+
 again:
         auto rr_set = trx->lookup(key);
         if (!rr_set.empty()) {
@@ -1133,32 +1166,8 @@ again:
 
 void DnsEngine::startEndpoints()
 {
-    doStartEndpoints<udp_t>(*this, config_.dns_endpoint, config_.dns_udp_port);
-    doStartEndpoints<tcp_t>(*this, config_.dns_endpoint, config_.dns_tcp_port);
-}
-
-void DnsEngine::startIoThreads()
-{
-    for(size_t i = 0; i < config_.num_dns_threads; ++i) {
-        workers_.emplace_back([this, i] {
-                LOG_DEBUG << "DNS worker thread #" << i << " starting up.";
-                try {
-                    ctx_.run();
-                } catch(const exception& ex) {
-                    LOG_ERROR << "DNS worker #" << i
-                              << " caught exception: "
-                              << ex.what();
-                } catch(...) {
-                    ostringstream estr;
-#ifdef __unix__
-                    estr << " of type : " << __cxxabiv1::__cxa_current_exception_type()->name();
-#endif
-                    LOG_ERROR << "DNS worker #" << i
-                              << " caught unknow exception" << estr.str();
-                }
-                LOG_DEBUG << "DND worker thread #" << i << " done.";
-        });
-    }
+    doStartEndpoints<udp_t>(*this, config().dns_endpoint, config().dns_udp_port);
+    doStartEndpoints<tcp_t>(*this, config().dns_endpoint, config().dns_tcp_port);
 }
 
 DnsEngine::tcp_session_t DnsEngine::createTcpSession(DnsEngine::tcp_t::socket && socket)

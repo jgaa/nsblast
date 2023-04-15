@@ -33,11 +33,11 @@ const char query_example_com[] =
 
 TEST(DnsEngine, requestQueryA) {
 
-    TmpDb db;
-    db.createTestZone();
-    db.createWwwA();
+    MockServer ms;
+    ms->createTestZone();
+    ms->createWwwA();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
 
     DnsEngine::Request req;
     req.span = query_www_example_com;
@@ -65,11 +65,11 @@ TEST(DnsEngine, requestQueryA) {
 
 TEST(DnsEngine, requestAllRespAll) {
 
-    TmpDb db;
-    db.config().udp_qany_response = "all";
-    db.createTestZone();
+    MockServer ms;
+    ms->config().udp_qany_response = "all";
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query_example_com;
 
@@ -97,11 +97,11 @@ TEST(DnsEngine, requestAllRespAll) {
 
 TEST(DnsEngine, requestAllRespRelevant) {
 
-    TmpDb db;
-    db.config().udp_qany_response = "relevant";
-    db.createTestZone();
+    MockServer ms;
+    ms->config().udp_qany_response = "relevant";
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query_example_com;
 
@@ -129,11 +129,11 @@ TEST(DnsEngine, requestAllRespRelevant) {
 
 TEST(DnsEngine, requestAllRespHinfo) {
 
-    TmpDb db;
-    db.config().udp_qany_response = "hinfo";
-    db.createTestZone();
+    MockServer ms;
+    ms->config().udp_qany_response = "hinfo";
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query_example_com;
 
@@ -169,10 +169,10 @@ TEST(DnsEngine, ednsWithoutOpt) {
 "\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00\x01\x00\x01";
 
 
-    TmpDb db;
-    db.createTestZone();
+    MockServer ms;
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query;
 
@@ -207,10 +207,10 @@ TEST(DnsEngine, ednsWithOpt) {
 "\xc4\x23\x4f\x8f";
 
 
-    TmpDb db;
-    db.createTestZone();
+    MockServer ms;
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query;
 
@@ -250,10 +250,10 @@ TEST(DnsEngine, ednsWithUnsupportedVersion) {
 "\x10\x00\x00\x01\x00\x00\x00\x0c\x00\x0a\x00\x08\x8a\xa3\x33\x1b" \
 "\x02\x06\xeb\xff";
 
-    TmpDb db;
-    db.createTestZone();
+    MockServer ms;
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query;
 
@@ -295,10 +295,10 @@ TEST(DnsEngine, ednsWithTwoOptRrs) {
 "\x4e\xb2\x53\xce\x04\x49\x81";
 
 
-    TmpDb db;
-    db.createTestZone();
+    MockServer ms;
+    ms->createTestZone();
 
-    DnsEngine dns{db.config(), db.resource()};
+    DnsEngine dns{ms};
     DnsEngine::Request req;
     req.span = query;
 

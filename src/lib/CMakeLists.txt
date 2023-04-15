@@ -13,32 +13,32 @@ add_custom_command(
 ADD_SUBDIRECTORY(proto)
 
 add_library(${PROJECT_NAME}
-    ${NSBLAST_ROOT}/include/nsblast/ApiEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
+    ${NSBLAST_ROOT}/include/nsblast/Server.h
     ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
-    ApiEngine.cpp
     DnsEngine.cpp
     DnsMessages.cpp
-    proto_util.h
+    Notifications.cpp
+    Notifications.h
+    ResourceIf.cpp
     RestApi.cpp
     RestApi.h
-    ResourceIf.cpp
     RocksDbResource.cpp
     RocksDbResource.h
+    Server.cpp
     Slave.cpp
     Slave.h
     SlaveMgr.cpp
     SlaveMgr.h
+    proto_util.h
     swagger_res.cpp
     swagger_res.h
     util.cpp
-    Notifications.cpp
-    Notifications.h
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

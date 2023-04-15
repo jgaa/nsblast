@@ -199,9 +199,9 @@ void addDiff(string_view zoneName,
 
 } // anon ns
 
-RestApi::RestApi(ApiEngine& apiEngine)
-    : config_{apiEngine.config()}, resource_{apiEngine.resource()}
-    , api_engine_{&apiEngine}
+RestApi::RestApi(Server& server)
+    : config_{server.config()}, resource_{server.resource()}
+    , server_{&server}
 {
 }
 
@@ -868,7 +868,7 @@ put:
 
     if (config_.dns_enable_notify) {
         try {
-            api_engine_->dns().notifications().notify(lowercaseSoaFqdn);
+            server_->notifications().notify(lowercaseSoaFqdn);
         } catch(const exception& ex) {
             LOG_WARN << "RestApi::onResourceRecord - Failed to notify slave servers about update of zone "
                      << lowercaseSoaFqdn;
@@ -888,19 +888,19 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
     try {
         switch(req.type) {
         case Request::Type::GET:
-            apiEngine().slaveMgr().getZone(parsed.fqdn, zone);
+            server().slave().getZone(parsed.fqdn, zone);
             return {200, "OK", toJson(zone)};
         case Request::Type::POST:
-            apiEngine().slaveMgr().addZone(parsed.fqdn, zone);
+            server().slave().addZone(parsed.fqdn, zone);
             break;
         case Request::Type::PUT:
-            apiEngine().slaveMgr().replaceZone(parsed.fqdn, zone);
+            server().slave().replaceZone(parsed.fqdn, zone);
             break;
         case Request::Type::PATCH:
-            apiEngine().slaveMgr().mergeZone(parsed.fqdn, zone);
+            server().slave().mergeZone(parsed.fqdn, zone);
             break;
         case Request::Type::DELETE:
-            apiEngine().slaveMgr().deleteZone(parsed.fqdn);
+            server().slave().deleteZone(parsed.fqdn);
             return {200, "OK"};
         default:
             return {400, "Invalid method"};

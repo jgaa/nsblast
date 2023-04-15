@@ -6,6 +6,7 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
+#include "nsblast/Server.h"
 
 #include "proto/nsblast.pb.h"
 
@@ -29,7 +30,7 @@ class Slave;
 
 class SlaveMgr {
 public:
-    SlaveMgr(const Config& config, ResourceIf& resource, boost::asio::io_context& ctx);
+    SlaveMgr(Server& server);
 
     void getZone(std::string_view fqdn, pb::Zone& zone);
     void addZone(std::string_view fqdn, const pb::Zone& zone);
@@ -42,15 +43,15 @@ public:
     void reload(std::string_view fqdn, pb::Zone& zone);
 
     auto& ctx() const noexcept {
-        return ctx_;
+        return server_.ctx();
     }
 
     auto& config() const noexcept {
-        return config_;
+        return server_.config();
     }
 
-    auto& db() {
-        return db_;
+    auto& db() noexcept {
+        return server_.resource();
     }
 
 private:
@@ -58,10 +59,7 @@ private:
     // List of active slave zones
     boost::unordered_flat_map<std::string, std::shared_ptr<Slave>> zones_;
     std::mutex mutex_;
-
-    const Config& config_;
-    ResourceIf& db_;
-    boost::asio::io_context& ctx_;
+    Server& server_;
 };
 
 } // ns

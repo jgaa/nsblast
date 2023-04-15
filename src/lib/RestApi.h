@@ -5,7 +5,7 @@
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
 #include "yahat/HttpServer.h"
-#include "nsblast/ApiEngine.h"
+#include "nsblast/Server.h"
 
 namespace nsblast::lib {
 
@@ -18,7 +18,7 @@ public:
         std::string_view operation;
     };
 
-    RestApi(ApiEngine& apiEngine);
+    RestApi(Server& server);
 
     RestApi(const Config &config, ResourceIf& resource);
 
@@ -41,15 +41,14 @@ public:
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
 private:
-    ApiEngine& apiEngine() {
-        assert(api_engine_);
-        return *api_engine_;
+    Server& server() noexcept {
+        assert(server_);
+        return *server_;
     }
-
 
     const Config& config_;
     ResourceIf& resource_;
-    ApiEngine *api_engine_ = {};
+    Server *server_ = {};
 };
 
 } // ns

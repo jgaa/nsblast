@@ -4,8 +4,11 @@
 #include <chrono>
 #include <memory>
 
+#include <boost/unordered/unordered_flat_map.hpp>
+
 #include "nsblast/nsblast.h"
-#include "nsblast/DnsEngine.h"
+#include "nsblast/Server.h"
+#include "nsblast/DnsMessages.h"
 
 namespace nsblast::lib {
 
@@ -19,8 +22,8 @@ public:
         using endpoint_t = std::variant<udp_t::endpoint, tcp_t::endpoint>;
 
         Notifier(Notifications& parent, std::string_view zoneFqdn)
-            : parent_{parent}, id_{parent_.engine().getNewId()}
-            , timer_{parent.engine().ctx()}, fqdn_{zoneFqdn}
+            : parent_{parent}, id_{parent_.server().getNewId()}
+            , timer_{parent.server().ctx()}, fqdn_{zoneFqdn}
             , expires_{std::chrono::steady_clock::now() + std::chrono::seconds{60}}
         {
             init();
@@ -54,28 +57,28 @@ public:
     };
 
 
-    Notifications(DnsEngine& engine)
-        : engine_{engine} {}
+    Notifications(Server& engine)
+        : server_{engine} {}
 
     /*! Start notifying slave servers */
     void notify(const std::string& zoneFqdn);
 
     /*! Got ack for a notification */
     void notified(const std::string& zoneFqdn,
-                  Notifier::endpoint_t& ep,
+                  const Notifier::endpoint_t& ep,
                   uint32_t id);
 
     /*! Done with the Notifier for this zone/ request-id */
     void done(std::string_view zoneFqdn, uint32_t id);
 
-    DnsEngine& engine() const noexcept {
-        return engine_;
+    Server& server() const noexcept {
+        return server_;
     }
 
 private:
     std::shared_ptr<Notifier> getNotifier(const std::string& zoneFqdn, uint32_t id);
 
-    DnsEngine& engine_;
+    Server& server_;
     boost::unordered_flat_map<std::string, std::shared_ptr<Notifier>> notifiers_;
     std::mutex mutex_;
 };

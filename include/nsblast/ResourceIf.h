@@ -4,7 +4,7 @@
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
 
-namespace nsblast {
+namespace nsblast::lib {
 
 /*! Interface for resource lookups and manipulation
  *
@@ -287,6 +287,6 @@ public:
 
 } // ns
 
-std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::Category& cat);
-std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::RealKey& key);
+std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat);
+std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key);
 

@@ -4,6 +4,7 @@
 #include <boost/unordered/unordered_flat_set.hpp>
 
 #include "nsblast/nsblast.h"
+#include "nsblast/Server.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/ResourceIf.h"
 #include "nsblast/util.h"
@@ -14,6 +15,7 @@ namespace nsblast::lib {
 
 class DnsTcpSession;
 class Notifications;
+class SlaveMgr;
 
 class DnsEngine {
 public:
@@ -29,6 +31,7 @@ public:
     };
 
     struct Request {
+        using endpoint_t = std::variant<boost::asio::ip::udp::endpoint, boost::asio::ip::tcp::endpoint>;
         virtual ~Request() = default;
 
         boost::span<const char> span;
@@ -38,6 +41,7 @@ public:
         bool is_tcp = false;
         mutable bool is_axfr = false;
         mutable bool is_ixfr = false;
+        endpoint_t endpoint;
     };
 
     class Endpoint {
@@ -57,16 +61,10 @@ public:
         }
 
     private:
-//        void process(Request& req, size_t len);
-//        void processQuestions(Request& req, const MessageHeader& header);
-//        void createErrorReply(MessageHeader::Rcode errCode,
-//                              const MessageHeader& hdr,
-//                              Request& req);
-
         DnsEngine& parent_;
     };
 
-    DnsEngine(const Config& config, ResourceIf& resource);
+    DnsEngine(Server& resource);
 
     ~DnsEngine();
 
@@ -94,16 +92,16 @@ public:
      */
     void processRequest(const Request& request, const send_t& send);
 
-    boost::asio::io_context& ctx() {
-        return ctx_;
+    boost::asio::io_context& ctx() noexcept {
+        return server_.ctx();
     }
 
     auto& config() const noexcept {
-        return config_;
+        return server_.config();
     }
 
     ResourceIf& resource() noexcept {
-        return resource_;
+        return server_.resource();
     }
 
     /*! Create and start a TCP session */
@@ -114,28 +112,21 @@ public:
     QtypeAllResponse getQtypeAllResponse(const Request& req, uint16_t type) const;
 
     uint16_t getMaxUdpBufferSizeWithOpt() const noexcept {
-        return std::max<uint16_t>(config_.udp_max_buffer_size_with_opt_, MAX_UDP_QUERY_BUFFER);
+        return std::max<uint16_t>(config().udp_max_buffer_size_with_opt_, MAX_UDP_QUERY_BUFFER);
     }
-
-    /*! Get an unused ID for a request */
-    uint32_t getNewId();
-
-    /*! Release the id from the repository of active ID's */
-    void idDone(uint32_t id);
 
     // Send an UDP message
     void send(span_t data, udp_t::endpoint ep,
               std::function<void(boost::system::error_code ec)> cb);
 
-    Notifications& notifications() {
-        return *notifications_;
-    }
-
 private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;
 
     void startEndpoints();
-    void startIoThreads();
+    void handleNotify(const Request& request,
+                      const Message& message,
+                      const Message::Header& mhdr,
+                      std::shared_ptr<MessageBuilder>& mb);
     void doAxfr(const Request& request,
                 const send_t& send,
                 const Message& message,
@@ -160,18 +151,12 @@ private:
                  size_t outBufLen,
                  const DnsEngine::send_t &send);
 
-    ResourceIf& resource_;
-    boost::asio::io_context ctx_;
-    const Config config_;
+    Server& server_;
     endpoints_t endpoints_;
-    std::vector<std::thread> workers_;
     std::once_flag stop_once_;
 
     boost::unordered_flat_map<boost::uuids::uuid, tcp_session_t> tcp_sessions_; // Own the TCP session instances
     std::mutex tcp_session_mutex_;
-    boost::unordered_flat_set<uint32_t> current_request_ids_;
-    std::mutex ids_mutex_;
-    std::shared_ptr<Notifications> notifications_;
 };
 
 

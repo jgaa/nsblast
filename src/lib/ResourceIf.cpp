@@ -5,51 +5,50 @@
 
 using namespace std;
 
-std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::Category& cat) {
+std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat) {
     static constexpr array<string_view, 3> names = { "ZONE", "ENTRY", "DIFF" };
 
     return o << names.at(static_cast<size_t>(cat));
 }
 
-std::ostream& operator << (std::ostream& o, const nsblast::ResourceIf::RealKey& key) {
+std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key) {
     static constexpr array<string_view, 2> names = { "ENTRY", "DIFF" };
 
     return o << names.at(static_cast<size_t>(key.kClass()))
              << ' ' << key.dataAsString();
 }
 
-namespace nsblast {
+namespace nsblast::lib {
 
-using namespace ::nsblast::lib;
 
-nsblast::ResourceIf::RealKey::RealKey(span_t key,
+ResourceIf::RealKey::RealKey(span_t key,
                                       ResourceIf::RealKey::Class kclass,
                                       bool binary)
     : bytes_{binary ? string{key.begin(), key.end()} : init(key, kclass, {})}
 {
 }
 
-nsblast::ResourceIf::RealKey::RealKey(nsblast::span_t key, uint32_t version, nsblast::ResourceIf::RealKey::Class kclass)
+ResourceIf::RealKey::RealKey(span_t key, uint32_t version, ResourceIf::RealKey::Class kclass)
     : bytes_{init(key, kclass, version)}
 {
 }
 
-nsblast::span_t nsblast::ResourceIf::RealKey::key() const noexcept {
+span_t ResourceIf::RealKey::key() const noexcept {
     return bytes_;
 }
 
-bool nsblast::ResourceIf::RealKey::empty() const noexcept{
+bool ResourceIf::RealKey::empty() const noexcept{
     return bytes_.empty();
 }
 
-nsblast::ResourceIf::RealKey::Class nsblast::ResourceIf::RealKey::kClass() const noexcept {
+ResourceIf::RealKey::Class ResourceIf::RealKey::kClass() const noexcept {
     if (!empty()) {
         return static_cast<Class>(bytes_.at(0));
     }
     return Class::ENTRY;
 }
 
-string nsblast::ResourceIf::RealKey::dataAsString() const {
+string ResourceIf::RealKey::dataAsString() const {
     std::string fqdn;
     std::string postfix;
     if (!empty()) {
@@ -87,8 +86,8 @@ bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcep
     return left == right;
 }
 
-string nsblast::ResourceIf::RealKey::init(nsblast::span_t key,
-                                          nsblast::ResourceIf::RealKey::Class kclass,
+string ResourceIf::RealKey::init(span_t key,
+                                          ResourceIf::RealKey::Class kclass,
                                           optional<uint32_t> version) {
     std::string value;
     value.reserve(key.size() + 1 + (version ? 5 : 0));

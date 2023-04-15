@@ -4,7 +4,9 @@
 
 #include <boost/asio/spawn.hpp>
 
+#include "nsblast/ResourceIf.h"
 #include "Notifications.h"
+#include "nsblast/DnsEngine.h"
 
 #include "nsblast/logging.h"
 
@@ -62,7 +64,7 @@ void Notifications::Notifier::init()
     mb_->createHeader(id(), false, MessageBuilder::Header::OPCODE::NOTIFY, false);
     mb_->addQuestion(fqdn_, TYPE_SOA);
 
-    boost::asio::spawn(parent_.engine().ctx(), [this] (boost::asio::yield_context yield) {
+    boost::asio::spawn(parent_.server().ctx(), [this] (boost::asio::yield_context yield) {
         auto self = shared_from_this();
         try {
             yield_ = &yield;
@@ -79,7 +81,7 @@ void Notifications::Notifier::init()
 void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
 {
     vector<string> hosts;
-    auto trx = parent_.engine().resource().transaction();
+    auto trx = parent_.server().resource().transaction();
 
     auto e = trx->lookup({fqdn_});
     if (e.empty() || !e.flags().soa) {
@@ -196,7 +198,7 @@ void Notifications::Notifier::notify(const Notifications::Notifier::endpoint_t &
         }
     };
 
-    parent_.engine().send(mb_->span(), get<0>(ep), cb);
+    parent_.server().dns().send(mb_->span(), get<0>(ep), cb);
 }
 
 void Notifications::notify(const std::string& zoneFqdn)
@@ -211,7 +213,8 @@ void Notifications::notify(const std::string& zoneFqdn)
     notifiers_[zoneFqdn] = make_shared<Notifier>(*this, zoneFqdn);
 }
 
-void Notifications::notified(const string &zoneFqdn, Notifications::Notifier::endpoint_t &ep, uint32_t id)
+void Notifications::notified(const string &zoneFqdn,
+                             const Notifications::Notifier::endpoint_t &ep, uint32_t id)
 {
     if (auto notifier = getNotifier(zoneFqdn, id)) {
         notifier->notified(ep);

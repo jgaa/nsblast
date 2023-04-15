@@ -8,6 +8,7 @@
 #include <filesystem>
 #include "nsblast/logging.h"
 #include "RocksDbResource.h"
+#include "nsblast/Server.h"
 
 //#include "test_res.h"
 
@@ -36,19 +37,20 @@ public:
     TmpDb()
         : path_{filesystem::temp_directory_path() /= getUuid()}
         , c_{false, path_}
-        , db_{c_}
+        , db_{make_shared<RocksDbResource>(c_)}
     {
         filesystem::create_directories(path_);
         LOG_TRACE << "Created unique tmp directory: " << path_;
-        db_.init();
+        db_->init();
+        c_.dns_enable_notify = false;
     }
 
-    auto operator -> () {
-        return &db_;
+    auto& operator -> () {
+        return db_;
     }
 
     RocksDbResource& operator * () {
-        return db_;
+        return *db_;
     }
 
     ~TmpDb() {
@@ -64,6 +66,10 @@ public:
     }
 
     ResourceIf& resource() {
+        return *db_;
+    }
+
+    auto& resourcePtr() {
         return db_;
     }
 
@@ -91,7 +97,7 @@ public:
         sb.createMx(fqdn, 9999, 10, mxname);
         sb.finish();
 
-        auto tx = db_.transaction();
+        auto tx = resource().transaction();
         tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
@@ -112,7 +118,7 @@ public:
         sb.setZoneLen(fqdn.size() - 4);
         sb.finish();
 
-        auto tx = db_.transaction();
+        auto tx = resource().transaction();
         tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
@@ -125,7 +131,7 @@ public:
         sb.createHinfo(fqdn, 1000, "awesome", "minix");
         sb.finish();
 
-        auto tx = db_.transaction();
+        auto tx = resource().transaction();
         tx->write({fqdn}, sb.buffer(), true);
         tx->commit();
     }
@@ -133,7 +139,22 @@ public:
 private:
     filesystem::path path_;
     Config c_;
-    RocksDbResource db_;
+    shared_ptr<RocksDbResource> db_;
+};
+
+class MockServer : public Server {
+public:
+    MockServer(std::shared_ptr<TmpDb> db = make_shared<TmpDb>())
+        : Server(db->config()), db_{db} {
+        resource_ = db->resourcePtr();
+    }
+
+    auto& operator -> () {
+        return db_;
+    }
+
+private:
+    std::shared_ptr<TmpDb> db_;
 };
 
 } // ns

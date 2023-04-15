@@ -5,8 +5,7 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
-#include "nsblast/ApiEngine.h"
-#include "nsblast/DnsEngine.h"
+#include "nsblast/Server.h"
 
 using namespace std;
 using namespace nsblast;
@@ -126,14 +125,9 @@ int main(int argc, char* argv[]) {
     LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
 
     try {        
-        ApiEngine api{config};
-        api.initRocksdb();
-        lib::DnsEngine dns{config, api.resource()};
-        api.set(dns); // TODO: X-dependency. Refactor it away!
-        dns.start();
-        api.run();
-        ;
+        Server server{config};
+        server.start();
     } catch (const exception& ex) {
-        LOG_ERROR << "Caught exception from engine: " << ex.what();
+        LOG_ERROR << "Caught exception from Server: " << ex.what();
     }
 } // mail
