@@ -24,7 +24,7 @@ public:
         Notifier(Notifications& parent, std::string_view zoneFqdn)
             : parent_{parent}, id_{parent_.server().getNewId()}
             , timer_{parent.server().ctx()}, fqdn_{zoneFqdn}
-            , expires_{std::chrono::steady_clock::now() + std::chrono::seconds{60}}
+            , expires_{std::chrono::steady_clock::now() + std::chrono::seconds(120)}
         {
             init();
         }
@@ -69,7 +69,7 @@ public:
                   uint32_t id);
 
     /*! Done with the Notifier for this zone/ request-id */
-    void done(std::string_view zoneFqdn, uint32_t id);
+    void done(const std::string& zoneFqdn, uint32_t id);
 
     Server& server() const noexcept {
         return server_;
@@ -83,9 +83,7 @@ private:
     std::mutex mutex_;
 };
 
-inline void Notifications::done(std::string_view zoneFqdn, uint32_t id)
-{
-
-}
-
 } // ns
+
+
+std::ostream& operator << (std::ostream& out, const nsblast::lib::Notifications::Notifier::endpoint_t& ep);

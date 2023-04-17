@@ -759,7 +759,7 @@ bool Message::Header::validate() const
         return false;
     }
 
-    if (flags.aa && !flags.qr) {
+    if (flags.opcode == static_cast<uint8_t>(OPCODE::QUERY) && flags.aa && !flags.qr) {
         LOG_TRACE << "Message::Header::validate(): aa flag set in query";
         return false;
     }
@@ -862,6 +862,13 @@ void MessageBuilder::NewHeader::setRcode(uint8_t rcode)
 void MessageBuilder::NewHeader::setRcode(Message::Header::RCODE rcode)
 {
     setRcode(static_cast<uint8_t>(rcode));
+}
+
+void MessageBuilder::NewHeader::setOpcode(Message::Header::OPCODE code)
+{
+    auto bits = getHdrFlags(*mutable_buffer_);
+    bits.opcode = static_cast<uint8_t>(code);
+    setHdrFlags(*mutable_buffer_, bits);
 }
 
 Message::Message(span_t span)

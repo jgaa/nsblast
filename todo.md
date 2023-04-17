@@ -65,7 +65,7 @@ Processing/other
 Other types
 - [x] OPT
 - [X] AXFR
-- [ ] IXFR
+- [x] IXFR
 
 # Internals
 - [ ] Otimize the resolver to process related questions in in one loop (for example A and AAAA queries for the same fqdn)

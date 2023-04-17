@@ -120,7 +120,10 @@ struct Config {
      *  This causes a master server to send NOTIFY messages over UDP when a
      *  zone is changed.
      */
-    bool dns_enable_notify = false;
+    bool dns_enable_notify = true;
+
+    /*! Port to send NOTIFY reqests to */
+    uint16_t dns_notify_to_port = 53;
 
     ///@}
 

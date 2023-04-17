@@ -3,6 +3,7 @@
 #include <variant>
 
 #include <boost/asio/spawn.hpp>
+#include <boost/scope_exit.hpp>
 
 #include "nsblast/ResourceIf.h"
 #include "Notifications.h"
@@ -12,6 +13,15 @@
 
 using namespace std;
 using namespace std::string_literals;
+
+std::ostream& operator << (std::ostream& out, const nsblast::lib::Notifications::Notifier::endpoint_t& ep) {
+    if (holds_alternative<nsblast::lib::Notifications::udp_t::endpoint>(ep)) {
+        return out << get<nsblast::lib::Notifications::udp_t::endpoint>(ep);
+    }
+    if (holds_alternative<nsblast::lib::Notifications::tcp_t::endpoint>(ep)) {
+        return out << get<nsblast::lib::Notifications::tcp_t::endpoint>(ep);
+    }
+}
 
 namespace nsblast::lib {
 
@@ -32,18 +42,21 @@ void Notifications::Notifier::notified(const Notifications::Notifier::endpoint_t
 }
 
 void Notifications::Notifier::cancel()
-{
+{   
     done_ = true;
     cancelTimer();
 }
 
 bool Notifications::Notifier::done() const
 {
-    return !done_ && expires_ >= chrono::steady_clock::now();
+    LOG_TRACE << "Notifications::Notifier::done() - done_=" << done_
+              << ", expired=" << (expires_ >= chrono::steady_clock::now());
+    return done_ || expires_ <= chrono::steady_clock::now();
 }
 
 void Notifications::Notifier::cancelTimer()
 {
+    lock_guard<mutex> lock{mutex_};
     if (yield_ && !yield_->cancelled()) {
         boost::asio::post(yield_->get_executor(), [w=weak_from_this()] {
             if (auto self = w.lock()) {
@@ -56,7 +69,7 @@ void Notifications::Notifier::cancelTimer()
 
 void Notifications::Notifier::init()
 {
-    LOG_TRACE << "Notifications::Notifier::process() Initiating notifications for "
+    LOG_TRACE << "Notifications::Notifier::init() Initiating notifications for "
               << fqdn_ << "/" << id_;
 
     mb_ = make_shared<MessageBuilder>();
@@ -67,14 +80,19 @@ void Notifications::Notifier::init()
     boost::asio::spawn(parent_.server().ctx(), [this] (boost::asio::yield_context yield) {
         auto self = shared_from_this();
         try {
+            BOOST_SCOPE_EXIT(&yield_, &mutex_) {
+                lock_guard<mutex> lock{mutex_};
+                yield_ = {};
+            } BOOST_SCOPE_EXIT_END
             yield_ = &yield;
             resolve(yield);
             process(yield);
+            parent_.server().notifications().done(fqdn_, id());
         }  catch (const exception& ex) {
             LOG_ERROR << "Notifications::Notifier::init: Processing failed with exception: "
                       << ex.what();
         }
-        LOG_TRACE << "Notifications::Notifier::init - Done with " << fqdn_ << "/" << id_;
+        LOG_TRACE << "Notifications::Notifier::init - Init complete for " << fqdn_ << "/" << id_;
     });
 }
 
@@ -113,7 +131,9 @@ void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
             udp_t::resolver resolver{yield.get_executor()};
 
             // TODO-MAYBE: Would be better to resolve the hosts in parallel.
-            const auto res = resolver.async_resolve(host, "53", yield);
+            const auto res = resolver.async_resolve(host,
+                                                    to_string(parent_.server().config().dns_notify_to_port),
+                                                    yield);
             for(const auto& r : res) {
                 pending_.emplace_back(udp_t::endpoint{r.endpoint()});
             }
@@ -123,8 +143,9 @@ void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
             const auto type = rr.type();
             if (type == TYPE_A || type == TYPE_AAAA) {
                 const RrA a{ne.buffer(), rr.offset()};
-                //udp_t::endpoint ep{a.address(), 53};
-                pending_.emplace_back(udp_t::endpoint{a.address(), 53});
+                pending_.emplace_back(
+                            udp_t::endpoint{a.address(),
+                                            parent_.server().config().dns_notify_to_port});
             }
         }
     }
@@ -152,11 +173,16 @@ void Notifications::Notifier::process(boost::asio::yield_context& yield)
             if (pending_.empty()) {
                 // We are done;
                 done_ = true;
+                LOG_TRACE << "Notifications::Notifier::process() We are done - no further notifications on "
+                          << fqdn_ << "/" << id_;
                 return;
             }
 
             if (send_notifications) {
                 for(const auto& ep: pending_) {
+                    LOG_TRACE << "Notifications::Notifier::process() Preparing to send NOTIFY for "
+                              << fqdn_ << "/" << id_ << " to " << ep;
+
                     notify(ep);
                 }
             }
@@ -182,6 +208,9 @@ void Notifications::Notifier::process(boost::asio::yield_context& yield)
             send_notifications = true;
         }
     } // not expired
+
+    LOG_DEBUG << "Notifications::Notifier::process() notifications expired or completed on "
+              << fqdn_ << "/" << id_;
 }
 
 void Notifications::Notifier::notify(const Notifications::Notifier::endpoint_t &ep)
@@ -198,6 +227,8 @@ void Notifications::Notifier::notify(const Notifications::Notifier::endpoint_t &
         }
     };
 
+    LOG_TRACE << "Notifications::Notifier::notify - Asking DnsEngine to seld NOTIFY message via existing UDP soket "
+              << "regarding " << fqdn_ << "/" << id() << " to " << ep;
     parent_.server().dns().send(mb_->span(), get<0>(ep), cb);
 }
 
@@ -205,11 +236,14 @@ void Notifications::notify(const std::string& zoneFqdn)
 {
     lock_guard<mutex> lock{mutex_};
     if (auto it = notifiers_.find(zoneFqdn); it != notifiers_.end()) {
+        LOG_TRACE << "Notifications::notify - Using existing Notifier entry for "
+                   << zoneFqdn;
         it->second->cancel();
         it->second = make_shared<Notifier>(*this, zoneFqdn);
         return;
     }
 
+    LOG_TRACE << "Notifications::notify - Creating new Notifier for " << zoneFqdn;
     notifiers_[zoneFqdn] = make_shared<Notifier>(*this, zoneFqdn);
 }
 
@@ -231,6 +265,17 @@ std::shared_ptr<Notifications::Notifier> Notifications::getNotifier(const string
     }
 
     return {};
+}
+
+void Notifications::done(const string& zoneFqdn, uint32_t id)
+{
+    lock_guard<mutex> lock{mutex_};
+    if (auto it = notifiers_.find(zoneFqdn); it != notifiers_.end()) {
+        if (it->second->id() == id) {
+            LOG_TRACE << "Notifications::done - Removing completed Notifier for " << zoneFqdn << "/" << id;
+            notifiers_.erase(zoneFqdn);
+        }
+    }
 }
 
 } // ns

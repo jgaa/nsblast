@@ -82,6 +82,9 @@ int main(int argc, char* argv[]) {
         ("dns-enable-notify",
             po::value<bool>(&config.dns_enable_notify)->default_value(config.dns_enable_notify),
             "A master server sens DNS NOTIFY messages to slave servers when a zone is changed.")
+        ("dns-notify-port",
+            po::value<uint16_t>(&config.dns_notify_to_port)->default_value(config.dns_notify_to_port),
+           "Port number to send NOTIFY messages to when a zone change")
         ;
 
     po::options_description cmdline_options;

@@ -273,7 +273,8 @@ protected:
 struct RrInfo {
     uint16_t offset;
     uint16_t size;
-    uint16_t labelLen;
+    uint16_t labelLen:15;
+    uint16_t left; // Tag some times used by comparsion algorithms to select the appropriate buffer
 
     /*! The buffer after label and until (including) rdata) */
     span_t dataSpanAfterLabel(span_t buffer) const noexcept {
@@ -862,6 +863,7 @@ public:
         void setRa(bool flag);
         void setRcode(uint8_t rcode);
         void setRcode(Header::RCODE rcode);
+        void setOpcode(Header::OPCODE code);
 
 
     private:

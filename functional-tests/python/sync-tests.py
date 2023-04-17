@@ -55,6 +55,31 @@ def test_create_zone(global_data):
     print(r.text)
     assert r.ok
 
+    entry = """
+      a:
+        - 127.0.0.1
+    """
+
+    print('Creating ns1.example.com A entry')
+    url = global_data['master-url'] + '/rr/ns1.example.com'
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body)
+    print(r.text)
+    assert r.ok
+
+    entry = """
+      a:
+        - 127.0.0.2
+    """
+
+    print('Creating ns2.example.com A entry')
+    url = global_data['master-url'] + '/rr/ns2.example.com'
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body)
+    print(r.text)
+    assert r.ok
+
+
 def test_check_zone_on_master(global_data):
     dns = global_data['master-dns']
     answer = dns.resolve('example.com', 'SOA')
@@ -69,7 +94,7 @@ def test_setup_axfr_slave(global_data):
         "master": {
             "hostname": "127.0.0.1",
             "port": 5353,
-            "refresh": 5,
+            "refresh": 60,
             "strategy": "ixfr"
         }
     }
@@ -80,13 +105,13 @@ def test_setup_axfr_slave(global_data):
     assert r.ok
 
 def test_check_zone_on_slave(global_data):
-    time.sleep(10)
+    time.sleep(3)
     dns = global_data['slave-dns']
     answer = dns.resolve('example.com', 'SOA')
     assert answer.rrset.ttl == 1000
     soa = answer.rrset[0];
     assert soa.rdtype == 6
-    assert soa.serial == 1
+    assert soa.serial == 3
 
 def test_create_www(global_data):
     entry = """
@@ -108,13 +133,13 @@ def test_check_zone_on_master_after_update(global_data):
     assert answer.rrset.ttl == 1000
     soa = answer.rrset[0];
     assert soa.rdtype == 6
-    assert soa.serial == 2
+    assert soa.serial == 4
 
 def test_check_zone_on_slave_after_update(global_data):
-    time.sleep(15)
+    time.sleep(3)
     dns = global_data['slave-dns']
     answer = dns.resolve('example.com', 'SOA')
     assert answer.rrset.ttl == 1000
     soa = answer.rrset[0];
     assert soa.rdtype == 6
-    assert soa.serial == 2
+    assert soa.serial == 4

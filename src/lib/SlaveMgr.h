@@ -30,6 +30,8 @@ class Slave;
 
 class SlaveMgr {
 public:
+    using endpoint_t = std::variant<boost::asio::ip::udp::endpoint, boost::asio::ip::tcp::endpoint>;
+
     SlaveMgr(Server& server);
 
     void getZone(std::string_view fqdn, pb::Zone& zone);
@@ -41,6 +43,12 @@ public:
     void init();
     void reload(std::string_view fqdn);
     void reload(std::string_view fqdn, pb::Zone& zone);
+
+    /*! Called when we recieve a notify request
+     *
+     *  This method is thread-safe.
+     */
+    void onNotify(const std::string& fqdn, endpoint_t fromEp);
 
     auto& ctx() const noexcept {
         return server_.ctx();

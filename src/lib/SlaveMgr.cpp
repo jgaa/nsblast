@@ -121,5 +121,21 @@ void SlaveMgr::reload(string_view fqdn, pb::Zone &zone)
     }
 }
 
+void SlaveMgr::onNotify(const string &fqdn, SlaveMgr::endpoint_t fromEp)
+{
+
+    std::shared_ptr<Slave> slave;
+    {
+        lock_guard<mutex> lock{mutex_};
+        if (auto it = zones_.find(fqdn); it != zones_.end()) {
+            slave = it->second;
+        }
+    }
+
+    if (slave) {
+        slave->onNotify(get<0>(fromEp).address());
+    }
+}
+
 
 };

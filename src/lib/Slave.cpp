@@ -64,13 +64,14 @@ public:
 
         changed_ = true;
 
+        // Note: Dependency onm left or right buffer is identified by 'left' flag in each rrinfo
         struct Compare {
             Compare(span_t dleft, span_t dright)
                 : dleft_{dleft}, dright_{dright} {}
 
             bool operator()(const RrInfo& left, const RrInfo& right) const noexcept {
-                const auto ls = left.dataSpanAfterLabel(dleft_);
-                const auto rs = right.dataSpanAfterLabel(dright_);
+                const auto ls = left.dataSpanAfterLabel(left.left ? dleft_ : dright_);
+                const auto rs = right.dataSpanAfterLabel(right.left ? dleft_ : dright_);
 
                 auto res = memcmp(ls.data(), rs.data(), min(ls.size(), rs.size()));
                 if (res == 0) {
@@ -89,7 +90,10 @@ public:
 
         // Erase any deleted items from existing_.
         {
-            Compare cmp{sb_.buffer(), deleted_span_};
+            for(auto& e : deleted_) { e.left = true; }
+            for(auto& e : existing_) { e.left = false; }
+
+            Compare cmp{deleted_span_, sb_.buffer()};
             if (!deleted_.empty()) {
                 need_new_builder_ = true;
                 existing_.erase(
@@ -105,6 +109,9 @@ public:
 
         // Make a list of "added" items, not currently in existing_
         // Get new/changed entries
+        for(auto& e : added_) { e.left = true; }
+        for(auto& e : existing_) { e.left = false; }
+
         vector<rr_info_t> add;
         set_difference(added_.begin(), added_.end(), existing_.begin(), existing_.end(),
                        back_inserter(add), Compare(added_span_, sb_.buffer()));
@@ -241,8 +248,15 @@ void Slave::done() {
 
 void Slave::setTimer(uint32_t secondsInFuture)
 {
-    LOG_TRACE << "Slave::setTimer Setting timer for " << fqdn_
-              << ' ' << secondsInFuture << " seconds from now.";
+    if (notifications_) {
+        secondsInFuture = 1;
+        LOG_TRACE << "Slave::setTimer Setting timer for " << fqdn_
+                  << ' ' << secondsInFuture << " seconds from now. (have "
+                  << notifications_ << " notifications!";
+    } else {
+        LOG_TRACE << "Slave::setTimer Setting timer for " << fqdn_
+                  << ' ' << secondsInFuture << " seconds from now.";
+    }
 
     std::lock_guard<std::mutex> lock{mutex_};
     schedule_.expires_from_now(boost::posix_time::seconds{secondsInFuture});
@@ -253,8 +267,12 @@ void Slave::setTimer(uint32_t secondsInFuture)
             return;
         }
         if (ec) {
-            LOG_WARN << "Slave::setTimer - Timer for sync with zone " << self->fqdn_
+            if (ec == boost::asio::error::operation_aborted) {
+                LOG_TRACE << "Slave::setTimer: Timer aborted.";
+            } else {
+                LOG_WARN << "Slave::setTimer - Timer for sync with zone " << self->fqdn_
                      << " failed with error: " << ec.message();
+            }
         }
 
         self->sync();
@@ -263,6 +281,15 @@ void Slave::setTimer(uint32_t secondsInFuture)
 
 void Slave::sync()
 {
+    /* The logic is that the slave is either waiting for the timer
+     * or syncing. After a sync, a new timer is initiated and until
+     * is times out or is cancelled, there is no sync.
+     *
+     * If a notifivation is received, the timer is cancelled, and notifications_
+     * incremented. The notification will not interrupt an ongoing sync.
+     *
+     */
+    notifications_ = 0;
     boost::asio::spawn([this, self=shared_from_this()](boost::asio::yield_context yield) {
         try {
             sync(yield);
@@ -270,7 +297,6 @@ void Slave::sync()
             LOG_ERROR << "Slave::sync - Zone sync for " << self->fqdn_
                       << " failed with exception: " << ex.what();
         }
-
         self->setTimer(self->interval());
     });
 }
@@ -285,7 +311,10 @@ void Slave::sync(boost::asio::yield_context &yield)
                              to_string(PB_GET(zone_.master(), port, 53)),
                              yield);
 
-    current_remote_ep_ = socket.remote_endpoint();
+    {
+        lock_guard<mutex> lock{mutex_};
+        current_remote_ep_ = socket.remote_endpoint();
+    }
 
     // TODO: Create a timer.
     //   In the timer:
@@ -673,6 +702,34 @@ add:
               << " received from from master at " << current_remote_ep_
               << " using " << (isIxfr ? "IXFR" : "AXFR");
     trx.commit();
+}
+
+boost::asio::ip::tcp::endpoint Slave::remoteEndpoint() const noexcept
+{
+    std::lock_guard<std::mutex> lock{mutex_};
+    return current_remote_ep_;
+}
+
+void Slave::onNotify(boost::asio::ip::address address)
+{
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (done_) {
+        return;
+    }
+
+    if (current_remote_ep_.address() != address) {
+        LOG_WARN << "Slave::onNotify: Received NOTIFY from address " << address
+                 << " regarding zone " << fqdn_
+                 << ". My primary server's is " << current_remote_ep_;
+        return;
+    }
+
+    LOG_DEBUG << "Slave::onNotify: Acting on NOTIFY message for "
+              << fqdn_ << " from " << address;
+
+    ++notifications_;
+    boost::system::error_code ec;
+    schedule_.cancel(ec);
 }
 
 } // ns

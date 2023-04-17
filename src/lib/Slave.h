@@ -14,13 +14,18 @@ class SlaveMgr;
 
 class Slave : public std::enable_shared_from_this<Slave> {
 public:
+    using tcp_t = boost::asio::ip::tcp;
     Slave(SlaveMgr& mgr, std::string_view fqdn, const pb::Zone& zone);
 
     void start();
     void done();
 
+    tcp_t::endpoint remoteEndpoint() const noexcept;
+
+    /*! Called when the slave-server gets an NOTIFY request for the zone */
+    void onNotify(boost::asio::ip::address address);
+
 private:
-    using tcp_t = boost::asio::ip::tcp;
     using buffer_t = std::vector<char>;
     using yield_t = boost::asio::yield_context;
 
@@ -62,10 +67,11 @@ private:
     const pb::Zone zone_; // Configuration
     boost::asio::deadline_timer schedule_;
     std::optional<boost::asio::deadline_timer> timeout_;
-    std::mutex mutex_;;
+    mutable std::mutex mutex_;;
     std::atomic_bool done_{false};
     tcp_t::endpoint current_remote_ep_;
     uint16_t next_id = getRandomNumber16();
+    std::atomic_size_t notifications_ = 0;
 };
 
 } // ns

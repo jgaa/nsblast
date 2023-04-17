@@ -862,17 +862,22 @@ put:
     trx->commit();
     trx.reset();
 
-    if (!existing.hasRr()) {
-        return {201, "OK"};
-    }
-
     if (config_.dns_enable_notify) {
         try {
+            assert(newSoa.has_value());
+            LOG_TRACE << "RestApi::onResourceRecord - Notifying slave servers about update for "
+                      << lowercaseSoaFqdn << " with SOA version " << newSoa->serial();
             server_->notifications().notify(lowercaseSoaFqdn);
         } catch(const exception& ex) {
             LOG_WARN << "RestApi::onResourceRecord - Failed to notify slave servers about update of zone "
                      << lowercaseSoaFqdn;
         }
+    } else {
+        LOG_TRACE << "RestApi::onResourceRecord - NOTIFY is disabled. See Config.dns_enable_notify";
+    }
+
+    if (!existing.hasRr()) {
+        return {201, "OK"};
     }
 
     return  {};

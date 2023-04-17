@@ -9,6 +9,8 @@
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
 
+#include "SlaveMgr.h"
+
 #include "Notifications.h"
 
 using namespace std;
@@ -60,22 +62,29 @@ public:
         next();
     }
 
+    bool isUdp() const noexcept override {
+        return true;
+    }
+
     void send(span_t data,  DnsEngine::udp_t::endpoint ep,
               std::function<void(boost::system::error_code ec)> cb) {
 
         if (socket_.is_open()) {
 
-             boost::asio::const_buffer cb{data.data(), data.size()};
+            LOG_TRACE << "UdpEndpoint::send - Sending DNS message to "
+                      << ep << " on UDP " << socket_.local_endpoint();
+
+            boost::asio::const_buffer cb{data.data(), data.size()};
             socket_.async_send_to(cb, ep, [this, ep] (const boost::system::error_code& error,
                                   std::size_t /*bytes*/) mutable {
                 if (error) {
-                    LOG_DEBUG << "DNS message to " << ep
+                    LOG_DEBUG << "UdpEndpoint::send - DNS message to " << ep
                              << " on UDP " << socket_.local_endpoint()
                              << " failed: " << error.message();
                     return;
                 }
 
-                LOG_TRACE << "Successfully SENT DNS message to "
+                LOG_TRACE << "UdpEndpoint::send - Successfully SENT DNS message to "
                           << ep << " on UDP " << socket_.local_endpoint();
             });
 
@@ -665,6 +674,8 @@ void DnsEngine::send(span_t data, boost::asio::ip::udp::endpoint ep,
             }
         }
     }
+
+    LOG_WARN << "DnsEngine::send - Found no appropriate handlerf for message to " << ep;
 }
 
 void DnsEngine::handleNotify(const DnsEngine::Request &request,
@@ -701,7 +712,7 @@ void DnsEngine::handleNotify(const DnsEngine::Request &request,
     if (rr.clas() != CLASS_IN) {
         if (rr.type() != TYPE_SOA) {
             LOG_DEBUG << "Request " << request.uuid << " has opcode NOTIFY "
-                      << " but the querry is not for CLASS_IN. I don't support that.";
+                      << " but the querry is not for CLASS_IN. I do`n't support that.";
             if (mb) {
                 mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
             }
@@ -712,10 +723,14 @@ void DnsEngine::handleNotify(const DnsEngine::Request &request,
     const auto fqdn = toLower(rr.labels().string());
 
     if (is_reply) {
+        LOG_TRACE << "DnsEngine::handleNotify - Dealing with reply for zone "
+                  << fqdn << " with id " << mhdr.id();
         server_.notifications().notified(fqdn, request.endpoint, mhdr.id());
     } else {
-        // Tell slavemgr to handle it
-        // Reply
+        LOG_TRACE << "DnsEngine::handleNotify - Dealing with a new NOTIFY message for zone "
+                  << fqdn << " with id " << mhdr.id();
+
+        server_.slave().onNotify(fqdn, request.endpoint);
     }
 }
 
