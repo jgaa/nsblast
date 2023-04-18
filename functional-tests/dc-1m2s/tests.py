@@ -1,7 +1,7 @@
-# This test assumes that the server is just bootstrapped and contains no zones.
-# For example:
-#    rm -rf /tmp/nsblast; LD_LIBRARY_PATH=/opt/boost_1_81_0/stage/lib ./bin/nsblast --db-path /tmp/nsblast --dns-udp-port 5353 --http-port 8080 -l trace --dns-endpoint 127.0.0.1
-
+# This test is designed to be run with run.sh in this folder.
+#
+# example: bash run.sh
+#
 
 import requests
 import yaml
