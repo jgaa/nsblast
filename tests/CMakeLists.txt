@@ -32,6 +32,7 @@ target_include_directories(dns_messages_tests
 
 target_link_libraries(dns_messages_tests
     ${GTEST_LIBRARIES}
+    yahat
     nsblastlib
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
