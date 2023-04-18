@@ -1,0 +1,27 @@
+version: "3.0"
+
+services:
+  master:
+    image: lastviking/nsblast
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
+    # The cursed avahi-daemon use udp port 5353, so we can't safely use that :/
+    ports:
+      - "127.0.0.1:8080:80"
+      - "127.0.0.1:5354:53/tcp"
+      - "127.0.0.1:5354:53/udp"
+
+  slave-axfr:
+    image: lastviking/nsblast
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
+    ports:
+      - "127.0.0.1:8081:80"
+      - "127.0.0.1:5355:53/tcp"
+      - "127.0.0.1:5355:53/udp"
+      
+  slave-ixfr:
+    image: lastviking/nsblast
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
+    ports:
+      - "127.0.0.1:8082:80"
+      - "127.0.0.1:5356:53/tcp"
+      - "127.0.0.1:5357:53/udp"
