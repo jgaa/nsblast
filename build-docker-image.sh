@@ -11,6 +11,7 @@ tag=latest
 strip=false
 debug=false
 push=false
+clean=false
 cmake_build_type=Release
 image_tag=$project
 build_image="${project}bld:latest"
@@ -26,6 +27,7 @@ usage() {
   echo "Options:"
   echo "  --debug       Compile with debugging enabled"
   echo "  --strip       Strip the binary (makes backtraces less useful)"
+  echo "  --clean       Perform a full, new build."
   echo "  --push        Push the image to a docker registry"
   echo "  --tag tagname Tag to '--push' to. Defaults to 'latest'"
   echo "  --scripted    Assume that the command is run from a script"
@@ -68,6 +70,11 @@ while [ $# -gt 0 ];  do
         --push)
             shift
             push=true
+            ;;
+            
+        --clean)
+            shift
+            clean=true
             ;;
 
         --tag)
@@ -114,6 +121,17 @@ if [ -z ${SOURCE_DIR+x} ]; then
 fi
 
 echo "Starting the build process in dir: ${BUILD_DIR}"
+
+if [ "$clean" = true ] ; then
+  if [[ ! "$(docker images -q ${build_image} 2> /dev/null)" == "" ]]; then
+    echo "Removing build-image: ${build_image}"
+    docker rmi ${build_image}
+  fi
+  if [ -d "${BUILD_DIR}" ]; then
+    echo "Cleaning the build-dir: ${BUILD_DIR}"
+    rm -rf "${BUILD_DIR}"
+  fi
+fi
 
 build_bldimage
 
