@@ -57,10 +57,10 @@ struct Config {
     std::string dns_endpoint = "localhost";
 
     /*! The UDP port to listen to */
-    std::string dns_udp_port = "domain";
+    std::string dns_udp_port = "53";
 
     /*! The TCP port to listen to */
-    std::string dns_tcp_port = "domain";
+    std::string dns_tcp_port = "53";
 
     /*! The default tts set on Record Sets (including the SOA) if the ttl is not set in the Json Entry when creating the entry. */
     uint32_t default_ttl = DEFAULT_TTL;
