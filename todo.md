@@ -81,24 +81,24 @@ Other types
 
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
-- [ ] Write transaction log to rocksdb
+- x ] Write transaction log to rocksdb
 - [ ] Allow slaves to subscribe to SSE for zones that change
-- [ ] Allow zone transfers to slaves
+- [x] Allow zone transfers to slaves
 - [ ] Allow slaves to query for a list of all zones and their soa version
-- [ ] Call slave servers hat are on-line to get noitificatiosn when zones are up to date after a change. 
+- [ ] Call slave servers that are on-line to get noitificatiosn when zones are up to date after a change. 
 
 # Slave DNS 
 - [x] Handle configuration-based Slave setup (interoperatibility with other servers)
   - [x] API endpoint to tell an instance that it is a slave for a specific zone and it's master's IP.
   - [x] AXFR client to fetch/refresh a slave zone
 - [ ] Startup procedure 
-    - [ ] Subscribe to zone changes
+    - [x] Subscribe to zone changes
     - [ ] Get a list of all zones and their current version (bootstrap)
     - [ ] Add optimization so we only get zones that have changed since we went off-line. 
-    - [ ] Get all zones that are not up to date from the master
-    - [ ] Make sure we have the latest soa version for all zones
+    - [x] Get all zones that are not up to date from the master
+    - [x] Make sure we have the latest soa version for all zones
     - [ ] Tell the master server that we are ready and willing to provide SSE updates for zones we have updated.
-    - [ ] Start answering requests
+    - [x] Start answering requests
 - [ ] Reconnect to the master server when we lose the connection.
 
 # API
@@ -106,10 +106,14 @@ Other types
 - [ ] Delete a RR type from a fqdn
 - [ ] DDNS service to allow users to use the DNS for their home networks
 - [ ] Import/export zones via a standard DNS zone file
+- [ ] Import/export zones via a json file
 
 # System
-- [ ] Backup (user rocksdb's built-in backup)
-- [ ] Restore (user rocksdb's built-in restore)
+- [ ] System Backup to json file
+- [ ] System Restore from json file
+- [ ] System Backup (use rocksdb's built-in backup)
+- [ ] System Restore (use rocksdb's built-in restore)
+
 - [ ] Make sure rocksdb's performance analytics works
 - [ ] Allow changing the log-level from the API
 - [ ] Add Yaml config file
@@ -135,8 +139,8 @@ Other types
 - [ ] Merge - PATCH rr: (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
 
 # Functional tests
-- [ ] Functional tests for the API (python)
-- [ ] Functional tests for the DNS interface (see if we can re-use tests for other open source DNS servers)
+- [x] Functional tests for the API (python)
+- [x] Functional tests for the DNS interface (see if we can re-use tests for other open source DNS servers)
 
 # Performance tests
 - [ ] See what other open source DNS servers use/do
@@ -146,7 +150,7 @@ Other types
 - [ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
 
 # Tests
-- [ ] Automatic replication to child zone using AXFR and timeout polling
+- [x] Automatic replication to child zone using AXFR and timeout polling
 - [ ] child-zones are excluded from AXFR
 - [ ] AXFR for non-existant key returns NAME_ERROR
 - [ ] AXFR for valid key inside a zone (but not the key for the SOA) returns NAME_ERROR
@@ -155,3 +159,8 @@ Other types
 
 # CI
 - [x] Compile to docker image
+- [ ] Automated CI pipeline
+ - [ ] build
+ - [ ] run unit-tests
+ - [ ] run functional tests
+ - [ ] push docker image somewhere
