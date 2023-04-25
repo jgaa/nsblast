@@ -163,4 +163,4 @@ Other types
  - [ ] build
  - [ ] run unit-tests
  - [ ] run functional tests
- - [ ] push docker image somewhere
+ - [ ] push docker-image somewhere
