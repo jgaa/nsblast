@@ -81,7 +81,7 @@ Other types
 
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
-- x ] Write transaction log to rocksdb
+- [x] Write transaction log to rocksdb
 - [ ] Allow slaves to subscribe to SSE for zones that change
 - [x] Allow zone transfers to slaves
 - [ ] Allow slaves to query for a list of all zones and their soa version
