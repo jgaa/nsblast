@@ -104,20 +104,20 @@ uint16_t getRandomNumber16()
 }
 
 // Modified from ChatGPT generated code
-vector<char> base64Decode(const string_view base64_data) {
+vector<char> base64Decode(const string_view in) {
     std::vector<char> binary_data;
-    binary_data.reserve((base64_data.size() / 4) * 3);
+    binary_data.reserve((in.size() / 4) * 3);
 
     static constexpr string_view base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789+/";
 
-    for (std::size_t i = 0; i < base64_data.size(); i += 4) {
-      const int index1 = base64_chars.find(base64_data[i]);
-      const int index2 = base64_chars.find(base64_data[i + 1]);
-      const int index3 = base64_chars.find(i + 2 < base64_data.size() ? base64_data[i + 2] : '=');
-      const int index4 = base64_chars.find(i + 3 < base64_data.size() ? base64_data[i + 3] : '=');
+    for (std::size_t i = 0; i < in.size(); i += 4) {
+      const int index1 = base64_chars.find(in[i]);
+      const int index2 = base64_chars.find(in[i + 1]);
+      const int index3 = base64_chars.find(i + 2 < in.size() ? in[i + 2] : '=');
+      const int index4 = base64_chars.find(i + 3 < in.size() ? in[i + 3] : '=');
 
       const int a = (index1 << 2) | (index2 >> 4);
       const int b = ((index2 & 0xf) << 4) | (index3 >> 2);
@@ -132,19 +132,19 @@ vector<char> base64Decode(const string_view base64_data) {
 }
 
 // Modified from ChatGPT generated code
-string Base64Encode(const span_t binary_data)
+string Base64Encode(const span_t in)
 {
     static constexpr std::string_view base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789+/";
     string base64_data;
-    base64_data.reserve(((binary_data.size() + 2) / 3) * 4);
+    base64_data.reserve(((in.size() + 2) / 3) * 4);
 
-    for (std::size_t i = 0; i < binary_data.size(); i += 3) {
-      const int a = binary_data[i];
-      const int b = i + 1 < binary_data.size() ? binary_data[i + 1] : 0;
-      const int c = i + 2 < binary_data.size() ? binary_data[i + 2] : 0;
+    for (std::size_t i = 0; i < in.size(); i += 3) {
+      const int a = in[i];
+      const int b = i + 1 < in.size() ? in[i + 1] : 0;
+      const int c = i + 2 < in.size() ? in[i + 2] : 0;
 
       const int index1 = (a >> 2) & 0x3f;
       const int index2 = ((a & 0x3) << 4) | ((b >> 4) & 0xf);
@@ -153,8 +153,8 @@ string Base64Encode(const span_t binary_data)
 
       base64_data.push_back(base64_chars[index1]);
       base64_data.push_back(base64_chars[index2]);
-      base64_data.push_back(i + 1 < binary_data.size() ? base64_chars[index3] : '=');
-      base64_data.push_back(i + 2 < binary_data.size() ? base64_chars[index4] : '=');
+      base64_data.push_back(i + 1 < in.size() ? base64_chars[index3] : '=');
+      base64_data.push_back(i + 2 < in.size() ? base64_chars[index4] : '=');
     }
 
     return base64_data;

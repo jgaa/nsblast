@@ -2,6 +2,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/spawn.hpp>
+#include <utility>
 
 #include "SlaveMgr.h"
 #include "Slave.h"
@@ -228,8 +229,8 @@ public:
 
 } // anon ns
 
-Slave::Slave(SlaveMgr &mgr, std::string_view fqdn, const pb::Zone& zone)
-    : mgr_{mgr}, fqdn_{fqdn}, zone_{zone}, schedule_{mgr.ctx()}
+Slave::Slave(SlaveMgr &mgr, std::string_view fqdn, pb::Zone  zone)
+    : mgr_{mgr}, fqdn_{fqdn}, zone_{std::move(zone)}, schedule_{mgr.ctx()}
 {
 }
 
@@ -325,7 +326,7 @@ void Slave::sync(boost::asio::yield_context &yield)
 
     if (strategy == "ixfr") {
         return doIxfr(socket, yield);
-    } else if (strategy == "axfr") {
+    } if (strategy == "axfr") {
         if (isZoneUpToDate(socket, yield)) {
             return;
         }
@@ -710,7 +711,7 @@ boost::asio::ip::tcp::endpoint Slave::remoteEndpoint() const noexcept
     return current_remote_ep_;
 }
 
-void Slave::onNotify(boost::asio::ip::address address)
+void Slave::onNotify(const boost::asio::ip::address& address)
 {
     std::lock_guard<std::mutex> lock{mutex_};
     if (done_) {

@@ -125,6 +125,9 @@ struct Config {
     /*! Port to send NOTIFY reqests to */
     uint16_t dns_notify_to_port = 53;
 
+    /*! TTL for HINFO response */
+    uint32_t dns_hinfo_ttl = 86400; // one day
+
     ///@}
 
     /*! \name HTTP */

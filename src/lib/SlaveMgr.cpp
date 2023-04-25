@@ -48,7 +48,7 @@ void SlaveMgr::replaceZone(string_view fqdn, const pb::Zone& zone)
     reload(fqdn);
 }
 
-void SlaveMgr::mergeZone(string_view fqdn, const pb::Zone& zone)
+void SlaveMgr::mergeZone(string_view  /*fqdn*/, const pb::Zone&  /*zone*/)
 {
     assert(false); // Not implemnted
 }

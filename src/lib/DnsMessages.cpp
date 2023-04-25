@@ -88,8 +88,8 @@ MessageBuilder::createHeader(uint16_t id, bool qr, Message::Header::OPCODE opcod
     uint16_t bits = {};
 
     // We use hdrbits to address small unsigned integers and bits inside a 2 octets memory location.
-    assert(sizeof(hdrbits) == 2);
-    assert(sizeof(hdrbits) == sizeof(bits));
+    static_assert(sizeof(hdrbits) == 2);
+    static_assert(sizeof(hdrbits) == sizeof(bits));
 
     auto opcodeValue = static_cast<uint8_t>(opcode);
     if (opcodeValue >= static_cast<char>(Header::OPCODE::RESERVED_)) {
@@ -407,7 +407,7 @@ StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, co
     auto addr = boost::asio::ip::address::from_string(string{ip});
     if (addr.is_v4()) {
         return createA(fqdn, ttl, addr.to_v4());
-    } else if (addr.is_v6()) {
+    } if (addr.is_v6()) {
         return createA(fqdn, ttl, addr.to_v6());
     }
 
@@ -443,9 +443,9 @@ StorageBuilder::NewRr StorageBuilder::addRr(const Rr &rr)
 
 void StorageBuilder::replaceSoa(const RrSoa &soa)
 {
-    for(auto it = index_.begin(); it != index_.end(); ++it) {
-        if (it->type == TYPE_SOA) {
-            RrSoa old_soa{buffer_, it->offset};
+    for(auto & it : index_) {
+        if (it.type == TYPE_SOA) {
+            RrSoa old_soa{buffer_, it.offset};
 
             auto old_area = old_soa.dataSpanAfterLabel();
             auto new_area = soa.dataSpanAfterLabel();
@@ -469,7 +469,7 @@ void StorageBuilder::replaceSoa(const RrSoa &soa)
 void StorageBuilder::finish()
 {
     assert(!finished_);
-    assert(BUFFER_HEADER_LEN == sizeof(Header));
+    static_assert(BUFFER_HEADER_LEN == sizeof(Header));
 
     if (buffer_.size() < sizeof(Header)) {
         throw runtime_error{"StorageBuilder::finish: No room in buffer_ for the header."};
@@ -525,7 +525,7 @@ void StorageBuilder::finish()
     buffer_.insert(buffer_.end(), index.begin(), index.end());
 
     // Commit the header
-    Header *h = reinterpret_cast<Header *>(buffer_.data());
+    auto *h = reinterpret_cast<Header *>(buffer_.data());
     *h = {};
     h->flags = flags_;
     h->rrcount = htons(static_cast<uint16_t>(index_.size()));
@@ -877,7 +877,7 @@ Message::Message(span_t span)
     createIndex();
 }
 
-const Message::Header Message::header() const
+Message::Header Message::header() const
 {
     return Header{span_};
 }
@@ -906,12 +906,13 @@ void Message::createIndex()
     }
 
     // Now, go trough each RR section.
-    size_t offset = hdr.SIZE;
+    size_t offset = nsblast::lib::Message::Header::SIZE;
     size_t sectionIndex = 0;
     for(auto sectionCount : {hdr.qdcount(), hdr.ancount(), hdr.nscount(), hdr.arcount()}) {
         if (sectionCount) {
-            rrsets_.at(sectionIndex).emplace(span_, offset, sectionCount, sectionIndex == 0);
-            offset += rrsets_[sectionIndex]->bytes();
+            auto& rs = rrsets_.at(sectionIndex);
+            rs.emplace(span_, offset, sectionCount, sectionIndex == 0);
+            offset += rs->bytes();
         } else {
             rrsets_.at(sectionIndex).reset();
         }
@@ -1117,12 +1118,12 @@ Labels::Iterator Labels::Iterator::operator++(int) {
 
 void Labels::Iterator::update() {
     if (!buffer_.empty()) {
-        const auto *b =  buffer_.data() + current_loc_ + 1;
-        const auto len = static_cast<size_t>(buffer_[current_loc_]);
+        const auto *b =  buffer_.data() + static_cast<size_t>(current_loc_) + 1;
+        const auto len = static_cast<uint8_t>(buffer_[current_loc_]);
 
         csw_ = {b, len};
 
-        if (csw_.size() == 0) {
+        if (csw_.empty()) {
             // Root node. Don't point to anything
             csw_ = {};
         } else {
@@ -1425,7 +1426,7 @@ uint16_t RrSoa::serialOffset() const
     assert(diff >= 0);
     assert(diff < static_cast<decltype(diff)>(buffer_view_.size()));
 
-    int offset = diff + (rdata().size() - 20);
+    auto offset = diff + (static_cast<long>(rdata().size()) - 20);
     assert(offset < static_cast<decltype(offset)>(buffer_view_.size()));
     assert(offset > 0);
     return static_cast<uint16_t>(offset);
@@ -1631,7 +1632,7 @@ RrOpt::RrOpt(uint16_t version, uint16_t rcode, uint16_t bufferLen)
     ttlbits.extRcode = rcb.opt;
     ttlbits.version = version;
 
-    assert(sizeof(ttlbits) == 4);
+    static_assert(sizeof(ttlbits) == 4);
     memcpy(buffer_.data() + offset, &ttlbits, 4);
     offset += 4;
     setValueAt(buffer_, offset, static_cast<uint16_t>(0)); // rdlength

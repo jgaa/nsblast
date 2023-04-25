@@ -116,7 +116,8 @@ void createDiffSequence(StorageBuilder& sb,
         return res < 0;
     };
 
-    vector<Entry::Iterator> older, newer;
+    vector<Entry::Iterator> older;
+    vector<Entry::Iterator> newer;
     for(auto it = oldContent.begin(); it != oldContent.end(); ++it) {
         older.push_back(it);
     }
@@ -208,7 +209,7 @@ RestApi::RestApi(Server& server)
 RestApi::RestApi(const Config &config, ResourceIf &resource)
     : config_{config}, resource_{resource} {}
 
-Response RestApi::onReqest(const Request &req, const Auth &auth)
+Response RestApi::onReqest(const Request &req, const Auth & /*auth*/)
 {
     const auto p = parse(req);
 
@@ -352,7 +353,7 @@ void RestApi::validateZone(const boost::json::value &json)
 }
 
 void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
-                    const boost::json::value json, bool finish)
+                    const boost::json::value& json, bool finish)
 {
     static const boost::unordered_flat_map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
@@ -362,9 +363,13 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
     {"soa", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         // TODO: Set reasonable defaults
-        uint32_t refresh = 1000, retry = 1000, expire = 1000, minimum = 1000,
-                serial = 1;
-        string_view mname, rname;
+        uint32_t refresh = 1000;
+        uint32_t retry = 1000;
+        uint32_t expire = 1000;
+        uint32_t minimum = 1000;
+        uint32_t serial = 1;
+        string_view mname;
+        string_view rname;
 
         boost::unordered_flat_map<string_view, uint32_t *> nentries = {
             {"refresh", &refresh},
@@ -402,7 +407,9 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 throw Response{400, "Json element 'srv' must be an array of objects(s)"};
             }
 
-            uint32_t priority = 0, weight = 0, port = 0;
+            uint32_t priority = 0;
+            uint32_t weight = 0;
+            uint32_t port = 0;
             string_view target;
 
             boost::unordered_flat_map<string_view, uint32_t *> nentries = {
@@ -459,7 +466,8 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             throw Response{400, "Hinfo must be an object"};
         }
 
-        string_view cpu, os;
+        string_view cpu;
+        string_view os;
 
         for(const auto& a : v.as_object()) {
              if (a.key() == "cpu") {
@@ -478,7 +486,8 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             throw Response{400, "rp must be an object"};
         }
 
-            string_view mbox, txt;
+            string_view mbox;
+            string_view txt;
 
             for(const auto& a : v.as_object()) {
                  if (a.key() == "mbox") {

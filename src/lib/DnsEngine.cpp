@@ -22,7 +22,7 @@ namespace {
 
 struct UdpRequest : public DnsEngine::Request {
     boost::asio::ip::udp::endpoint sender_endpoint;
-    std::array<char, MAX_UDP_QUERY_BUFFER> buffer_in;
+    std::array<char, MAX_UDP_QUERY_BUFFER> buffer_in{};
 
     void setBufferLen(size_t bytes) {
         span = {buffer_in.data(), bytes};
@@ -30,7 +30,7 @@ struct UdpRequest : public DnsEngine::Request {
 };
 
 struct TcpRequest : public DnsEngine::Request {
-    std::array<char, 2> size_buffer;
+    std::array<char, 2> size_buffer{};
     std::vector<char> buffer_in;
 
     void setBufferLen() {
@@ -41,7 +41,7 @@ struct TcpRequest : public DnsEngine::Request {
 
 class UdpEndpoint : public DnsEngine::Endpoint {
 public:
-    UdpEndpoint(DnsEngine& parent, DnsEngine::udp_t::endpoint ep)
+    UdpEndpoint(DnsEngine& parent, const DnsEngine::udp_t::endpoint& ep)
         : DnsEngine::Endpoint(parent), socket_{parent.ctx()}
     {
         if (ep.address().is_v4()) {
@@ -62,12 +62,12 @@ public:
         next();
     }
 
-    bool isUdp() const noexcept override {
+    [[nodiscard]] bool isUdp() const noexcept override {
         return true;
     }
 
-    void send(span_t data,  DnsEngine::udp_t::endpoint ep,
-              std::function<void(boost::system::error_code ec)> cb) {
+    void send(span_t data,  const DnsEngine::udp_t::endpoint& ep,
+              const std::function<void(boost::system::error_code ec)>& /*cb*/) {
 
         if (socket_.is_open()) {
 
@@ -176,7 +176,7 @@ public:
         });
     }
 
-    DnsEngine::udp_t::endpoint localEndpoint() const {
+    [[nodiscard]] DnsEngine::udp_t::endpoint localEndpoint() const {
         return socket_.local_endpoint();
     }
 
@@ -187,13 +187,14 @@ private:
 class TcpEndpoint : public DnsEngine::Endpoint {
 public:
     class Session {
-        Session();
+    public:
+        Session() = delete;
 
     private:
         DnsEngine::tcp_t::socket socket_;
     };
 
-    TcpEndpoint(DnsEngine& parent, DnsEngine::tcp_t::endpoint ep)
+    TcpEndpoint(DnsEngine& parent, const DnsEngine::tcp_t::endpoint& ep)
         : DnsEngine::Endpoint(parent)
         , acceptor_{parent.ctx(), ep}
 
@@ -659,8 +660,8 @@ DnsEngine::getQtypeAllResponse(const Request &req, uint16_t type) const
     return parse(req.is_tcp ? config().tcp_qany_response : config().udp_qany_response);
 }
 
-void DnsEngine::send(span_t data, boost::asio::ip::udp::endpoint ep,
-                     std::function<void (boost::system::error_code)> cb)
+void DnsEngine::send(span_t data, const boost::asio::ip::udp::endpoint& ep,
+                     const std::function<void (boost::system::error_code)>& cb)
 {
     // TODO: We may need to find the best/correct interface for the message based on
     //       subnet or public/private network
@@ -833,7 +834,6 @@ void DnsEngine::doAxfr(const DnsEngine::Request &request,
     flushIf(mb, hdr, *rr, request, message, out_buffer_len, send);
     auto ok = mb->addRr(*rr, hdr, MessageBuilder::Segment::ANSWER);
     assert(ok);
-    return;
 }
 
 void DnsEngine::doIxfr(const DnsEngine::Request &request,
@@ -1026,7 +1026,8 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
     const auto opcode = mhdr.opcode();
     if (opcode == Message::Header::OPCODE::NOTIFY) [[unlikely]] {
         return handleNotify(request, message, mhdr, mb);
-    } else if (opcode != Message::Header::OPCODE::QUERY) [[unlikely]] {
+    }
+    if (opcode != Message::Header::OPCODE::QUERY) [[unlikely]] {
         mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
         return;
     }
@@ -1091,7 +1092,7 @@ again:
 
             if (qtall_resp == QtypeAllResponse::HINFO) {
                 StorageBuilder sb;
-                sb.createHinfo(orig_fqdn.string(), 86400 /* one day */, "RFC8482", {});
+                sb.createHinfo(orig_fqdn.string(), config().dns_hinfo_ttl , "RFC8482", {});
                 sb.finish();
                 Entry entry{sb.buffer()};
                 assert(!entry.empty());
@@ -1175,8 +1176,6 @@ again:
     // Should we add nameservers in the auth section?
 
     // Add additional information as appropriate
-
-    return;
 }
 
 void DnsEngine::startEndpoints()

@@ -769,7 +769,7 @@ public:
      */
     Message(span_t span);
 
-    const Header header() const;
+    Header header() const;
 
     RrList& getQuestions() const {
         return getRrSet(0);

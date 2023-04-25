@@ -64,7 +64,7 @@ public:
         DnsEngine& parent_;
     };
 
-    DnsEngine(Server& resource);
+    DnsEngine(Server& server);
 
     ~DnsEngine();
 
@@ -116,8 +116,8 @@ public:
     }
 
     // Send an UDP message
-    void send(span_t data, udp_t::endpoint ep,
-              std::function<void(boost::system::error_code ec)> cb);
+    void send(span_t data, const udp_t::endpoint& ep,
+              const std::function<void(boost::system::error_code ec)>& cb);
 
 private:
     using endpoints_t = std::vector<std::shared_ptr<Endpoint>>;
