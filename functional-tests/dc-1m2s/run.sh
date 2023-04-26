@@ -18,7 +18,8 @@ sleep 3
 pytest tests.py
 rval=$?
 
-docker-compose kill -s SIGINT
+docker-compose kill -s SIGQUIT
+docker-compose down --timeout 1
 
 echo "Exiting with: ${rval}" 
 exit $rval
