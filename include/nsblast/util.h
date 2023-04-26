@@ -286,15 +286,15 @@ namespace nsblast::lib {
     // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
     template <typename T>
     struct ScopedExit {
-        ScopedExit(const T& fn)
-            : fn_{fn} {}
+        ScopedExit(T&& fn)
+            : fn_{std::move(fn)} {}
 
         ~ScopedExit() {
             fn_();
         }
 
     private:
-        const T& fn_;
+        T fn_;
     };
 
 } // ns

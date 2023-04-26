@@ -1477,7 +1477,14 @@ Entry::Entry(boost::span<const char> buffer)
 RrSoa Entry::getSoa() const
 {
     assert(hasSoa());
-    return {buffer(), begin()->offset()};
+    assert(begin() != end());
+    for(const auto& rr : *this) {
+        if (rr.type() == TYPE_SOA) {
+             return {buffer(), begin()->offset()};
+        }
+    }
+
+    throw runtime_error{"Entry::getSoa(): Found no soa!"};
 }
 
 
@@ -1729,6 +1736,7 @@ MutableRrSoa &MutableRrSoa::operator =(const RrSoa &soa)
     buffer_view_ = buffer_;
     offset_ = nh.offset();
     parse(false);
+    return *this;
 }
 
 void MutableRrSoa::incVersion()
