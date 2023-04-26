@@ -46,6 +46,7 @@ RocksDbResource::Transaction::Transaction(RocksDbResource &owner)
 
 RocksDbResource::Transaction::~Transaction()
 {
+    LOG_TRACE << "Ending transaction " << uuid();
     if (trx_) {
         try {
             rollback();
@@ -53,8 +54,9 @@ RocksDbResource::Transaction::~Transaction()
             LOG_WARN << "RocksDbResource::Transaction::~Transaction - Caught exception from rollback(): "
                      << ex.what();
         }
-    }
 
+        trx_.reset();
+    }
 }
 
 ResourceIf::TransactionIf::RrAndSoa
@@ -338,7 +340,27 @@ RocksDbResource::RocksDbResource(const Config &config)
 
 RocksDbResource::~RocksDbResource()
 {
+    // https://stackoverflow.com/questions/56173836/rocksdb-assertion-last-ref-failed-when-closing-db-while-using-unique-pointers
     if (db_) {
+        LOG_TRACE << "RocksDbResource::~RocksDbResource - Removing ColumnFamilyHandle ...";
+        for(auto fh : cfh_) {
+            if (fh) {
+                LOG_TRACE << "RocksDbResource::~RocksDbResource - ... " << fh->GetName();
+
+                if (fh->GetName() != "default") {
+                    db_->DropColumnFamily(fh);
+                }
+                db_->DestroyColumnFamilyHandle(fh);
+            }
+        }
+
+        LOG_TRACE << "RocksDbResource::~RocksDbResource - Closing db_";
+        const auto result = db_->Close();
+        if (!result.ok()) {
+            LOG_ERROR << "RocksDbResource::~RocksDbResource - Failed to close the database: "
+                      << result.ToString();
+        }
+
         LOG_TRACE << "RocksDbResource::~RocksDbResource - deleting db_";
         delete db_;
     }
@@ -360,12 +382,13 @@ void RocksDbResource::init()
 }
 
 rocksdb::ColumnFamilyHandle *RocksDbResource::handle(const ResourceIf::Category category) {
-    const auto ix = static_cast<size_t>(category) + 1;
-    if (ix >= ZONE && ix <= DIFF) {
+    const auto ix = static_cast<size_t>(category);
+    assert(ix <= cfh_.size());
+    if (ix < cfh_.size()) {
         return cfh_[ix];
     }
 
-    throw runtime_error{"handle: Unknown RocksDB Category "s + std::to_string(ix -1)};
+    throw runtime_error{"handle: Unknown RocksDB Category "s + std::to_string(ix)};
 }
 
 void RocksDbResource::prepareDirs()
@@ -412,11 +435,12 @@ void RocksDbResource::bootstrap()
     rocksdb::ColumnFamilyOptions o;
 
     for(const auto& cf: cfd_) {
-        cfh_.emplace_back();
-
         if (cf.name == "default") {
+            cfh_.emplace_back(db_->DefaultColumnFamily());
             continue; // crazyness in action
         }
+
+        cfh_.emplace_back(nullptr);
 
         LOG_TRACE << "Creating column family " << cf.name;
         const auto r = db_->CreateColumnFamily(cf.options, cf.name, &cfh_.back());

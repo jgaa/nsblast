@@ -1021,7 +1021,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
 
     bool do_reply = true;
 
-    ScopedExit se{[&] {
+    ScopedExit se{[&mb, &do_reply, &send] {
         if (do_reply && mb) {
             mb->finish();
             send(mb, true);

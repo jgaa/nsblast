@@ -14,9 +14,11 @@ namespace nsblast::lib {
 class ResourceIf {
 public:
     enum class Category {
+        DEFAULT,
         ZONE,
         ENTRY,
-        DIFF
+        DIFF,
+        ACCOUNT
     };
 
     /*! Real index key.

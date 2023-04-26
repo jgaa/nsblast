@@ -34,132 +34,140 @@ const char query_example_com[] =
 TEST(DnsEngine, requestQueryA) {
 
     MockServer ms;
-    ms->createTestZone();
-    ms->createWwwA();
+    {
+        ms->createTestZone();
+        ms->createWwwA();
 
-    DnsEngine dns{ms};
+        DnsEngine dns{ms};
 
-    DnsEngine::Request req;
-    req.span = query_www_example_com;
+        DnsEngine::Request req;
+        req.span = query_www_example_com;
 
-    Message orig{query_www_example_com};
+        Message orig{query_www_example_com};
 
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
     }
 }
 
 TEST(DnsEngine, requestAllRespAll) {
 
     MockServer ms;
-    ms->config().udp_qany_response = "all";
-    ms->createTestZone();
+    {
+        ms->config().udp_qany_response = "all";
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query_example_com;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query_example_com;
 
-    Message orig{query_example_com};
+        Message orig{query_example_com};
 
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 10);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 10);
 }
 
 TEST(DnsEngine, requestAllRespRelevant) {
 
     MockServer ms;
-    ms->config().udp_qany_response = "relevant";
-    ms->createTestZone();
+    {
+        ms->config().udp_qany_response = "relevant";
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query_example_com;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query_example_com;
 
-    Message orig{query_example_com};
+        Message orig{query_example_com};
 
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 5);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 5);
 }
 
 TEST(DnsEngine, requestAllRespHinfo) {
 
     MockServer ms;
-    ms->config().udp_qany_response = "hinfo";
-    ms->createTestZone();
+    {
+        ms->config().udp_qany_response = "hinfo";
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query_example_com;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query_example_com;
 
-    Message orig{query_example_com};
+        Message orig{query_example_com};
 
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 1);
+        nsblast::lib::RrHinfo hinfo{msg.span(), msg.getAnswers().begin()->offset()};
+        EXPECT_EQ(hinfo.cpu(), "RFC8482");
+        EXPECT_TRUE(hinfo.os().empty());
     }
-    EXPECT_EQ(msg.getAnswers().count(), 1);
-    nsblast::lib::RrHinfo hinfo{msg.span(), msg.getAnswers().begin()->offset()};
-    EXPECT_EQ(hinfo.cpu(), "RFC8482");
-    EXPECT_TRUE(hinfo.os().empty());
 }
 
 TEST(DnsEngine, ednsWithoutOpt) {
@@ -170,32 +178,34 @@ TEST(DnsEngine, ednsWithoutOpt) {
 
 
     MockServer ms;
-    ms->createTestZone();
+    {
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query;
 
-    Message orig{query};
+        Message orig{query};
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 2);
+        EXPECT_EQ(msg.getAdditional().count(), 0);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 2);
-    EXPECT_EQ(msg.getAdditional().count(), 0);
 }
 
 TEST(DnsEngine, ednsWithOpt) {
@@ -208,38 +218,40 @@ TEST(DnsEngine, ednsWithOpt) {
 
 
     MockServer ms;
-    ms->createTestZone();
+    {
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query;
 
-    Message orig{query};
+        Message orig{query};
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 2);
+        EXPECT_EQ(msg.getAdditional().count(), 1);
+        EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+        RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+        EXPECT_EQ(opt.rcode(), 0);
+        EXPECT_EQ(opt.version(), 0);
+        EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 2);
-    EXPECT_EQ(msg.getAdditional().count(), 1);
-    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
-
-    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
-    EXPECT_EQ(opt.rcode(), 0);
-    EXPECT_EQ(opt.version(), 0);
-    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
 }
 
 TEST(DnsEngine, ednsWithUnsupportedVersion) {
@@ -251,38 +263,40 @@ TEST(DnsEngine, ednsWithUnsupportedVersion) {
 "\x02\x06\xeb\xff";
 
     MockServer ms;
-    ms->createTestZone();
+    {
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query;
 
-    Message orig{query};
+        Message orig{query};
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 0);
+        EXPECT_EQ(msg.getAdditional().count(), 1);
+        EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+        RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+        EXPECT_EQ(opt.rcode(), 1);
+        EXPECT_EQ(opt.version(), 0);
+        EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 0);
-    EXPECT_EQ(msg.getAdditional().count(), 1);
-    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
-
-    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
-    EXPECT_EQ(opt.rcode(), 1);
-    EXPECT_EQ(opt.version(), 0);
-    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
 }
 
 TEST(DnsEngine, ednsWithTwoOptRrs) {
@@ -296,38 +310,40 @@ TEST(DnsEngine, ednsWithTwoOptRrs) {
 
 
     MockServer ms;
-    ms->createTestZone();
+    {
+        ms->createTestZone();
 
-    DnsEngine dns{ms};
-    DnsEngine::Request req;
-    req.span = query;
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query;
 
-    Message orig{query};
+        Message orig{query};
 
-    shared_ptr<MessageBuilder> mb;
-    auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
-        mb = data;
-        EXPECT_TRUE(final);
-    };
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
 
-    dns.processRequest(req, cb);
-    Message msg{mb->span()};
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
 
-    EXPECT_EQ(msg.header().id(), orig.header().id());
-    EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::FORMAT_ERROR);
-    EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
-    if (msg.getQuestions().count() > 0) {
-        EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
-        EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::FORMAT_ERROR);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+        if (msg.getQuestions().count() > 0) {
+            EXPECT_EQ(msg.getQuestions().begin()->type(), orig.getQuestions().begin()->type());
+            EXPECT_EQ(msg.getQuestions().begin()->labels().string(), orig.getQuestions().begin()->labels().string());
+        }
+        EXPECT_EQ(msg.getAnswers().count(), 0);
+        EXPECT_EQ(msg.getAdditional().count(), 1);
+        EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
+
+        RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
+        EXPECT_EQ(opt.rcode(), 0);
+        EXPECT_EQ(opt.version(), 0);
+        EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
     }
-    EXPECT_EQ(msg.getAnswers().count(), 0);
-    EXPECT_EQ(msg.getAdditional().count(), 1);
-    EXPECT_EQ(msg.getAdditional().begin()->type(), TYPE_OPT);
-
-    RrOpt opt{mb->span(), msg.getAdditional().begin()->offset()};
-    EXPECT_EQ(opt.rcode(), 0);
-    EXPECT_EQ(opt.version(), 0);
-    EXPECT_EQ(opt.maxBufferLen(), MAX_UDP_QUERY_BUFFER_WITH_OPT);
 }
 
 

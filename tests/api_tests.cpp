@@ -501,69 +501,73 @@ TEST(ApiBuild, unknownEntity) {
 TEST(ApiRequest, onZoneOk) {
 
     TmpDb db;
-    auto json = getZoneJson();
-    auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
+    {
+        auto json = getZoneJson();
+        auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
+        RestApi api{db.config(), db.resource()};
 
-    auto parsed = api.parse(req);
+        auto parsed = api.parse(req);
 
-    auto res = api.onZone(req, parsed);
+        auto res = api.onZone(req, parsed);
 
-    EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(res.code, 200);
+    }
 }
 
 TEST(ApiRequest, onZoneExists) {
 
     TmpDb db;
-    auto json = getZoneJson();
+    {
+        auto json = getZoneJson();
 
-    auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
+        auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
-    RestApi api{db.config(), *db};
+        RestApi api{db.config(), *db};
 
-    auto parsed = api.parse(req);
+        auto parsed = api.parse(req);
 
-    auto res = api.onZone(req, parsed);
-    EXPECT_EQ(res.code, 200);
+        auto res = api.onZone(req, parsed);
+        EXPECT_EQ(res.code, 200);
 
-    res = api.onZone(req, parsed);
-    EXPECT_EQ(res.code, 409);
-    EXPECT_EQ(res.reason, "The zone already exists");
-
+        res = api.onZone(req, parsed);
+        EXPECT_EQ(res.code, 409);
+        EXPECT_EQ(res.reason, "The zone already exists");
+    }
 }
 
 TEST(ApiRequest, postRrWithSoa) {
     const string_view fqdn{"example.com"};
 
     TmpDb db;
+    {
+        auto json = boost::json::serialize(getZoneJson());
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    //EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    auto json = boost::json::serialize(getZoneJson());
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
-
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-
-    EXPECT_EQ(res.code, 404);
+        EXPECT_EQ(res.code, 404);
+    }
 }
 
 TEST(ApiRequest, postRrOverwriteZone) {
     const string_view fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    auto json = boost::json::serialize(getZoneJson());
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto json = boost::json::serialize(getZoneJson());
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 409);
+        EXPECT_EQ(res.code, 409);
+    }
 }
 
 TEST(ApiRequest, postSubRr) {
@@ -571,43 +575,47 @@ TEST(ApiRequest, postSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    }
 }
 
 TEST(ApiRequest, postSubRrZeroTtl) {
     const string_view fqdn{"zero.example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    auto json = getAJsonZeroTtl();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto json = getAJsonZeroTtl();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(res.code, 201);
 
-    auto entry = lookup(fqdn, *db);
-    EXPECT_EQ(entry.count(), 2);
+        auto entry = lookup(fqdn, *db);
+        EXPECT_EQ(entry.count(), 2);
 
-    for(auto rr : entry) {
-        EXPECT_EQ(rr.ttl(), 0);
-        EXPECT_EQ(rr.type(), TYPE_A);
+        for(auto rr : entry) {
+            EXPECT_EQ(rr.ttl(), 0);
+            EXPECT_EQ(rr.type(), TYPE_A);
+        }
     }
 }
 
@@ -615,31 +623,35 @@ TEST(ApiRequest, postSubRrExists) {
     const string_view fqdn{"www.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
 
-    res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 409);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 409);
+    }
 }
 
 TEST(ApiRequest, postSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 404);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 404);
+    }
 }
 
 
@@ -648,51 +660,57 @@ TEST(ApiRequest, putSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    }
 }
 
 TEST(ApiRequest, putSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+    {
+        db.createTestZone();
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 404);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 404);
+    }
 }
 
 TEST(ApiRequest, putSubRrExists) {
     const string_view fqdn{"www.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+    {
+        db.createTestZone();
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
 
-    res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 200);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+    }
 }
 
 
@@ -701,173 +719,193 @@ TEST(ApiRequest, patchSubRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    }
 }
 
 TEST(ApiRequest, patchSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+    {
+        db.createTestZone();
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 404);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 404);
+    }
 }
 
 TEST(ApiRequest, postRrHinfo) {
     const string_view fqdn{"foo.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getHinfoJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getHinfoJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
 }
 
 TEST(ApiRequest, postRrRp) {
     const string_view fqdn{"foo.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getRpJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getRpJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
 }
 
 TEST(ApiRequest, postRrAfsdb) {
     const string_view fqdn{"foo.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getAfsdbJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getAfsdbJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
 }
 
 TEST(ApiRequest, postRrSrv) {
     const string_view fqdn{"_test._tcp.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getSrvJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getSrvJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
 }
 
 TEST(ApiRequest, postRrSrvNoAddressTarget) {
     const string_view fqdn{"_test._tcp.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    db.createFooWithHinfo();
-    auto json = getSrvNoAddressTargetJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        db.createFooWithHinfo();
+        auto json = getSrvNoAddressTargetJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    EXPECT_THROW(api.onResourceRecord(req, parsed), yahat::Response);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        EXPECT_THROW(api.onResourceRecord(req, parsed), yahat::Response);
+    }
 }
 
 TEST(ApiRequest, postRrDhcid) {
     const string_view fqdn{"foo.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = getSrvDhcidJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+    {
+        db.createTestZone();
+        auto json = getSrvDhcidJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
 }
 
 TEST(ApiRequest, postRrOpenpgpkey) {
     const string_view fqdn{"4ecce23dd685d0c16e29e5959352._openpgpkey.example.com"};
 
     TmpDb db;
+    {
     db.createTestZone();
-    // the rdata is not a valid pgp key! It's just to test the API interface.
-    const string json = R"({
-    "openpgpkey":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
-    })";
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        // the rdata is not a valid pgp key! It's just to test the API interface.
+        const string json = R"({
+        "openpgpkey":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
+        })";
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
-    auto trx = db.resource().transaction();
-    auto e = trx->lookup(fqdn);
-    EXPECT_FALSE(e.empty());
-    EXPECT_EQ(e.count(), 1);
-    EXPECT_EQ(e.begin()->type(), TYPE_OPENPGPKEY);
-    EXPECT_EQ(e.begin()->rdataAsBase64(), "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA=");
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+        auto trx = db.resource().transaction();
+        auto e = trx->lookup(fqdn);
+        EXPECT_FALSE(e.empty());
+        EXPECT_EQ(e.count(), 1);
+        EXPECT_EQ(e.begin()->type(), TYPE_OPENPGPKEY);
+        EXPECT_EQ(e.begin()->rdataAsBase64(), "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA=");
+    }
 }
 
 TEST(ApiRequest, postRr) {
     const string_view fqdn{"foo.example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    auto json = R"({
-        "rr": [{
-            "type": 49,
-            "rdata": "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
-        }, {
-            "type": 1,
-            "rdata": "fwAAAQ=="
-        }]
-    })";
+    {
+        db.createTestZone();
+        auto json = R"({
+            "rr": [{
+                "type": 49,
+                "rdata": "AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
+            }, {
+                "type": 1,
+                "rdata": "fwAAAQ=="
+            }]
+        })";
 
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 201);
-    auto trx = db.resource().transaction();
-    auto e = trx->lookup(fqdn);
-    EXPECT_FALSE(e.empty());
-    EXPECT_EQ(e.count(), 2);
-    EXPECT_EQ(e.begin()->type(), TYPE_A);
-    EXPECT_EQ(e.begin()->rdata().size(), 4);
-    RrA a{e.buffer(), e.begin()->offset()};
-    EXPECT_EQ(a.string(), "127.0.0.1");
-    EXPECT_EQ(a.rdataAsBase64(), "fwAAAQ==");
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+        auto trx = db.resource().transaction();
+        auto e = trx->lookup(fqdn);
+        EXPECT_FALSE(e.empty());
+        EXPECT_EQ(e.count(), 2);
+        EXPECT_EQ(e.begin()->type(), TYPE_A);
+        EXPECT_EQ(e.begin()->rdata().size(), 4);
+        RrA a{e.buffer(), e.begin()->offset()};
+        EXPECT_EQ(a.string(), "127.0.0.1");
+        EXPECT_EQ(a.rdataAsBase64(), "fwAAAQ==");
+    }
 }
 
 TEST(ApiRequest, deleteRr) {
@@ -875,25 +913,27 @@ TEST(ApiRequest, deleteRr) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
 
-    req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
-    parsed = api.parse(req);
-    res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 200);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 2);
+        req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 2);
+    }
 }
 
 TEST(ApiRequest, deleteZoneViaRrError) {
@@ -901,25 +941,27 @@ TEST(ApiRequest, deleteZoneViaRrError) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
+    {
+        db.createTestZone();
 
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
 
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
 
-    req = makeRequest("rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
-    parsed = api.parse(req);
-    res = api.onResourceRecord(req, parsed);
-    EXPECT_EQ(res.code, 409);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        req = makeRequest("rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 409);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+    }
 }
 
 TEST(ApiRequest, deleteZone) {
@@ -927,35 +969,37 @@ TEST(ApiRequest, deleteZone) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.createTestZone();
-    db.createTestZone("nsblast.com");
-    db.createTestZone("awesomeexample.com");
-
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
-
-    RestApi api{db.config(), db.resource()};
-    // Set up the test
     {
-        auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        db.createTestZone();
+        db.createTestZone("nsblast.com");
+        db.createTestZone("awesomeexample.com");
 
-        auto parsed = api.parse(req);
-        auto res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
 
-        EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    }
+        RestApi api{db.config(), db.resource()};
+        // Set up the test
+        {
+            auto json = getAJson();
+            auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-    // Delete the zone
-    {
-        auto req = makeRequest("zone", soa_fqdn, {}, yahat::Request::Type::DELETE);
-        auto parsed = api.parse(req);
-        auto res = api.onZone(req, parsed);
-        EXPECT_EQ(res.code, 200);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), 0);
-        EXPECT_TRUE(lookup(soa_fqdn, *db).empty());
-        EXPECT_FALSE(lookup("nsblast.com", *db).empty());
-        EXPECT_FALSE(lookup("awesomeexample.com", *db).empty());
+            auto parsed = api.parse(req);
+            auto res = api.onResourceRecord(req, parsed);
+
+            EXPECT_EQ(res.code, 201);
+            EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        }
+
+        // Delete the zone
+        {
+            auto req = makeRequest("zone", soa_fqdn, {}, yahat::Request::Type::DELETE);
+            auto parsed = api.parse(req);
+            auto res = api.onZone(req, parsed);
+            EXPECT_EQ(res.code, 200);
+            EXPECT_EQ(getSoaSerial(fqdn, *db), 0);
+            EXPECT_TRUE(lookup(soa_fqdn, *db).empty());
+            EXPECT_FALSE(lookup("nsblast.com", *db).empty());
+            EXPECT_FALSE(lookup("awesomeexample.com", *db).empty());
+        }
     }
 }
 
@@ -964,62 +1008,64 @@ TEST(ApiRequest, diffCreatedForPostNewChild) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.config().dns_enable_ixfr = true;
-    db.createTestZone();
-
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
-
-    auto json = getAJson();
-    auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
-
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-
-    EXPECT_EQ(res.code, 201);
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-
-    auto trx = db->transaction();
-
-    ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
-    auto data = trx->read(key, ResourceIf::Category::DIFF);
-    Entry entry{data->data()};
-    EXPECT_EQ(entry.count(), 4);
-    auto it = entry.begin();
-
-    // Start of deleted sequence, old soa
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_SOA);
-    if (it->type() == TYPE_SOA)
     {
-        RrSoa soa(entry.buffer(), it->offset());
-        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+        db.config().dns_enable_ixfr = true;
+        db.createTestZone();
+
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+        auto json = getAJson();
+        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+
+        EXPECT_EQ(res.code, 201);
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+
+        auto trx = db->transaction();
+
+        ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
+        auto data = trx->read(key, ResourceIf::Category::DIFF);
+        Entry entry{data->data()};
+        EXPECT_EQ(entry.count(), 4);
+        auto it = entry.begin();
+
+        // Start of deleted sequence, old soa
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_SOA);
+        if (it->type() == TYPE_SOA)
+        {
+            RrSoa soa(entry.buffer(), it->offset());
+            EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+        }
+
+        ++it;
+        // Start of new entries sequence, new soa
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_SOA);
+        if (it->type() == TYPE_SOA)
+        {
+            RrSoa soa(entry.buffer(), it->offset());
+            EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
+        }
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_A);
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_A);
+
+        ++it;
+        // End of this difference sequence
+        EXPECT_EQ(it, entry.end());
     }
-
-    ++it;
-    // Start of new entries sequence, new soa
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_SOA);
-    if (it->type() == TYPE_SOA)
-    {
-        RrSoa soa(entry.buffer(), it->offset());
-        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
-    }
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_A);
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_A);
-
-    ++it;
-    // End of this difference sequence
-    EXPECT_EQ(it, entry.end());
 }
 
 TEST(ApiRequest, diffCreatedForDeleteChild) {
@@ -1027,70 +1073,72 @@ TEST(ApiRequest, diffCreatedForDeleteChild) {
     const string_view soa_fqdn{"example.com"};
 
     TmpDb db;
-    db.config().dns_enable_ixfr = true;
-    db.createTestZone();
-    db.createWwwA();
-
-    EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
-
-    auto req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
-
-    RestApi api{db.config(), db.resource()};
-    auto parsed = api.parse(req);
-    auto res = api.onResourceRecord(req, parsed);
-
-    EXPECT_EQ(res.code, 200);
-    EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-    auto trx = db->transaction();
-
-    ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
-    auto data = trx->read(key, ResourceIf::Category::DIFF);
-    Entry entry{data->data()};
-    EXPECT_EQ(entry.count(), 6);
-    auto it = entry.begin();
-
-    // Start of deleted sequence, old soa
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_SOA);
-    if (it->type() == TYPE_SOA)
     {
-        RrSoa soa(entry.buffer(), it->offset());
-        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+        db.config().dns_enable_ixfr = true;
+        db.createTestZone();
+        db.createWwwA();
+
+        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+
+        auto req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+
+        RestApi api{db.config(), db.resource()};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+
+        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        auto trx = db->transaction();
+
+        ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
+        auto data = trx->read(key, ResourceIf::Category::DIFF);
+        Entry entry{data->data()};
+        EXPECT_EQ(entry.count(), 6);
+        auto it = entry.begin();
+
+        // Start of deleted sequence, old soa
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_SOA);
+        if (it->type() == TYPE_SOA)
+        {
+            RrSoa soa(entry.buffer(), it->offset());
+            EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL);
+        }
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_A);
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_A);
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_AAAA);
+
+        ++it;
+        // A record
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_AAAA);
+
+        ++it;
+        // Start of new entries sequence, new soa
+        EXPECT_NE(it, entry.end());
+        EXPECT_EQ(it->type(), TYPE_SOA);
+        if (it->type() == TYPE_SOA)
+        {
+            RrSoa soa(entry.buffer(), it->offset());
+            EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
+        }
+
+        ++it;
+        // End of this difference sequence
+        EXPECT_EQ(it, entry.end());
     }
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_A);
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_A);
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_AAAA);
-
-    ++it;
-    // A record
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_AAAA);
-
-    ++it;
-    // Start of new entries sequence, new soa
-    EXPECT_NE(it, entry.end());
-    EXPECT_EQ(it->type(), TYPE_SOA);
-    if (it->type() == TYPE_SOA)
-    {
-        RrSoa soa(entry.buffer(), it->offset());
-        EXPECT_EQ(soa.serial(), DEFAULT_SOA_SERIAL + 1);
-    }
-
-    ++it;
-    // End of this difference sequence
-    EXPECT_EQ(it, entry.end());
 }
 
 

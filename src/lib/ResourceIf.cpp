@@ -6,7 +6,7 @@
 using namespace std;
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat) {
-    static constexpr array<string_view, 3> names = { "ZONE", "ENTRY", "DIFF" };
+    static constexpr array<string_view, 5> names = { "DEFAULT", "ZONE", "ENTRY", "DIFF", "ACCOUNT" };
 
     return o << names.at(static_cast<size_t>(cat));
 }
