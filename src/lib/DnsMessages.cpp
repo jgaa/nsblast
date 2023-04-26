@@ -66,8 +66,7 @@ void setHdrFlags(T& b, hdrbits newBits) {
     if (b.size() < Message::Header::SIZE) {
         throw runtime_error{"setHdrFlags: Cannot set value outside range of buffer!"};
     }
-    auto hdrptr = b.data() + 2;
-    auto bits = reinterpret_cast<hdrbits *>(hdrptr);
+    auto bits = reinterpret_cast<hdrbits *>(b.data() + 2);
     *bits = newBits;
 }
 

@@ -12,7 +12,8 @@ strip=false
 debug=false
 push=false
 clean=false
-cmake_build_type=Release
+logbt=false
+cmake_build_type=RelWithDebInfo
 image_tag=$project
 build_image="${project}bld:latest"
 scriptname=`basename "$0"`
@@ -28,6 +29,8 @@ usage() {
   echo "  --debug       Compile with debugging enabled"
   echo "  --strip       Strip the binary (makes backtraces less useful)"
   echo "  --clean       Perform a full, new build."
+  echo "  --logbt       Use logbt to get a stack-trace if the app segfaults"
+  echo "                /proc/sys/kernel/core_pattern must be '/tmp/logbt-coredumps/core.%p.%E'"
   echo "  --push        Push the image to a docker registry"
   echo "  --tag tagname Tag to '--push' to. Defaults to 'latest'"
   echo "  --scripted    Assume that the command is run from a script"
@@ -75,6 +78,11 @@ while [ $# -gt 0 ];  do
         --clean)
             shift
             clean=true
+            ;;
+            
+        --logbt)
+            shift
+            logbt=true
             ;;
 
         --tag)
@@ -176,7 +184,15 @@ target_image="${REGISTRY}/${TARGET}"
 echo "==================================================="
 echo "Making target: ${target_image}"
 echo "==================================================="
-cp -v "${SOURCE_DIR}/docker/Dockerfile.${project}" ${artifacts_dir}/Dockerfile
+
+if [ "$logbt" = true ] ; then
+  cp -v "${SOURCE_DIR}/docker/logbt.sh" ${artifacts_dir}
+  cp -v "${SOURCE_DIR}/docker/startup.sh" ${artifacts_dir}
+  cp -v "${SOURCE_DIR}/docker/Dockerfile.${project}.bt" ${artifacts_dir}/Dockerfile
+else
+  cp -v "${SOURCE_DIR}/docker/Dockerfile.${project}" ${artifacts_dir}/Dockerfile
+fi
+
 pushd ${artifacts_dir}
 
 docker build -t ${target_image} . || die "Failed to make target: ${target_image}"

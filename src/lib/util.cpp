@@ -142,7 +142,7 @@ string Base64Encode(const span_t in)
     base64_data.reserve(((in.size() + 2) / 3) * 4);
 
     for (std::size_t i = 0; i < in.size(); i += 3) {
-      const int a = in[i];
+      const int a = static_cast<uint8_t>(in[i]);
       const int b = i + 1 < in.size() ? in[i + 1] : 0;
       const int c = i + 2 < in.size() ? in[i + 2] : 0;
 

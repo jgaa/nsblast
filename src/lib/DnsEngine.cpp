@@ -361,6 +361,13 @@ public:
         setIdleTimer();
     }
 
+    // Make Clang-Tidy shut up!
+    DnsTcpSession() = delete;
+    DnsTcpSession(const DnsTcpSession&) = delete;
+    DnsTcpSession(DnsTcpSession &&) = delete;
+    DnsTcpSession& operator = (const DnsTcpSession&) = delete;
+    DnsTcpSession& operator = (DnsTcpSession&&) = delete;
+
     ~DnsTcpSession() {
         LOG_DEBUG << "DnsTcpSession " << uuid_ << " is history...";
     }
@@ -370,14 +377,14 @@ public:
     }
 
     void done() {
+        auto self = shared_from_this(); // don't die until we return
         if (!done_) {
-            auto self = shared_from_this(); // don't die until we return
             if (socket_.is_open()) {
                 boost::system::error_code ec; // don't throw
                 socket_.close(ec);
             }
-            parent_.removeTcpSession(uuid());
             done_ = true;
+            parent_.removeTcpSession(uuid());
         }
     }
 
@@ -428,29 +435,31 @@ public:
         idle_timer_.expires_from_now(boost::posix_time::seconds{parent_.config().dns_tcp_idle_time});
 
         if (!done_) {
-            idle_timer_.async_wait([this] (boost::system::error_code ec) {
-               if (ec) {
-                   if (ec == boost::asio::error::operation_aborted) {
-                       LOG_TRACE << "DnsTcpSession " << uuid()
-                                 << " idle-timer aborted. Ignoring.";
-                       return;
-                   }
+            idle_timer_.async_wait([w=weak_from_this()] (boost::system::error_code ec) {
+                if (auto self = w.lock()) {
+                    if (ec) {
+                       if (ec == boost::asio::error::operation_aborted) {
+                           LOG_TRACE << "DnsTcpSession " << self->uuid()
+                                     << " idle-timer aborted. Ignoring.";
+                           return;
+                       }
 
-                   LOG_WARN << "DnsTcpSession " << uuid()
-                            << " idle-timer - unexpected error " << ec;
-               }
+                       LOG_WARN << "DnsTcpSession " << self->uuid()
+                                << " idle-timer - unexpected error " << ec;
+                    }
 
-               if (!done_) {
-                   if (axfr_timeout_ > chrono::steady_clock::now()) {
-                       LOG_DEBUG << "DnsTcpSession " << uuid()
-                             << " idle-timer expiered but an axfr session is in progress. Resetting the timer.";
-                       setIdleTimer();
-                       return;
-                   }
+                    if (!self->done_) {
+                       if (self->axfr_timeout_ > chrono::steady_clock::now()) {
+                           LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                                 << " idle-timer expiered but an axfr session is in progress. Resetting the timer.";
+                           self->setIdleTimer();
+                           return;
+                       }
 
-                   LOG_DEBUG << "DnsTcpSession " << uuid()
-                         << " idle-timer expiered. Closing session.";
-                   done();
+                       LOG_DEBUG << "DnsTcpSession " << self->uuid()
+                             << " idle-timer expiered. Closing session.";
+                       self->done();
+                    }
                }
             });
         }
@@ -463,9 +472,9 @@ public:
         }
         req->endpoint = socket_.remote_endpoint();
 
-        boost::asio::spawn([this, req](auto yield) {
-
-            while(!done_) {
+        // The parent owns this instance, but we need it to exist until we exit the spawn context.
+        boost::asio::spawn([self=shared_from_this(), this, req](auto yield) {
+            while(!self->done_) {
                 // Read message-length
                 boost::system::error_code ec;
                 auto bytes = socket_.async_receive(to_asio_buffer(req->size_buffer), yield[ec]);
@@ -1011,12 +1020,13 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
     auto hdr = mb->getMutableHeader();
 
     bool do_reply = true;
-    BOOST_SCOPE_EXIT(&mb, &send, &do_reply) {
+
+    ScopedExit se{[&] {
         if (do_reply && mb) {
             mb->finish();
             send(mb, true);
         }
-    } BOOST_SCOPE_EXIT_END
+    }};
 
     if (!ok) {
         return;

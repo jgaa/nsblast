@@ -49,3 +49,4 @@ set_target_properties(${PROJECT_NAME}
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DBOOST_COROUTINES_NO_DEPRECATION_WARNING=1)
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DBOOST_COROUTINE_NO_DEPRECATION_WARNING=1)
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DAPP_VERSION=\"${VUDNS_VERSION}\")
+target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})

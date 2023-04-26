@@ -283,4 +283,18 @@ namespace nsblast::lib {
     std::vector<char> base64Decode(const std::string_view in);
     std::string Base64Encode(const span_t in);
 
+    // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
+    template <typename T>
+    struct ScopedExit {
+        ScopedExit(const T& fn)
+            : fn_{fn} {}
+
+        ~ScopedExit() {
+            fn_();
+        }
+
+    private:
+        const T& fn_;
+    };
+
 } // ns

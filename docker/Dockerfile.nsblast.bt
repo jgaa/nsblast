@@ -1,0 +1,30 @@
+FROM debian:buster
+LABEL maintainer="jgaa@jgaa.com"
+
+ENV USER_UID=999 USER_NAME=nsblast
+
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+    DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
+    DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
+        libssl1.1 libprotobuf-dev libicu-dev liblz4-1 libz3-4 libsnappy1v5 gdb bash
+
+COPY bin/* /usr/local/bin/
+COPY lib/* /usr/local/lib/
+COPY logbt.sh /usr/local/bin/logbt
+COPY startup.sh /usr/local/bin/startup.sh
+
+RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
+    && mkdir -m=755 -p /var/home/ \
+    && useradd -r -m -k /dev/null -u ${USER_UID} -g ${USER_UID} -c "Nsblast user" \
+    -d /var/home/${USER_NAME}/ -s /bin/false ${USER_NAME} \
+    && mkdir -m=755 -p /var/lib/nsblast && chown ${USER_NAME} /var/lib/nsblast \
+    && mkdir -m=755 -p /var/log/nsblast && chown ${USER_NAME} /var/log/nsblast \
+    && mkdir -m=755 -p /etc/nsblast \
+    && chmod +x /usr/local/bin/logbt \
+    && chmod +x /usr/local/bin/startup.sh 
+
+RUN ldconfig
+
+USER ${USER_NAME}
+
+ENTRYPOINT ["/usr/local/bin/startup.sh"]

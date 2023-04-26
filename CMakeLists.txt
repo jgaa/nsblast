@@ -11,6 +11,11 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(NSBLAST_WITH_TESTS "Enable Tests" ON)
 option(NSBLAST_WITH_DOCS "Generate documentation" ON)
+option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
+
+if (NSBLAST_USE_VALGRIND)
+   set (VALDGRIND_ARGS -DBOOST_USE_VALGRIND=1)
+endif()
 
 option(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES "Allows us to avoid warnings (mostly) because asio is not updated between boost versions" ON)
 if(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES)

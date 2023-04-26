@@ -51,6 +51,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE $Boost_INCLUDE_DIR
     PRIVATE src)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})
+
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
 add_dependencies(${PROJECT_NAME} rocksdb logfault mkres externalYahat)
 target_link_libraries(${PROJECT_NAME}

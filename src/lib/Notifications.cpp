@@ -8,8 +8,8 @@
 #include "nsblast/ResourceIf.h"
 #include "Notifications.h"
 #include "nsblast/DnsEngine.h"
-
 #include "nsblast/logging.h"
+#include "nsblast/util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -35,7 +35,7 @@ void Notifications::Notifier::notified(const Notifications::Notifier::endpoint_t
               << fqdn_ << "/" << id_ << " got ACK from " << get<0>(ep);
 
     lock_guard<mutex> lock{mutex_};
-    pending_.erase(std::remove(pending_.begin(), pending_.end(), ep));
+    pending_.erase(std::remove(pending_.begin(), pending_.end(), ep), pending_.end());
     if (pending_.empty()) {
         cancelTimer();
     }
@@ -80,10 +80,10 @@ void Notifications::Notifier::init()
     boost::asio::spawn(parent_.server().ctx(), [this] (boost::asio::yield_context yield) {
         auto self = shared_from_this();
         try {
-            BOOST_SCOPE_EXIT(&yield_, &mutex_) {
+            ScopedExit se{[this] {
                 lock_guard<mutex> lock{mutex_};
                 yield_ = {};
-            } BOOST_SCOPE_EXIT_END
+            }};
             yield_ = &yield;
             resolve(yield);
             process(yield);

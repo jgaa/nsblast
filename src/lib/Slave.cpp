@@ -104,7 +104,7 @@ public:
                                             [&](const rr_info_t& right) {
                                     return cmp(left, right);
                                 }) != deleted_.end();
-                }));
+                }), existing_.end());
             }
         }
 

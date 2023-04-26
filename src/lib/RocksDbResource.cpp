@@ -7,13 +7,9 @@ using namespace std;
 using namespace std::string_literals;
 using namespace std::chrono_literals;
 
-using ROCKSDB_NAMESPACE::DB;
 using ROCKSDB_NAMESPACE::Options;
 using ROCKSDB_NAMESPACE::PinnableSlice;
 using ROCKSDB_NAMESPACE::ReadOptions;
-using ROCKSDB_NAMESPACE::Status;
-using ROCKSDB_NAMESPACE::WriteBatch;
-using ROCKSDB_NAMESPACE::WriteOptions;
 using ROCKSDB_NAMESPACE::Slice;
 //using ROCKSDB_NAMESPACE::Transaction;
 using ROCKSDB_NAMESPACE::TransactionDB;
@@ -51,8 +47,14 @@ RocksDbResource::Transaction::Transaction(RocksDbResource &owner)
 RocksDbResource::Transaction::~Transaction()
 {
     if (trx_) {
-        rollback();
+        try {
+            rollback();
+        }  catch (const runtime_error& ex) {
+            LOG_WARN << "RocksDbResource::Transaction::~Transaction - Caught exception from rollback(): "
+                     << ex.what();
+        }
     }
+
 }
 
 ResourceIf::TransactionIf::RrAndSoa
@@ -75,7 +77,6 @@ RocksDbResource::Transaction::lookupEntryAndSoa(string_view fqdn)
                 return {move(rr), move(e)};
             }
 
-            auto flags = e.flags();
             const auto zlen = e.header().zonelen;
             assert(zlen > 0);
             assert(zlen <= key.size());
@@ -261,7 +262,7 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
         auto it = trx_->GetIterator(options, owner_.handle(category));
         for(it->Seek(toSlice(key.key())); it->Valid() ; it->Next()) {
             const auto ck = it->key();
-            const int extra_len = ck.size() - key.size();
+            const auto extra_len = static_cast<int>(ck.size() - key.size());
             if (extra_len < 0) {
                 break;
             }
@@ -333,6 +334,14 @@ RocksDbResource::RocksDbResource(const Config &config)
     cfd_.emplace_back("entry", o);
     cfd_.emplace_back("diff", o);
     cfd_.emplace_back("account", o);
+}
+
+RocksDbResource::~RocksDbResource()
+{
+    if (db_) {
+        LOG_TRACE << "RocksDbResource::~RocksDbResource - deleting db_";
+        delete db_;
+    }
 }
 
 std::unique_ptr<ResourceIf::TransactionIf> RocksDbResource::transaction()

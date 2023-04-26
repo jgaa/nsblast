@@ -67,6 +67,7 @@ public:
     };
 
     RocksDbResource(const Config& config);
+    ~RocksDbResource();
 
     // ResourceIf interface
     std::unique_ptr<TransactionIf> transaction() override;
