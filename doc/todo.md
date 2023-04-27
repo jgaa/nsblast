@@ -82,6 +82,9 @@ Other types
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
 - [x] Write transaction log to rocksdb
+- [ ] Cluster / Efficient slave sync
+    - [ ] Write latest zone changes to rocksdb (key: type/sequenceid/soa-fqdn value: soa.serial)
+    - [ ] SSE endpoint for these changes, starting after sequenceid
 - [ ] Allow slaves to subscribe to SSE for zones that change
 - [x] Allow zone transfers to slaves
 - [ ] Allow slaves to query for a list of all zones and their soa version
