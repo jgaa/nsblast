@@ -53,12 +53,6 @@ ExternalProject_Add(externalYahat
 
 add_dependencies(externalYahat logfault)
 
-#        -DPORTABLE=${PORTABLE}
-#-DCMAKE_CXX_COMPILER='${CMAKE_CXX_COMPILER}'
-#-DCMAKE_C_COMPILER='${CMAKE_C_COMPILER}'
-#-DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
-#-DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
-
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
