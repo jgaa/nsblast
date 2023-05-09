@@ -1389,7 +1389,7 @@ public:
      *  The labels are not touched. Only the fixed size
      *  data after the labels are copied.
      *
-     *  \param New soa.
+     *  \param soa New soa.
      */
     void replaceSoa(const RrSoa& soa);
 

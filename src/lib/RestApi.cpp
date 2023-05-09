@@ -14,6 +14,8 @@
 #include "proto/nsblast.pb.h"
 #include "google/protobuf/util/json_util.h"
 
+#include "glad/AsyncCache.hpp"
+
 using namespace std;
 using namespace std::string_literals;
 using namespace yahat;
@@ -21,6 +23,11 @@ using namespace yahat;
 namespace nsblast::lib {
 
 namespace {
+
+auto test_glad(boost::asio::io_context& ctx) {
+    jgaa::glad::AsyncCache<string, string> cache([](const string& key, const auto& cb){;}, ctx);
+    cache.get("teste", [](const auto& err, const auto& value) {});
+}
 
 optional<uint32_t> getTtl(const boost::json::value& json) {
     if (json.is_object()) {

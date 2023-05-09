@@ -21,6 +21,7 @@ std::ostream& operator << (std::ostream& out, const nsblast::lib::Notifications:
     if (holds_alternative<nsblast::lib::Notifications::tcp_t::endpoint>(ep)) {
         return out << get<nsblast::lib::Notifications::tcp_t::endpoint>(ep);
     }
+    return out;
 }
 
 namespace nsblast::lib {

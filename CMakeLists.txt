@@ -19,7 +19,7 @@ endif()
 
 option(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES "Allows us to avoid warnings (mostly) because asio is not updated between boost versions" ON)
 if(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES)
-    add_definitions(-DBOOST_ALLOW_DEPRECATED_HEADERS=1)
+    add_definitions(-DBOOST_ALLOW_DEPRECATED_HEADERS=1 -DBoost_NO_WARN_NEW_VERSIONS=1)
 endif()
 
 include(GNUInstallDirs)

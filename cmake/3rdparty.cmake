@@ -20,6 +20,18 @@ ExternalProject_Add(logfault
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 )
 
+ExternalProject_Add(glad
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY "https://github.com/jgaa/glad.git"
+    GIT_TAG "main"
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+)
+
 ExternalProject_Add(externalYahat
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/yahat-cpp.git"
@@ -33,8 +45,9 @@ ExternalProject_Add(externalYahat
         -DYAHAT_WITH_EXAMPLES=OFF
         -DUSE_LOGFAULT=ON
         -DYAHAT_USE_VALGRIND=${NSBLAST_USE_VALGRIND}
-        -DBOOST_ROOT=${BOOST_ROOT}
+        -DBoost_ROOT=${Boost_ROOT}
         -DUSE_BOOST_VERSION=${USE_BOOST_VERSION}
+        -DBoost_NO_WARN_NEW_VERSIONS=1
         -DLOGFAULT_ROOT='${EXTERNAL_PROJECTS_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}'
 )
 
