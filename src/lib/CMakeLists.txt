@@ -21,6 +21,8 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
+    AuthMgr.cpp
+    AuthMgr.h
     DnsEngine.cpp
     DnsMessages.cpp
     Notifications.cpp

@@ -32,8 +32,8 @@ public:
         bool keyExists(key_t key, Category category = Category::ENTRY) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
         void write(key_t key, data_t data, bool isNew, Category category = Category::ENTRY) override;
-        read_ptr_t read(key_t key, Category category = Category::ENTRY) override;
-        void read(key_t key, std::string& buffer, Category category = Category::ENTRY) override;
+        read_ptr_t read(key_t key, Category category = Category::ENTRY, bool throwIfNoeExixt = true) override;
+        bool read(key_t key, std::string& buffer, Category category = Category::ENTRY, bool throwIfNoeExixt = true) override;
         void remove(key_t key, bool recursive, Category category = Category::ENTRY) override;
         void commit() override;
         void rollback() override;

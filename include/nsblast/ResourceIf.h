@@ -32,7 +32,10 @@ public:
     public:
         enum class Class {
             ENTRY,
-            DIFF
+            DIFF,
+            TENANT,
+            USER,
+            ROLE
         };
 
         RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
@@ -254,8 +257,8 @@ public:
         virtual void remove(key_t key, bool recursive = false, Category category = Category::ENTRY) = 0;
 
         /*! Low level read */
-        virtual read_ptr_t read(key_t key, Category category = Category::ENTRY) = 0;
-        virtual void read(key_t key, std::string& buffer, Category category = Category::ENTRY) = 0;
+        virtual read_ptr_t read(key_t key, Category category = Category::ENTRY, bool throwIfNoeExixt = true) = 0;
+        virtual bool read(key_t key, std::string& buffer, Category category = Category::ENTRY, bool throwIfNoeExixt = true) = 0;
 
         virtual void commit() = 0;
         virtual void rollback() = 0;
@@ -286,6 +289,7 @@ public:
     virtual std::unique_ptr<TransactionIf> transaction() = 0;
 };
 
+using trx_t = ResourceIf::TransactionIf;
 
 } // ns
 

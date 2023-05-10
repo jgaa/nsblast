@@ -9,6 +9,7 @@
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
 #include "SlaveMgr.h"
+#include "AuthMgr.h"
 #include "Notifications.h"
 #include "nsblast/DnsEngine.h"
 #include "proto/nsblast.pb.h"
@@ -228,6 +229,11 @@ Response RestApi::onReqest(const Request &req, const Auth & /*auth*/)
         return onZone(req, p);
     }
 
+    if (p.what == "tenant") {
+        return onTenant(req, p);
+    }
+
+
     if (p.what == "config") {
         if (p.operation == "master") {
             return onConfigMaster(req, p);
@@ -246,6 +252,8 @@ RestApi::Parsed RestApi::parse(const Request &req)
     //                        |        -----        = fqdn
     //                        |               ----  = operation
     //                        +-------------------- = base
+
+
 
     Parsed p;
     p.base = req.target;
@@ -655,6 +663,61 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         LOG_TRACE << "RestApi::build: " << "finishing sb";
         sb.finish();
     }
+}
+
+auto makeReply(pb::Tenant& tenant) {
+    pb::ReplyTenant r;
+    r.set_error(false);
+    r.set_status(200);
+    auto v = make_unique<pb::Tenant>();
+    v->Swap(&tenant);
+    tenant.Clear();
+    return Response{200, "OK", toJson(r)};
+}
+
+Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
+{
+    auto trx = resource_.transaction();
+
+    pb::Tenant tenant;
+    if (req.expectBody() && !fromJson(req.body, tenant)) {
+        return {400, "Failed to parse json payload into a Tenant object"};
+    }
+
+    try {
+        switch(req.type) {
+        case Request::Type::GET:
+            if (auto tenant = server().auth().getTenant(toLower(parsed.fqdn))) {
+                return makeReply(*tenant);
+            }
+            return {404, "Not Found"};
+         break;
+//        case Request::Type::POST:
+//            server().slave().addZone(parsed.fqdn, zone);
+//            break;
+//        case Request::Type::PUT:
+//            server().slave().replaceZone(parsed.fqdn, zone);
+//            break;
+//        case Request::Type::PATCH:
+//            server().slave().mergeZone(parsed.fqdn, zone);
+//            break;
+//        case Request::Type::DELETE:
+//            server().slave().deleteZone(parsed.fqdn);
+//            return {200, "OK"};
+        default:
+            return {400, "Invalid method"};
+        }
+    } catch (const runtime_error& ex) {
+        LOG_DEBUG << "Exception while processing config/master request "
+                 << req.uuid << ": " << ex.what();
+        return {400, ex.what()};
+    } catch (const exception& ex) {
+        LOG_WARN << "Exception while processing config/master request "
+                 << req.uuid << ": " << ex.what();
+        return {500, "Server Error/ "s + ex.what()};
+    }
+
+    return {200, "OK"};
 }
 
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)

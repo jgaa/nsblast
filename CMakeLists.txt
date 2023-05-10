@@ -5,7 +5,12 @@ if (NOT DEFINED NSBLAST_VERSION)
 endif()
 add_definitions(-DNSBLAST_VERSION=\"${NSBLAST_VERSION}\")
 
-project(nsblast-all VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
+project(nsblast-all
+    DESCRIPTION "Massively scalable authoritative DNS server"
+    HOMEPAGE_URL https://github.com/jgaa/nsblast
+    VERSION ${NSBLAST_VERSION}
+    LANGUAGES CXX)
+
 set(NSBLAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 

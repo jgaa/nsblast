@@ -12,7 +12,7 @@ std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Cate
 }
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key) {
-    static constexpr array<string_view, 2> names = { "ENTRY", "DIFF" };
+    static constexpr array<string_view, 5> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE" };
 
     return o << names.at(static_cast<size_t>(key.kClass()))
              << ' ' << key.dataAsString();

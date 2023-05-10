@@ -30,6 +30,11 @@ ExternalProject_Add(glad
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+        -DBoost_ROOT=${Boost_ROOT}
+        -DUSE_BOOST_VERSION=${USE_BOOST_VERSION}
+        -DBoost_NO_WARN_NEW_VERSIONS=1
+        -DGLAD_WITH_TESTS=OFF
+        -DGLAD_WITH_EXAMPLES=OFF
 )
 
 ExternalProject_Add(externalYahat

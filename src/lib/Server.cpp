@@ -7,6 +7,7 @@
 #include "RestApi.h"
 #include "SlaveMgr.h"
 #include "RocksDbResource.h"
+#include "AuthMgr.h"
 
 #include "nsblast/Server.h"
 #include "yahat/HttpServer.h"
@@ -48,12 +49,14 @@ Server::~Server()
 void Server::start()
 {
     startRocksDb();
+    startAuth();
     startApi();
     startSlaveMgr();
     startHttpServer();
     startIoThreads();
     startNotifications();
     startDns();
+
     runWorker("main thread");
 }
 
@@ -127,6 +130,11 @@ void Server::startDns()
 void Server::startNotifications()
 {
     notifications_ = make_shared<Notifications>(*this);
+}
+
+void Server::startAuth()
+{
+    auth_ = make_shared<AuthMgr>(*this);
 }
 
 void Server::stop()

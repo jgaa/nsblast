@@ -18,6 +18,7 @@ namespace lib {
     class SlaveMgr;
     class DnsEngine;
     class Notifications;
+    class AuthMgr;
 
 } // ns lib
 
@@ -47,6 +48,8 @@ public:
     void startDns();
 
     void startNotifications();
+
+    void startAuth();
 
     /*! Thread-safe method to request the services to shut down
      *
@@ -92,6 +95,10 @@ public:
         return ctx_;
     }
 
+    auto& auth() noexcept {
+        return *auth_;
+    }
+
     /*! Get an unused ID for a request */
     uint32_t getNewId();
 
@@ -112,6 +119,7 @@ protected:
     std::shared_ptr<lib::RestApi> api_;
     std::shared_ptr<lib::SlaveMgr> slave_;
     std::shared_ptr<lib::DnsEngine> dns_;
+    std::shared_ptr<lib::AuthMgr> auth_;
 
     const Config& config_;
     boost::unordered_flat_set<uint32_t> current_request_ids_;

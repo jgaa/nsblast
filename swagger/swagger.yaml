@@ -23,8 +23,6 @@ tags:
   description: "Operations about a tenant"
 - name: "user"
   description: "Operations about a user"
-- name: "namespace"
-  description: "Operations about a namespace"
 - name: "config"
   description: "Local server configuration (admin access)"
 
@@ -57,17 +55,29 @@ paths:
         schema:
           $ref: "#/definitions/Entry"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: "Invalid input"
         "409":
           description: "Zone already exist"
-          
+
     delete:
       tags:
       - zone
       summary: Deletes an existing zone
-      description: "Deletes a zone and all it's domain name entries."       
+      description: "Deletes a zone and all it's domain name entries."
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "404":
           description: "Zone not found"
 
@@ -97,13 +107,19 @@ paths:
         schema:
           $ref: "#/definitions/Entry"
       responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: Invalid input
         "403":
           description: Zone not created or not owned by your account
         "409":
           description: fqdn already exist
-          
+
     put:
       tags:
       - rr
@@ -122,6 +138,18 @@ paths:
         schema:
           $ref: "#/definitions/Entry"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: Invalid input
         "403":
@@ -146,6 +174,18 @@ paths:
         schema:
           $ref: "#/definitions/Entry"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: Invalid input
         "403":
@@ -159,11 +199,17 @@ paths:
       summary: Deletes an existing fqdn
       description: "Deletes a fqdn and all it's resource records (except nn and soa, which are kept in the zone itself). For example, if you delete 'example.com', that means that the resource records are gone, exept the dns information and the soa properties."
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "403":
           description: Zone not created or not owned by your account
         "404":
           description: Fdqn not found
-          
+
   /rr/{fqdn}/{rrname}:
     parameters:
     - in: path
@@ -171,7 +217,7 @@ paths:
       description: "fqdn to delete, for example: 'www.example.com' The Zone and Zone ownership is deduced from the fqdn. You can only use fqdn's for zones already created under your account."
       required: true
       type: string
-      
+
     - in: path
       name: rrname
       required: true
@@ -184,11 +230,17 @@ paths:
       summary: Deletes a resource record from an existing fqdn
       description: "Deletes the specified resource record from a fqdn. If no resource records remains, the fqdn is deleted as well."
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "403":
           description: Zone not created or not owned by your account
         "404":
           description: Fdqn not found
-          
+
   /config/{zone}/master:
     parameters:
     - in: path
@@ -196,7 +248,7 @@ paths:
       description: fqdn for the zone
       required: true
       type: string
-      
+
     post:
       tags:
       - config
@@ -215,11 +267,17 @@ paths:
         schema:
           $ref: "#/definitions/MasterZone"
       responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: "Invalid input"
         "409":
           description: "Already exist"
-          
+
     put:
       tags:
       - config
@@ -238,11 +296,23 @@ paths:
         schema:
           $ref: "#/definitions/MasterZone"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: "Invalid input"
         "409":
           description: "Already exist"
-          
+
     patch:
       tags:
       - config
@@ -261,11 +331,23 @@ paths:
         schema:
           $ref: "#/definitions/MasterZone"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "400":
           description: "Invalid input"
         "409":
           description: "Already exist"
-          
+
     delete:
       tags:
       - config
@@ -276,15 +358,469 @@ paths:
       - "application/json"
       responses:
         "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "404":
+          description: "Config not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "Already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /tenant:
+     get:
+      tags:
+        - tenant
+      summary: List tenants
+      parameters:
+        - name: limit
+          in: query
+          description: Limits the number of items on a page
+          schema:
+            type: integer
+          default: 100
+        - name: offset
+          in: query
+          description: Specifies the page number be returned
+          schema:
+            type: integer
+          default: 1
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized.)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /tenant/{tenantname}:
+    parameters:
+      - in: path
+        name: tenantname
+        description: Unique name or UUID for a tenant.
+        required: true
+        type: string
+    get:
+      tags:
+        - tenant
+      summary: Get a tenant
+      responses:
+        "200":
+          description: "Tenant object"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "404":
+          description: "Not Found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+    post:
+      tags:
+        - tenant
+      summary: Create a new tenant.
+      operationId: addTenant
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the Tenant.
+        required: true
+        schema:
+          $ref: "#/definitions/Tenant"
+      responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "Tenant already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+    put:
+      tags:
+        - tenant
+      summary: Update a tenant. Replaces the data.
+      operationId: putTenant
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the Tenant.
+        required: true
+        schema:
+          $ref: "#/definitions/Tenant"
+      responses:
+        "200":
+          description: "Success (updated)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "201":
+          description: "Success (created)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "Tenant already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+    patch:
+      tags:
+        - tenant
+      summary: Update a tenant. Merges the data.
+      operationId: putTenant
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the Tenant.
+        required: true
+        schema:
+          $ref: "#/definitions/Tenant"
+      responses:
+        "200":
+          description: "Success (updated)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "201":
+          description: "Success (created)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "Tenant already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+    delete:
+      tags:
+      - tenant
+      summary: "Delete a tenant"
+      description: "This command deletes a tenant and all it's users, roles and zones."
+      operationId: "tenantDelete"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Success (deleted)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+
+  /tenant/{tenantname}/users:
+    parameters:
+      - name: tenantname
+        in: path
+        description: Unique name or UUID for a tenant
+        required: true
+        type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 100
+    get:
+      tags:
+        - user
+      summary: List users
+      operationId: listUsers
+      responses:
+        "200":
+          description: "Tenant object"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ListUsersResult"
+        "403":
+          description: "Forbidden. (Access denied)"
+
+
+  /tenant/{tenantname}/user:
+    parameters:
+      - in: path
+        name: tenantname
+        description: Unique name or UUID for a tenant
+        required: true
+        type: string
+
+    get:
+      tags:
+        - user
+      summary: Get a user
+      responses:
+        "200":
+          description: "User object"
+          content:
+            application/json:
+              schema:
+                rcode:
+                  type: integer
+                error:
+                  type: bool
+                value:
+                  $ref: "#/definitions/User"
+        "403":
+          description: "Forbidden. (Access denied)"
+        "404":
+          description: "User not found"
+
+    post:
+      tags:
+        - user
+      summary: Create a new user for a tenant.
+      operationId: addUser
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the User.
+        required: true
+        schema:
+          $ref: "#/definitions/CreateUser"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                rcode:
+                  type: integer
+                error:
+                  type: bool
+                value:
+                  $ref: "#/definitions/User"
+        "400":
+          description: "Invalid input"
+        "403":
+          description: "Forbidden. (Access denied)"
+        "409":
+          description: "User already exist"
+
+  /tenant/{tenantname}/user/{userid}:
+    parameters:
+      - in: path
+        name: tenantname
+        description: Unique name or UUID for a tenant
+        required: true
+        type: string
+      - in: path
+        name: userid
+        description: Globally unique ID of the user
+        required: true
+        type: string
+    put:
+      tags:
+        - user
+      summary: Update user. Replaces the user's data.
+      operationId: putUser
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the User.
+        required: true
+        schema:
+          $ref: "#/definitions/CreateUser"
+      responses:
+        "400":
+          description: "Invalid input"
+        "403":
+          description: "Forbidden. (Access denied)"
+
+    patch:
+      tags:
+        - user
+      summary: Update user. Merges old and new data.
+      operationId: putUser
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: Properties for the User.
+        required: true
+        schema:
+          $ref: "#/definitions/CreateUser"
+      responses:
+        "400":
+          description: "Invalid input"
+        "403":
+          description: "Forbidden. (Access denied)"
+        "409":
+          description: "User already exist"
+
+    delete:
+      tags:
+      - user
+      summary: "Delete a user"
+      description: "This command deletes a user."
+      operationId: "userDelete"
+      produces:
+      - "application/json"
+      responses:
+        "200":
           description: "Ok"
         "400":
           description: "Invalid input"
+        "403":
+          description: "Forbidden. (Access denied)"
         "404":
-          description: "Config not found"
-        "409":
-          description: "Already exist"
-  
-  
+          description: "User not found"
+
 definitions:
 
   Master:
@@ -305,7 +841,7 @@ definitions:
         type: string
         default: axfr
         description: "How to update the local zone-data from the master-server. Can be one of: axfr, ixfr "
-        
+
   Contact:
     type: object
     properties:
@@ -323,9 +859,9 @@ definitions:
     required:
       - master
     properties:
-      uuid: 
+      uuid:
         type: string
-      master: 
+      master:
         $ref: "#/definitions/Master"
       contact:
         $ref: "#/definitions/Contact"
@@ -340,8 +876,8 @@ definitions:
     properties:
       id:
         type: string
-      
-      
+
+
   Soa:
     type: object
     required:
@@ -360,16 +896,16 @@ definitions:
         type: string
         description: Primar DNS server fqdn
       rname:
-        description: Email where a contact for the zone can be reached. The formal format is aquard (see RFC 1035). Nsblast will convert normal email-names like `john.doe@example.com` automatically to the required format. 
-      
+        description: Email where a contact for the zone can be reached. The formal format is aquard (see RFC 1035). Nsblast will convert normal email-names like `john.doe@example.com` automatically to the required format.
+
   Ns:
     type: array
     items:
       type: string
-        
+
   Zone:
     type: object
-    description: A DNS zone. All the properties are optional. Reasonable defaults will be set for omitted items. 
+    description: A DNS zone. All the properties are optional. Reasonable defaults will be set for omitted items.
     properties:
       soa:
         $ref: "#/definitions/Soa"
@@ -380,7 +916,7 @@ definitions:
     description: Resource type for A (ipv4 and ipv6) entries.
     items:
       type: string
-      
+
   Mx:
     type: array
     items:
@@ -389,7 +925,7 @@ definitions:
           type: integer
         host:
           type: string
-          
+
   Afsdb:
     type: array
     items:
@@ -398,7 +934,7 @@ definitions:
           type: integer
         host:
           type: string
-          
+
   Hinfo:
     type: object
     properties:
@@ -406,7 +942,7 @@ definitions:
         type: string
       os:
         type: string
-  
+
   Rp:
     type: object
     properties:
@@ -414,11 +950,11 @@ definitions:
         type: string
       txt:
         type: string
-        
+
   Ptr:
     type: string
     description: Pointer to domain name. Usually only used for IP to domain name mapping in the special zones in-addr.arpa and ip6.
-    
+
   Srv:
     type: array
     description: See RFC 2782. Note that this Resource Record must be added after the records it points to (it's target) are created and contains A or AAAA Resource Records.
@@ -432,16 +968,16 @@ definitions:
           type: integer
         weight:
           type: integer
-        port: 
+        port:
           type: integer
         target:
           type: string
           description: Pointer (fqdn) to a node that contains address record(s). It can not point to an alias.
-          
+
   Base64:
     type: string
     description: Binary data. Must be encoded as BASE64.
-    
+
   Rr:
     type: array
     description: General method to submit *any* Resource Record, using base64 encoding for the RDATA section. This allows you to add experimental Resource Records and any Resource Record not direcly supported by this API. Please note that nsblast only support the CLASS_IN Resource Record type at this time. (This is the class used for the Internet).
@@ -451,11 +987,11 @@ definitions:
         - type
         - rdata
       properties:
-        type: 
+        type:
           type: integer
         rdata:
           $ref: "#/definitions/Base64"
-    
+
 
   Entry:
     type: object
@@ -483,9 +1019,9 @@ definitions:
         $ref: "#/definitions/Ptr"
       rp:
         $ref: "#/definitions/Rp"
-      afsdb:    
+      afsdb:
         $ref: "#/definitions/Afsdb"
-      srv:    
+      srv:
         $ref: "#/definitions/Srv"
       dhcid:
         $ref: "#/definitions/Base64"
@@ -493,8 +1029,154 @@ definitions:
         $ref: "#/definitions/Base64"
       rr:
         $ref: "#/definitions/Rr"
-    
-  
+
+  Tenant:
+    type: object
+    properties:
+      active:
+        type: boolean
+        default: true
+      properties:
+        type: array
+        description: Optional properties.
+        items:
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+
+  CreateUser:
+    type: object
+    properties:
+      active:
+        type: boolean
+        default: true
+      name:
+        type: string
+        description: "Name for the user. Can be a traditional (unix-like) user-name or an email. Must be unique within the scope of a tenant."
+        required: true
+      password:
+        type: string
+        description: "Optional password if HTTP BasicAuth is to be used."
+      properties:
+        type: array
+        description: Optional properties.
+        items:
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+      roles:
+        type: array
+        description: "List of (existing) roles to apply to the user"
+        items:
+          type: string
+
+  User:
+    type: object
+    properties:
+      id:
+        type: string
+        description: UUID for the user
+      active:
+        type: boolean
+      name:
+        type: string
+        description: "Name for the user. Can be a traditional (unix-like) user-name or an email. Must be unique within the scope of a tenant."
+        required: true
+      properties:
+        type: array
+        description: Optional properties.
+        items:
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+      roles:
+        type: array
+        description: "List of (existing) roles to apply to the user"
+        items:
+          type: string
+
+  ListTenantsResult:
+    type: object
+    properties:
+      rcode:
+        type: integer
+      error:
+        type: bool
+      page:
+        type: integer
+      value:
+        type: array
+        items:
+          $ref: "#/definitions/Tenant"
+
+  ListUsersResult:
+    type: object
+    properties:
+      rcode:
+        type: integer
+      error:
+        type: bool
+      page:
+        type: integer
+      value:
+        type: array
+        items:
+          $ref: "#/definitions/User"
+
+  Returns:
+    type: object
+    properties:
+      rcode:
+        type: integer
+        description: HTTP return code
+      error:
+        type: bool
+        description: True if the request failed
+      message:
+        type: string
+        description: "Error-message if the request failed"
+
+  ReturnsValue:
+    type: object
+    properties:
+      rcode:
+        type: integer
+        description: HTTP return code
+      error:
+        type: bool
+        description: True if the request failed
+      message:
+        type: string
+        description: Error-message if the request failed
+      value:
+        type: object
+        description: Object if the request succeeds
+
+  ReturnsListOfValues:
+    type: object
+    properties:
+      rcode:
+        type: integer
+        description: HTTP return code
+      error:
+        type: bool
+        description: True if the request failed
+      message:
+        type: string
+        description: Error-message if the request failed
+      value:
+        type: array
+        items:
+          type: object
+        description: Object if the request succeeds
+
+
 externalDocs:
   description: "Find out more about nsBLAST and ready to go hosting options"
   url: "https://nsblast.com"

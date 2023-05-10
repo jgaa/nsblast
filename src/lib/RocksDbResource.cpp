@@ -197,7 +197,7 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
 }
 
 ResourceIf::TransactionIf::read_ptr_t
-RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Category category)
+RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Category category, bool throwIfNoeExixt)
 {
     LOG_TRACE << "RocksDbResource::Transaction::read - Read from transaction "
               << uuid() << " key: " << key
@@ -213,7 +213,11 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
     }
 
     if (status.IsNotFound()) {
-        throw NotFoundException{"Key not found"};
+        if (throwIfNoeExixt) {
+            throw NotFoundException{"Key not found"};
+        }
+
+        return {};
     }
 
     LOG_WARN << "RocksDbResource::Transaction::read - Read from transaction "
@@ -224,7 +228,8 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
     throw runtime_error{status.ToString()};
 }
 
-void RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, string &buffer, ResourceIf::Category category)
+bool RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, string &buffer,
+                                        ResourceIf::Category category, bool throwIfNoeExixt)
 {
     LOG_TRACE << "RocksDbResource::Transaction::read (string) - Read from transaction "
               << uuid() << " key: " << key
@@ -233,11 +238,14 @@ void RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, st
     const auto status = trx_->Get({}, owner_.handle(category), toSlice(key.key()), &buffer);
 
     if (status.ok()) {
-        return;
+        return true;
     }
 
     if (status.IsNotFound()) {
-        throw NotFoundException{"Key not found"};
+        if (throwIfNoeExixt) {
+            throw NotFoundException{"Key not found"};
+        }
+        return false;
     }
 
     LOG_WARN << "RocksDbResource::Transaction::read (string) - Read from transaction "
