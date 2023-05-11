@@ -1,33 +1,14 @@
 
 #include "gtest/gtest.h"
-#include "RestApi.h"
 
 #include "TmpDb.h"
 
 #include "nsblast/DnsMessages.h"
-#include "nsblast/logging.h"
-
-//#include "test_res.h"
+#include "nsblast/errors.h"
 
 using namespace std;
 using namespace nsblast;
 using namespace nsblast::lib;
-
-//auto json = R"({
-//"soa": {
-//"ttl": 1000,
-//"refresh": 1001,
-//"retry": 1002,
-//"expire": 1003,
-//"minimum": 1004,
-//"mname": "hostmaster.example.com",
-//"rname": "ns1.example.com"
-//},
-//"ns": [
-//{"fqdn": "ns1.example.com"},
-//{"fqdn": "ns2.example.com"}
-//]
-//})";
 
 TEST(DbWriteZone, newZone) {
     TmpDb db;
@@ -67,7 +48,7 @@ TEST(DbWriteZone, newZoneOnExisting) {
         {
             auto tx = db->transaction();
             EXPECT_TRUE(tx->keyExists({fqdn}));
-            EXPECT_THROW(tx->write({fqdn}, sb.buffer(), true), ResourceIf::AlreadyExistException);
+            EXPECT_THROW(tx->write({fqdn}, sb.buffer(), true), AlreadyExistException);
             tx->commit();
         }
     }
@@ -209,7 +190,7 @@ TEST(DbReadZone, readNoExist) {
 
         {
             auto tx = db->transaction();
-            EXPECT_THROW(tx->read({fqdn}), ResourceIf::NotFoundException);
+            EXPECT_THROW(tx->read({fqdn}), NotFoundException);
         }
     }
 }

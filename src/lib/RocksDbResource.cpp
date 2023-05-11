@@ -2,6 +2,7 @@
 #include "RocksDbResource.h"
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
+#include "nsblast/errors.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -37,7 +38,7 @@ RocksDbResource::Transaction::Transaction(RocksDbResource &owner)
 
     if (!trx_) {
         LOG_ERROR << "Failed to start transaction " << uuid();
-        throw runtime_error{"Failed to start transaction"};
+        throw InternalErrorException{"Failed to start transaction", "Database error/transaction"};
     }
 
     // Nice to have the same name in rocksdb logs
@@ -111,7 +112,7 @@ RocksDbResource::Transaction::lookup(std::string_view fqdn)
     try {
         auto buffer = read(key_t{fqdn});
         return {move(buffer)};
-    }  catch (const ResourceIf::NotFoundException&) {
+    }  catch (const NotFoundException&) {
         ;
     }
 
@@ -165,7 +166,7 @@ bool RocksDbResource::Transaction::exists(string_view fqdn, uint16_t type)
             }
         }
 
-    }  catch (const ResourceIf::NotFoundException&) {
+    }  catch (const NotFoundException&) {
         ;
     }
 
@@ -186,7 +187,7 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
     const auto status = trx_->Put(owner_.handle(category), toSlice(key.key()), toSlice(data));
 
     if (!status.ok()) {
-        throw runtime_error{"Rocksdb write failed: "s + status.ToString()};
+        throw InternalErrorException{"Rocksdb write failed: "s + status.ToString(), "Database error"};
     }
 
     if (isNew && status.IsOkOverwritten()) { // TODO: don't actually work...
@@ -225,7 +226,7 @@ RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, Categor
               << ", category " << category
               << " failed with status: " << status.ToString();
 
-    throw runtime_error{status.ToString()};
+    throw InternalErrorException{status.ToString(), "Database error"};
 }
 
 bool RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, string &buffer,
@@ -252,7 +253,7 @@ bool RocksDbResource::Transaction::read(ResourceIf::TransactionIf::key_t key, st
               << uuid() << " key: " << key
               << ", category " << category
               << " failed with status: " << status.ToString();
-    throw runtime_error{status.ToString()};
+    throw InternalErrorException{status.ToString(), "Database error"};
 }
 
 void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
@@ -330,7 +331,7 @@ void RocksDbResource::Transaction::rollback()
         auto status = trx_->Rollback();
         if (!status.ok()) {
             LOG_ERROR << "Transaction rollback failed " << uuid() << " : " << status.ToString();
-            throw runtime_error{"Failed to rollback transaction"};
+            throw InternalErrorException{"Failed to rollback transaction", "Database error/rollback"};
         }
     });
 }

@@ -25,8 +25,8 @@ public:
     std::optional<pb::Tenant> getTenant(std::string_view tenantId) const;
 
 
-    void createTenant(const pb::Tenant& tenant);
-    void upsertTenant(const pb::Tenant& tenant);
+    std::string createTenant(pb::Tenant& tenant);
+    void upsertTenant(pb::Tenant& tenant, bool merge);
 
     /*! Delete an existing tenant
      *
@@ -35,10 +35,9 @@ public:
      *  delete everything in one atomic transaction to the database.
      *
      * \param tenantId ID of the tenant
-     * \returns true if the tenant was found and deleted. False if the tenant was not found.
-     * \throws std::runtime_error if there was an internal error.
+     * \throws Exception if there was an internal error.
      */
-    bool deleteTenant(std::string_view tenantId);
+    void deleteTenant(std::string_view tenantId);
 
 private:
     Server& server_;

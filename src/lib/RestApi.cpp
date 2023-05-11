@@ -12,6 +12,7 @@
 #include "AuthMgr.h"
 #include "Notifications.h"
 #include "nsblast/DnsEngine.h"
+#include "nsblast/errors.h"
 #include "proto/nsblast.pb.h"
 #include "google/protobuf/util/json_util.h"
 
@@ -665,14 +666,14 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
     }
 }
 
-auto makeReply(pb::Tenant& tenant) {
+auto makeReply(pb::Tenant& tenant, int okCode = 200) {
     pb::ReplyTenant r;
     r.set_error(false);
     r.set_status(200);
     auto v = make_unique<pb::Tenant>();
     v->Swap(&tenant);
     tenant.Clear();
-    return Response{200, "OK", toJson(r)};
+    return Response{okCode, "OK", toJson(r)};
 }
 
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
@@ -680,41 +681,67 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
     auto trx = resource_.transaction();
 
     pb::Tenant tenant;
-    if (req.expectBody() && !fromJson(req.body, tenant)) {
-        return {400, "Failed to parse json payload into a Tenant object"};
+    if (req.expectBody()) {
+        if (!fromJson(req.body, tenant)) {
+            return {400, "Failed to parse json payload into a Tenant object"};
+        }
+
+        if (req.type != Request::Type::POST) {
+            auto lowercaseKey = toLower(parsed.fqdn);
+            if (lowercaseKey.empty()) {
+                return {400, "No tenant-id in the request target"};
+            }
+
+            if (tenant.has_id()) {
+                auto id = toLower(tenant.id());
+                if (id != lowercaseKey) {
+                    return {400, "If specified, Tenant.id must match the tenant-id in the request taget."};
+                }
+
+                // Set it to lowercase so we don't end up with multiple keys for the same tenant
+                tenant.set_id(lowercaseKey);
+            }
+        }
     }
 
     try {
         switch(req.type) {
         case Request::Type::GET:
+return_tenant:
             if (auto tenant = server().auth().getTenant(toLower(parsed.fqdn))) {
                 return makeReply(*tenant);
             }
             return {404, "Not Found"};
          break;
-//        case Request::Type::POST:
-//            server().slave().addZone(parsed.fqdn, zone);
-//            break;
-//        case Request::Type::PUT:
-//            server().slave().replaceZone(parsed.fqdn, zone);
-//            break;
-//        case Request::Type::PATCH:
-//            server().slave().mergeZone(parsed.fqdn, zone);
-//            break;
-//        case Request::Type::DELETE:
-//            server().slave().deleteZone(parsed.fqdn);
-//            return {200, "OK"};
+        case Request::Type::POST: {
+            auto id = server().auth().createTenant(tenant);
+            if (auto tenant = server().auth().getTenant(id)) {
+                return makeReply(*tenant, 201);
+            }
+            LOG_ERROR << " RestApi::onTenant: I created Tenant " << id
+                      << " but I failed to fetch it afterwards!";
+            return {500, "Internal Server Error"};
+        } break;
+        case Request::Type::PUT:
+            server().auth().upsertTenant(tenant, false);
+            goto return_tenant;
+        case Request::Type::PATCH:
+            server().auth().upsertTenant(tenant, true);
+            goto return_tenant;
+        case Request::Type::DELETE:
+            server().auth().deleteTenant(toLower(parsed.fqdn));
+            return {200, "OK"};
         default:
             return {400, "Invalid method"};
         }
-    } catch (const runtime_error& ex) {
-        LOG_DEBUG << "Exception while processing config/master request "
-                 << req.uuid << ": " << ex.what();
-        return {400, ex.what()};
+    } catch(const Exception& ex) {
+        LOG_DEBUG << "Exception while processingTenant request "
+                  << req.uuid << ": " << ex.what();
+        return {ex.httpError(), ex.httpMessage()};
     } catch (const exception& ex) {
-        LOG_WARN << "Exception while processing config/master request "
+        LOG_WARN << "Exception (std::exception) while processing Tenant request "
                  << req.uuid << ": " << ex.what();
-        return {500, "Server Error/ "s + ex.what()};
+        return {500, "Internal Server Error"};
     }
 
     return {200, "OK"};
@@ -749,7 +776,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
         try {
             trx->write({lowercaseFqdn}, sb.buffer(), true);
-        } catch(const ResourceIf::AlreadyExistException&) {
+        } catch(const AlreadyExistException&) {
             return {409, "The zone already exists"};
         }
     } break;
@@ -759,7 +786,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         }
         try {
             trx->remove({lowercaseFqdn}, true);
-        } catch(const ResourceIf::NotFoundException&) {
+        } catch(const NotFoundException&) {
             return {404, "The zone don't exist"};
         }
     } break;
@@ -829,7 +856,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
             if (config_.dns_enable_ixfr) {
                 newData = {sb.buffer()};
             }
-        } catch(const ResourceIf::AlreadyExistException&) {
+        } catch(const AlreadyExistException&) {
             return {409, "The rr already exists"};
         }
 
@@ -901,7 +928,7 @@ put:
         try {
             trx->remove({lowercaseFqdn}, false);
             need_version_increment = true;
-        } catch(const ResourceIf::NotFoundException&) {
+        } catch(const NotFoundException&) {
             return {404, "The rr don't exist"};
         }
     } break;

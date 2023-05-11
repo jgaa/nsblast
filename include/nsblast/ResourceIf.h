@@ -271,17 +271,17 @@ public:
         const boost::uuids::uuid uuid_ = lib::newUuid();
     };
 
-    class AlreadyExistException : public std::runtime_error {
-    public:
-        AlreadyExistException(const std::string& what) noexcept
-            : std::runtime_error(what) {}
-    };
+//    class AlreadyExistException : public std::runtime_error {
+//    public:
+//        AlreadyExistException(const std::string& what) noexcept
+//            : std::runtime_error(what) {}
+//    };
 
-    class NotFoundException : public std::runtime_error {
-    public:
-        NotFoundException(const std::string& what) noexcept
-            : std::runtime_error(what) {}
-    };
+//    class NotFoundException : public std::runtime_error {
+//    public:
+//        NotFoundException(const std::string& what) noexcept
+//            : std::runtime_error(what) {}
+//    };
 
     ResourceIf() = default;
     virtual ~ResourceIf() = default;

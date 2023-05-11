@@ -160,4 +160,9 @@ string Base64Encode(const span_t in)
     return base64_data;
 }
 
+string newUuidStr()
+{
+    return toLower(boost::uuids::to_string(newUuid()));
+}
+
 } // ns

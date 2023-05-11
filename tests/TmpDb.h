@@ -8,6 +8,7 @@
 #include <filesystem>
 #include "nsblast/logging.h"
 #include "RocksDbResource.h"
+#include "AuthMgr.h"
 #include "nsblast/Server.h"
 
 //#include "test_res.h"
@@ -147,6 +148,7 @@ public:
     MockServer(std::shared_ptr<TmpDb> db = make_shared<TmpDb>())
         : Server(db->config()), db_{db} {
         resource_ = db->resourcePtr();
+        auth_ = make_shared<AuthMgr>(*this);
     }
 
     auto& operator -> () {

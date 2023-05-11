@@ -11,6 +11,8 @@
 
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
+    std::string newUuidStr();
+
 
     uint64_t getRandomNumber64();
     uint32_t getRandomNumber32();
