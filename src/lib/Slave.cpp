@@ -229,7 +229,7 @@ public:
 
 } // anon ns
 
-Slave::Slave(SlaveMgr &mgr, std::string_view fqdn, pb::Zone  zone)
+Slave::Slave(SlaveMgr &mgr, std::string_view fqdn, pb::SlaveZone zone)
     : mgr_{mgr}, fqdn_{fqdn}, zone_{std::move(zone)}, schedule_{mgr.ctx()}
 {
 }

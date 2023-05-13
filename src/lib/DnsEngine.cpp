@@ -473,7 +473,7 @@ public:
         req->endpoint = socket_.remote_endpoint();
 
         // The parent owns this instance, but we need it to exist until we exit the spawn context.
-        boost::asio::spawn([self=shared_from_this(), this, req](auto yield) {
+        boost::asio::spawn(parent_.ctx(), [self=shared_from_this(), this, req](auto yield) {
             while(!self->done_) {
                 // Read message-length
                 boost::system::error_code ec;
@@ -597,7 +597,7 @@ public:
                               << " caught unknow exception in coroutine: " << estr.str();
                 } // one request
             } // loop
-        });
+        }, boost::asio::detached);
     } // start()
 
     // Currently we don't do parallel processing, so no need to track the individual

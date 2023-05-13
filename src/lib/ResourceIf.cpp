@@ -6,13 +6,13 @@
 using namespace std;
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat) {
-    static constexpr array<string_view, 5> names = { "DEFAULT", "ZONE", "ENTRY", "DIFF", "ACCOUNT" };
+    static constexpr array<string_view, 5> names = { "DEFAULT", "MASTER_ZONE", "ENTRY", "DIFF", "ACCOUNT" };
 
     return o << names.at(static_cast<size_t>(cat));
 }
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key) {
-    static constexpr array<string_view, 5> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE" };
+    static constexpr array<string_view, 7> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE", "ZONE", "TZONE" };
 
     return o << names.at(static_cast<size_t>(key.kClass()))
              << ' ' << key.dataAsString();
@@ -20,16 +20,33 @@ std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Real
 
 namespace nsblast::lib {
 
+namespace {
+    auto concat(span_t left, span_t right) {
+        std::string value;
+        value.reserve(left.size() + right.size() + 1);
+        value.append(left.begin(), left.end());
+        value.push_back('/');
+        value.append(right.begin(), right.end());
+        return value;
+    }
+}
 
 ResourceIf::RealKey::RealKey(span_t key,
-                                      ResourceIf::RealKey::Class kclass,
-                                      bool binary)
+                             ResourceIf::RealKey::Class kclass,
+                             bool binary)
     : bytes_{binary ? string{key.begin(), key.end()} : init(key, kclass, {})}
 {
 }
 
-ResourceIf::RealKey::RealKey(span_t key, uint32_t version, ResourceIf::RealKey::Class kclass)
+ResourceIf::RealKey::RealKey(span_t key,
+                             uint32_t version,
+                             ResourceIf::RealKey::Class kclass)
     : bytes_{init(key, kclass, version)}
+{
+}
+
+ResourceIf::RealKey::RealKey(span_t key, span_t postfix, Class kclass)
+    : bytes_{init(concat(key, postfix), kclass, {})}
 {
 }
 
@@ -39,6 +56,13 @@ span_t ResourceIf::RealKey::key() const noexcept {
 
 bool ResourceIf::RealKey::empty() const noexcept{
     return bytes_.empty();
+}
+
+bool ResourceIf::RealKey::isReversed(Class kclass) noexcept
+{
+    return kclass == Class::ENTRY
+           || kclass == Class::DIFF
+           || kclass == Class::ZONE;
 }
 
 ResourceIf::RealKey::Class ResourceIf::RealKey::kClass() const noexcept {
@@ -53,16 +77,32 @@ string ResourceIf::RealKey::dataAsString() const {
     std::string postfix;
     if (!empty()) {
         auto end = bytes_.end();
-        if (bytes_.at(0) == static_cast<char>(ResourceIf::RealKey::Class::DIFF)) {
+        const auto kt = static_cast<ResourceIf::RealKey::Class>(bytes_.at(0));
+        switch(kt) {
+        case ResourceIf::RealKey::Class::DIFF: {
             assert(bytes_.size() >= 6);
             end -= 5; // 32 bit unsigned + 0 byte-marker
             const auto serial = get32bValueAt(bytes_, bytes_.size() - 4);
             postfix = "/"s + to_string(serial);
+            }
+            [[fallthrough]];
+        default:
+            if (isReversed(kt)) {
+                fqdn.assign(bytes_.begin() + 1, end);
+                std::reverse(fqdn.begin(), fqdn.end());
+                if (!postfix.empty()) {
+                    return fqdn + postfix;
+                }
+                return fqdn;
+            }
+            if (!postfix.empty()) {
+                bytes_.substr(1) + postfix;
+            }
+            return bytes_.substr(1);
         }
-        fqdn.assign(bytes_.begin() + 1, end);
-        std::reverse(fqdn.begin(), fqdn.end());
     }
-                      return fqdn + postfix;
+
+    return {};
 }
 
 bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcept
@@ -87,13 +127,16 @@ bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcep
 }
 
 string ResourceIf::RealKey::init(span_t key,
-                                          ResourceIf::RealKey::Class kclass,
-                                          optional<uint32_t> version) {
+                                 ResourceIf::RealKey::Class kclass,
+                                 optional<uint32_t> version) {
+
     std::string value;
     value.reserve(key.size() + 1 + (version ? 5 : 0));
     value.push_back(static_cast<uint8_t>(kclass));
     value.append(key.begin(), key.size());
-    std::reverse(value.begin() + 1, value.end());
+    if (isReversed(kclass)) {
+        std::reverse(value.begin() + 1, value.end());
+    }
     if (version) {
         value.push_back(0);
         auto offset = value.size();

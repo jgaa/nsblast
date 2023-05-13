@@ -1,4 +1,6 @@
 
+#include <memory>
+
 #include "AuthMgr.h"
 #include "nsblast/logging.h"
 #include "nsblast/errors.h"
@@ -9,7 +11,16 @@ namespace nsblast::lib {
 
 namespace {
 
+
 void validate(const pb::Tenant& tenant) {
+    // TODO: Validate
+}
+
+void validate(const pb::User& user) {
+    // TODO: Validate
+}
+
+void validate(const pb::Zone& zone) {
     // TODO: Validate
 }
 
@@ -73,33 +84,32 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
     return id;
 }
 
-void AuthMgr::upsertTenant(pb::Tenant &tenant, bool merge)
+void AuthMgr::upsertTenant(std::string_view tenantId,
+                           const pb::Tenant &tenant, bool merge)
 {
+    assert(!tenantId.empty());
     auto trx = server_.resource().transaction();
-    if (!tenant.has_id()) {
-        throw MissingIdException{"Missing Tenant.id"};
+    if (tenant.has_id()) {
+        if (tenant.id() != tenantId) {
+            throw ConstraintException{"id is immutable"};
+        }
     }
+
     auto id = toLower(tenant.id());
     ResourceIf::RealKey key{id, ResourceIf::RealKey::Class::TENANT};
 
     if (merge) {
         auto existing = getTenant(id);
         if (existing) {
-            if (!tenant.has_active() && existing->has_active()) {
-                tenant.set_active(existing->active());
-            }
-
-            if (tenant.properties_size() == 0 && existing->properties_size() > 0) {
-                for(auto& p : existing->properties()) {
-                    auto n = tenant.add_properties();
-                    n->set_key(p.key());
-                    n->set_value(p.value());
-                }
-            }
+            existing->MergeFrom(tenant);
+            upsert(*trx, key, *existing, false);
+            goto commit;
         }
     }
 
     upsert(*trx, key, tenant, false);
+
+commit:
     trx->commit();
 }
 
@@ -120,6 +130,26 @@ void AuthMgr::deleteTenant(std::string_view tenantId)
 
     LOG_INFO << "Deleting tenant " << tenantId;
     trx->commit();
+}
+
+void AuthMgr::addZone(trx_t &trx, std::string_view fqdn, std::string_view tenant)
+{
+    assert(fqdn == toLower(fqdn));
+    ResourceIf::RealKey key_zone{fqdn, ResourceIf::RealKey::Class::ZONE};
+    ResourceIf::RealKey key_tzone{tenant, fqdn, ResourceIf::RealKey::Class::TZONE};
+
+    pb::Zone zone;
+    zone.set_status(pb::ACTIVE);
+
+    auto id = newUuidStr();
+    LOG_INFO << "Creating new Zone " << fqdn << " for tenant " << tenant
+             << " with uuid " << id;
+    zone.set_id(id);
+    zone.set_tenantid(string{tenant});
+    upsert(trx, key_zone, zone, true);
+
+    // Add index so we can find it by tenantId
+    trx.write(key_tzone, fqdn, true, ResourceIf::Category::ACCOUNT);
 }
 
 } // ns

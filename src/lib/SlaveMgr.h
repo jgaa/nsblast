@@ -34,15 +34,15 @@ public:
 
     SlaveMgr(Server& server);
 
-    void getZone(std::string_view fqdn, pb::Zone& zone);
-    void addZone(std::string_view fqdn, const pb::Zone& zone);
-    void replaceZone(std::string_view fqdn, const pb::Zone& zone);
-    void mergeZone(std::string_view fqdn, const pb::Zone& zone);
+    void getZone(std::string_view fqdn, pb::SlaveZone& zone);
+    void addZone(std::string_view fqdn, const pb::SlaveZone& zone);
+    void replaceZone(std::string_view fqdn, const pb::SlaveZone& zone);
+    void mergeZone(std::string_view fqdn, const pb::SlaveZone& zone);
     void deleteZone(std::string_view fqdn);
 
     void init();
     void reload(std::string_view fqdn);
-    void reload(std::string_view fqdn, pb::Zone& zone);
+    void reload(std::string_view fqdn, pb::SlaveZone& zone);
 
     /*! Called when we recieve a notify request
      *

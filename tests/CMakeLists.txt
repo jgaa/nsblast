@@ -15,7 +15,7 @@ add_executable(dns_messages_tests
     dns_messages_tests.cpp
     )
 
-set_property(TARGET dns_messages_tests PROPERTY CXX_STANDARD 17)
+set_property(TARGET dns_messages_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(dns_messages_tests
     nsblastlib
@@ -57,7 +57,7 @@ add_executable(db_tests
     test_res.cpp test_res.h
     )
 
-set_property(TARGET db_tests PROPERTY CXX_STANDARD 17)
+set_property(TARGET db_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(db_tests
     nsblastlib
@@ -100,7 +100,7 @@ add_executable(api_tests
     test_res.cpp test_res.h
     )
 
-set_property(TARGET api_tests PROPERTY CXX_STANDARD 17)
+set_property(TARGET api_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(api_tests
     nsblastlib
@@ -144,7 +144,7 @@ add_executable(dns_engine_tests
     test_res.cpp test_res.h
     )
 
-set_property(TARGET dns_engine_tests PROPERTY CXX_STANDARD 17)
+set_property(TARGET dns_engine_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(dns_engine_tests
     nsblastlib
@@ -189,7 +189,7 @@ add_executable(auth_tests
     test_res.cpp test_res.h
     )
 
-set_property(TARGET auth_tests PROPERTY CXX_STANDARD 17)
+set_property(TARGET auth_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(auth_tests
     nsblastlib

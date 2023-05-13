@@ -26,7 +26,7 @@ public:
 
 
     std::string createTenant(pb::Tenant& tenant);
-    void upsertTenant(pb::Tenant& tenant, bool merge);
+    void upsertTenant(std::string_view tenantId, const pb::Tenant& tenant, bool merge);
 
     /*! Delete an existing tenant
      *
@@ -38,6 +38,8 @@ public:
      * \throws Exception if there was an internal error.
      */
     void deleteTenant(std::string_view tenantId);
+
+    void addZone(trx_t& trx, std::string_view fqdn, std::string_view tenant);
 
 private:
     Server& server_;

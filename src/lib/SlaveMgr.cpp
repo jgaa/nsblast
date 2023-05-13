@@ -17,38 +17,38 @@ SlaveMgr::SlaveMgr(Server& server)
 
 }
 
-void SlaveMgr::getZone(string_view fqdn, pb::Zone &zone)
+void SlaveMgr::getZone(string_view fqdn, pb::SlaveZone &zone)
 {
     auto trx = db().transaction();
 
     string buffer;
-    trx->read({fqdn}, buffer, ResourceIf::Category::ZONE);
+    trx->read({fqdn}, buffer, ResourceIf::Category::MASTER_ZONE);
     zone.ParseFromString(buffer);
 }
 
-void SlaveMgr::addZone(string_view fqdn, const pb::Zone& zone)
+void SlaveMgr::addZone(string_view fqdn, const pb::SlaveZone& zone)
 {
     string r;
     zone.SerializeToString(&r);
 
     auto trx = db().transaction();
-    trx->write({fqdn}, r, true, ResourceIf::Category::ZONE);
+    trx->write({fqdn}, r, true, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
 
-void SlaveMgr::replaceZone(string_view fqdn, const pb::Zone& zone)
+void SlaveMgr::replaceZone(string_view fqdn, const pb::SlaveZone& zone)
 {
     string r;
     zone.SerializeToString(&r);
 
     auto trx = db().transaction();
-    trx->write({fqdn}, r, false, ResourceIf::Category::ZONE);
+    trx->write({fqdn}, r, false, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
 
-void SlaveMgr::mergeZone(string_view  /*fqdn*/, const pb::Zone&  /*zone*/)
+void SlaveMgr::mergeZone(string_view  /*fqdn*/, const pb::SlaveZone&  /*zone*/)
 {
     assert(false); // Not implemnted
 }
@@ -56,7 +56,7 @@ void SlaveMgr::mergeZone(string_view  /*fqdn*/, const pb::Zone&  /*zone*/)
 void SlaveMgr::deleteZone(string_view fqdn)
 {
     auto trx = db().transaction();
-    trx->remove({fqdn}, false, ResourceIf::Category::ZONE);
+    trx->remove({fqdn}, false, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -69,51 +69,41 @@ void SlaveMgr::init()
     auto trx = db().transaction();
     trx->iterate({""}, [this](ResourceIf::TransactionIf::key_t key, span_t value) {
 
-        pb::Zone z;
+        pb::SlaveZone z;
         if (z.ParseFromArray(value.data(), value.size())) {
-            if (PB_GET(z, active, true)) {
-                reload({key.data(), key.size()}, z);
-            }
+            reload({key.data(), key.size()}, z);
         } else {
             LOG_ERROR << "SlaveMgr::init Failed to deserialize Zone: " << key;
         }
 
         return true;
     }
-    , ResourceIf::Category::ZONE);
+        , ResourceIf::Category::MASTER_ZONE);
 }
 
 void SlaveMgr::reload(string_view fqdn)
 {
-    pb::Zone zone;
+    pb::SlaveZone zone;
     getZone(fqdn, zone);
     reload(fqdn, zone);
 }
 
-void SlaveMgr::reload(string_view fqdn, pb::Zone &zone)
+void SlaveMgr::reload(string_view fqdn, pb::SlaveZone &zone)
 {
     const string key{fqdn};
     string info_message;
 
     {
-        const bool active = PB_GET(zone, active, true);
         lock_guard<mutex> lock{mutex_};
         if (auto it = zones_.find(key); it != zones_.end()) {
             // Lazily abort any on-going update
             it->second->done();
-            if (active) {
-                LOG_DEBUG << "Realoading configuration for master-zone " << fqdn;
-            } else {
-                zones_.erase(it);
-                info_message = "Deactivating (no longer synching from) master-zone "s + key;
-            }
+            LOG_DEBUG << "Realoading configuration for master-zone " << fqdn;
         }
 
-        if (active) {
-            auto slave = make_shared<Slave>(*this, key, zone);
-            slave->start();
-            zones_[key] = slave;
-        }
+        auto slave = make_shared<Slave>(*this, key, zone);
+        slave->start();
+        zones_[key] = slave;
     }
 
     if (!info_message.empty()) {

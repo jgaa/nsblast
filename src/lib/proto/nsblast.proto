@@ -2,6 +2,12 @@ syntax = "proto2";
 
 package nsblast.pb;
 
+message KeyValue {
+    required string key = 1;
+    required string value = 2;
+}
+
+
 // Master ns for the zone. Only populated on slaves
 message Master {
     required string hostname = 1; // Hostname or IP to master
@@ -10,32 +16,179 @@ message Master {
     optional string strategy = 4; // Strategy for refresh.
 }
 
-// Contact-person for the zone
-message Contact {
-    required string name = 1;
-    optional string email = 2;
-    optional string phone = 3;
-    optional string notes = 4;
+/**
+ * If present on a server, the server act as a slave to the defined Master for this zone
+ *
+ * On slave-servers, a zone with a MZONE index is a slave for that zone
+ *
+ * Indexes:
+ *   - ZONE fqdn / ZONE
+ *   - TZONE tenantid + uuid / ZONE
+ *   - MASTER_ZONE fqdn / ZONE
+ */
+message SlaveZone {
+    optional Master master = 2; // If present in a server, this server is a slave for this zone
+    repeated KeyValue properties = 5;
 }
 
-message Zone {
-    optional string uuid = 1; // Unique identifier for the zone
-    required Master master = 2; // If present in a server, this server is a slave for this zone
-    optional Contact contact = 3;
-    optional bool active = 4;
-    optional string notes = 5;
+enum Permission {
+    READ_ZONE = 1;
+    LIST_ZONES = 2;
+    CREATE_ZONE = 3;
+    UPDATE_ZONE = 4;
+    DELETE_ZONE = 5;
+
+    READ_VZONE = 6;
+    LIST_VZONES = 7;
+    CREATE_VZONE = 8;
+    UPDATE_VZONE = 9;
+    DELETE_VZONE = 10;
+
+    READ_RR = 11;
+    LIST_RRS = 12;
+    CREATE_RR = 13;
+    UPDATE_RR = 14;
+    DELETE_RR = 15;
+
+    CREATE_APIKEY = 16;
+    LIST_APIKEYS = 17;
+    GET_APIKEY = 18;
+    DELETE_APIKEY = 19;
+
+    // Applies for the user you are logged in as
+    GET_SELF_USER = 20;
+    DELETE_SELF_USER = 21;
+
+    CREATE_USER = 22;
+    LIST_USERS = 23;
+    GET_USER = 24;
+    UPDATE_USER = 25;
+    DELETE_USER = 26;
+
+    CREATE_ROLE = 27;
+    LIST_ROLES = 28;
+    GET_ROLE = 29;
+    UPDATE_ROLE = 30;
+    DELETE_ROLE = 31;
+
+    // Applies for the current tenant
+    GET_SELF_TENANT = 32;
+    UPDATE_SELF_TENANT = 33;
+    DELETE_SELF_TENANT = 34;
+
+    /// ====================================
+    /// Admin permissions
+    /// ====================================
+    CREATE_TENANT = 35;
+    LIST_TENANTS = 36;
+    GET_TENANT = 37;
+    UPDATE_TENANT = 38;
+    DELETE_TENANT = 39;
+
+    CONFIG_SLAVE = 40;
 }
 
-message KeyValue {
-    required string key = 1;
-    required string value = 2;
+/**
+ * RR types
+ */
+enum RrType {
+    A = 1;
+    NS = 2;
+    CNAME = 5;
+    SOA = 6;
+    PTR = 11;
+    MX = 15;
+    TXT = 16;
+    RP = 17;
+    AFSDB = 18;
+    SRV = 33;
+    DHCID = 49;
 }
 
-// Tenant/Owner of zones, vzones, users and roles
+/**
+ * Specifies a specific branch of the domain-three where
+ * a rule apply.
+ */
+message ZoneFilter {
+    optional string fqdn = 1; // Filter applies for
+    optional bool recursive = 2; // Filter applies for sub-domains of fqdn
+    optional string regex = 3; // aplies only for fqdn's that match the regex
+    repeated RrType rrTypes = 4; // If non-empty, applies only for the types within
+}
+
+/**
+ * A Role is a list of permissions that applies for
+ * users and API keys.
+ *
+ * The role is owned by the Tenant and referenced
+ * in User and ApiKey by it's name.
+ */
+message Role {
+    required string name = 2; // Unique for a tenant
+    repeated KeyValue properties = 3;
+    repeated Permission permissions = 4;
+    optional ZoneFilter filter = 5;
+}
+
+/**
+ * An API key is a randomly generated string that is assigned a
+ * list of roles. It's designed to be used by consumerts of the
+ * REST API.
+ *
+ * Indexes:
+ *  - APIKEY hash / ACCOUNT
+ */
+message ApiKey {
+    required string hash = 1;
+    optional string name = 2;
+    repeated Role roles = 5;
+}
+
+/**
+ * Auth info.
+ *
+ * Currently HTTP BasicAuth is supported.
+ * We store a hash of the users password + seed.
+ */
+message UserAuth {
+    required string hash = 2;
+    optional string seed = 3;
+}
+
+/**
+ * A user represent a user of the system.
+ * It is designed to be usedf py a person to perform
+ * tasks in the UI or RTEST API.
+ *
+ * Users are owned by the Tenant.
+ * Indexes:
+ *  - USER loginName / ACCOUNT
+ *
+ */
+message User {
+    required string id = 1;
+    required string loginName = 2; // Globally unique name
+    optional bool active = 3;
+    repeated KeyValue properties = 4;
+    repeated Role roles = 5;
+    required UserAuth auth = 6;
+}
+
+/**
+ * Tenant/Owner of zones, vzones, users and roles
+ *
+ * Indexes:
+ *  - TENANT id / ACCOUNT
+ */
+
 message Tenant {
     optional string id = 1;
-    optional bool active = 2;
-    repeated KeyValue properties = 3;
+    optional bool active = 3;
+    optional string root = 4; // Absolute root of fqdn's for this tenant
+    repeated KeyValue properties = 5;
+    repeated Role allowedRoles = 6; // Roles that can be assigned to users/apikeys for this tenant
+    repeated User users = 7;
+    repeated ApiKey apiKeys = 8;
 }
 
 message ReplyTenant {
@@ -44,3 +197,26 @@ message ReplyTenant {
     optional string reason = 3;
     optional Tenant value = 4;
 }
+
+/**
+ * Status for a zone
+ */
+enum ZoneStatus {
+    ACTIVE = 1;
+    ZOMBIE = 2; // Status set if the server loads the zone but can't load the tenant.
+}
+
+/**
+ * Meta-data for a zone
+ *
+ * Indexes:
+ *  - ZONE fqdn / ACCOUNT           --> Zone object
+ *  - TZONE tenant, fqdn / ACCOUNT    --> fqdn (string)
+ */
+message Zone {
+    optional string id = 1; // ID for the zone. Immutable from when the zone is created.
+    required string tenantId = 2; // Tenant for the zone
+    optional ZoneStatus status = 3;
+    repeated KeyValue properties = 4;
+}
+

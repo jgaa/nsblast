@@ -15,7 +15,7 @@ class ResourceIf {
 public:
     enum class Category {
         DEFAULT,
-        ZONE,
+        MASTER_ZONE,
         ENTRY,
         DIFF,
         ACCOUNT
@@ -30,16 +30,19 @@ public:
      */
     class RealKey {
     public:
-        enum class Class {
-            ENTRY,
-            DIFF,
-            TENANT,
-            USER,
-            ROLE
+        enum class Class : char {
+            ENTRY,      // class reversed-fqdn
+            DIFF,       // class reversed-fqdn serial
+            TENANT,     // class tenantId
+            USER,       // class loginName
+            ROLE,       // unused
+            ZONE,       // class reversed-fqdn
+            TZONE       // class tenant-id / fqdn
         };
 
         RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
         RealKey(span_t key, uint32_t version, Class kclass = Class::DIFF);
+        RealKey(span_t key, span_t postfix, Class kclass);
 
         span_t key() const noexcept;
 
@@ -48,6 +51,8 @@ public:
         }
 
         bool empty() const noexcept;
+
+        static bool isReversed(Class kclass) noexcept;
 
         Class kClass() const noexcept;
 
@@ -75,7 +80,7 @@ public:
             return bytes_ != k.bytes_;
         }
 
-    protected:
+    protected:            
         static std::string init(span_t key, Class kclass, std::optional<uint32_t> version);
 
         const std::string bytes_;

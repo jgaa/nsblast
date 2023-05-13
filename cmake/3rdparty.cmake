@@ -33,6 +33,7 @@ ExternalProject_Add(glad
         -DBoost_ROOT=${Boost_ROOT}
         -DUSE_BOOST_VERSION=${USE_BOOST_VERSION}
         -DBoost_NO_WARN_NEW_VERSIONS=1
+        -DCMAKE_CXX_STANDARD=20
         -DGLAD_WITH_TESTS=OFF
         -DGLAD_WITH_EXAMPLES=OFF
 )
@@ -48,6 +49,7 @@ ExternalProject_Add(externalYahat
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
         -DYAHAT_WITH_EXAMPLES=OFF
+        -DCMAKE_CXX_STANDARD=20
         -DUSE_LOGFAULT=ON
         -DYAHAT_USE_VALGRIND=${NSBLAST_USE_VALGRIND}
         -DBoost_ROOT=${Boost_ROOT}
@@ -65,7 +67,7 @@ ExternalProject_Add(rocksdb
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DUSE_RTTI=1
-        -DCMAKE_CXX_STANDARD=17
+        -DCMAKE_CXX_STANDARD=20
         -DWITH_TESTS=OFF
         -DWITH_ALL_TESTS=OFF
         -DWITH_TOOLS=OFF

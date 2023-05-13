@@ -678,6 +678,7 @@ auto makeReply(pb::Tenant& tenant, int okCode = 200) {
 
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
 {
+    auto lowercaseKey = toLower(parsed.fqdn);
     auto trx = resource_.transaction();
 
     pb::Tenant tenant;
@@ -687,19 +688,8 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
         }
 
         if (req.type != Request::Type::POST) {
-            auto lowercaseKey = toLower(parsed.fqdn);
-            if (lowercaseKey.empty()) {
-                return {400, "No tenant-id in the request target"};
-            }
-
-            if (tenant.has_id()) {
-                auto id = toLower(tenant.id());
-                if (id != lowercaseKey) {
-                    return {400, "If specified, Tenant.id must match the tenant-id in the request taget."};
-                }
-
-                // Set it to lowercase so we don't end up with multiple keys for the same tenant
-                tenant.set_id(lowercaseKey);
+            if (!parsed.fqdn.empty()) {
+                return {404, "POST Tenant cannot specify tenant-id in target"};
             }
         }
     }
@@ -708,7 +698,7 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
         switch(req.type) {
         case Request::Type::GET:
 return_tenant:
-            if (auto tenant = server().auth().getTenant(toLower(parsed.fqdn))) {
+            if (auto tenant = server().auth().getTenant(lowercaseKey)) {
                 return makeReply(*tenant);
             }
             return {404, "Not Found"};
@@ -723,13 +713,13 @@ return_tenant:
             return {500, "Internal Server Error"};
         } break;
         case Request::Type::PUT:
-            server().auth().upsertTenant(tenant, false);
+            server().auth().upsertTenant(lowercaseKey, tenant, false);
             goto return_tenant;
         case Request::Type::PATCH:
-            server().auth().upsertTenant(tenant, true);
+            server().auth().upsertTenant(lowercaseKey, tenant, true);
             goto return_tenant;
         case Request::Type::DELETE:
-            server().auth().deleteTenant(toLower(parsed.fqdn));
+            server().auth().deleteTenant(lowercaseKey);
             return {200, "OK"};
         default:
             return {400, "Invalid method"};
@@ -779,6 +769,9 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         } catch(const AlreadyExistException&) {
             return {409, "The zone already exists"};
         }
+
+        server().auth().addZone(*trx, lowercaseFqdn, req.owner);
+
     } break;
     case Request::Type::DELETE: {
         if (!exists) {
@@ -991,7 +984,7 @@ put:
 
 Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &parsed)
 {
-    pb::Zone zone;
+    pb::SlaveZone zone;
     if (req.expectBody() && !fromJson(req.body, zone)) {
         return {400, "Failed to parse json payload into a Zone object"};
     }

@@ -59,6 +59,18 @@ public:
     int httpError() const noexcept override { return 400; }
 };
 
+class ConstraintException : public Exception {
+public:
+    ConstraintException(const std::string& what) noexcept
+        : Exception(what) {}
+
+    ConstraintException(const std::string& what, const std::string& httpMessage) noexcept
+        : Exception(what, httpMessage) {}
+
+    int httpError() const noexcept override { return 400; }
+};
+
+
 class InternalErrorException : public Exception {
 public:
     InternalErrorException(const std::string& what) noexcept

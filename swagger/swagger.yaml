@@ -842,34 +842,23 @@ definitions:
         default: axfr
         description: "How to update the local zone-data from the master-server. Can be one of: axfr, ixfr "
 
-  Contact:
-    type: object
-    properties:
-      name:
-        type: string
-      email:
-        type: string
-      phone:
-        type: string
-      notes:
-        type: string
-
   MasterZone:
     type: object
     required:
       - master
     properties:
-      uuid:
-        type: string
       master:
         $ref: "#/definitions/Master"
-      contact:
-        $ref: "#/definitions/Contact"
-      active:
-        type: boolean
-        default: true
-      notes:
-        type: string
+      properties:
+        type: array
+        description: Optional properties.
+        items:
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+
 
   Uuid:
     type: object

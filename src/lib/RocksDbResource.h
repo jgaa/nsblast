@@ -81,7 +81,7 @@ public:
 
 private:
     static constexpr size_t DEFAULT = 0;
-    static constexpr size_t ZONE = 1;
+    static constexpr size_t MASTER_ZONE = 1;
     static constexpr size_t ENTRY = 2;
     static constexpr size_t DIFF = 3;
     static constexpr size_t ACCOUNT = 4;

@@ -341,7 +341,7 @@ RocksDbResource::RocksDbResource(const Config &config)
 {
     rocksdb::ColumnFamilyOptions o;
     cfd_.emplace_back(rocksdb::kDefaultColumnFamilyName, o);
-    cfd_.emplace_back("zone", o);
+    cfd_.emplace_back("masterZone", o);
     cfd_.emplace_back("entry", o);
     cfd_.emplace_back("diff", o);
     cfd_.emplace_back("account", o);

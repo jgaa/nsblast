@@ -500,12 +500,12 @@ TEST(ApiBuild, unknownEntity) {
 
 TEST(ApiRequest, onZoneOk) {
 
-    TmpDb db;
+    MockServer svr;
     {
         auto json = getZoneJson();
         auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
 
         auto parsed = api.parse(req);
 
@@ -517,13 +517,13 @@ TEST(ApiRequest, onZoneOk) {
 
 TEST(ApiRequest, onZoneExists) {
 
-    TmpDb db;
+    MockServer svr;
     {
         auto json = getZoneJson();
 
         auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
-        RestApi api{db.config(), *db};
+        RestApi api{svr};
 
         auto parsed = api.parse(req);
 
@@ -539,12 +539,12 @@ TEST(ApiRequest, onZoneExists) {
 TEST(ApiRequest, postRrWithSoa) {
     const string_view fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
         auto json = boost::json::serialize(getZoneJson());
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
@@ -555,14 +555,14 @@ TEST(ApiRequest, postRrWithSoa) {
 TEST(ApiRequest, postRrOverwriteZone) {
     const string_view fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
         auto json = boost::json::serialize(getZoneJson());
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
@@ -574,42 +574,42 @@ TEST(ApiRequest, postSubRr) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
     }
 }
 
 TEST(ApiRequest, postSubRrZeroTtl) {
     const string_view fqdn{"zero.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
         auto json = getAJsonZeroTtl();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
 
-        auto entry = lookup(fqdn, *db);
+        auto entry = lookup(fqdn, svr->resource());
         EXPECT_EQ(entry.count(), 2);
 
         for(auto rr : entry) {
@@ -622,13 +622,13 @@ TEST(ApiRequest, postSubRrZeroTtl) {
 TEST(ApiRequest, postSubRrExists) {
     const string_view fqdn{"www.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -641,13 +641,13 @@ TEST(ApiRequest, postSubRrExists) {
 TEST(ApiRequest, postSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 404);
@@ -659,35 +659,35 @@ TEST(ApiRequest, putSubRr) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
     }
 }
 
 TEST(ApiRequest, putSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 404);
@@ -697,13 +697,13 @@ TEST(ApiRequest, putSubRrNoZone) {
 TEST(ApiRequest, putSubRrExists) {
     const string_view fqdn{"www.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -718,35 +718,35 @@ TEST(ApiRequest, patchSubRr) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
     }
 }
 
 TEST(ApiRequest, patchSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 404);
@@ -756,13 +756,13 @@ TEST(ApiRequest, patchSubRrNoZone) {
 TEST(ApiRequest, postRrHinfo) {
     const string_view fqdn{"foo.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getHinfoJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -772,13 +772,13 @@ TEST(ApiRequest, postRrHinfo) {
 TEST(ApiRequest, postRrRp) {
     const string_view fqdn{"foo.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getRpJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -788,13 +788,13 @@ TEST(ApiRequest, postRrRp) {
 TEST(ApiRequest, postRrAfsdb) {
     const string_view fqdn{"foo.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getAfsdbJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -804,13 +804,13 @@ TEST(ApiRequest, postRrAfsdb) {
 TEST(ApiRequest, postRrSrv) {
     const string_view fqdn{"_test._tcp.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getSrvJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -820,14 +820,14 @@ TEST(ApiRequest, postRrSrv) {
 TEST(ApiRequest, postRrSrvNoAddressTarget) {
     const string_view fqdn{"_test._tcp.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
-        db.createFooWithHinfo();
+        svr->createTestZone();
+        svr->createFooWithHinfo();
         auto json = getSrvNoAddressTargetJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         EXPECT_THROW(api.onResourceRecord(req, parsed), yahat::Response);
     }
@@ -836,13 +836,13 @@ TEST(ApiRequest, postRrSrvNoAddressTarget) {
 TEST(ApiRequest, postRrDhcid) {
     const string_view fqdn{"foo.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = getSrvDhcidJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
@@ -852,20 +852,20 @@ TEST(ApiRequest, postRrDhcid) {
 TEST(ApiRequest, postRrOpenpgpkey) {
     const string_view fqdn{"4ecce23dd685d0c16e29e5959352._openpgpkey.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-    db.createTestZone();
+    svr->createTestZone();
         // the rdata is not a valid pgp key! It's just to test the API interface.
         const string json = R"({
         "openpgpkey":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
         })";
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
-        auto trx = db.resource().transaction();
+        auto trx = svr->resource().transaction();
         auto e = trx->lookup(fqdn);
         EXPECT_FALSE(e.empty());
         EXPECT_EQ(e.count(), 1);
@@ -877,9 +877,9 @@ TEST(ApiRequest, postRrOpenpgpkey) {
 TEST(ApiRequest, postRr) {
     const string_view fqdn{"foo.example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
         auto json = R"({
             "rr": [{
                 "type": 49,
@@ -892,11 +892,11 @@ TEST(ApiRequest, postRr) {
 
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 201);
-        auto trx = db.resource().transaction();
+        auto trx = svr->resource().transaction();
         auto e = trx->lookup(fqdn);
         EXPECT_FALSE(e.empty());
         EXPECT_EQ(e.count(), 2);
@@ -912,27 +912,27 @@ TEST(ApiRequest, deleteRr) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
 
         req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
         parsed = api.parse(req);
         res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 200);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 2);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 2);
     }
 }
 
@@ -940,27 +940,27 @@ TEST(ApiRequest, deleteZoneViaRrError) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
 
         req = makeRequest("rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
         parsed = api.parse(req);
         res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 409);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
     }
 }
 
@@ -968,15 +968,15 @@ TEST(ApiRequest, deleteZone) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.createTestZone();
-        db.createTestZone("nsblast.com");
-        db.createTestZone("awesomeexample.com");
+        svr->createTestZone();
+        svr->createTestZone("nsblast.com");
+        svr->createTestZone("awesomeexample.com");
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         // Set up the test
         {
             auto json = getAJson();
@@ -986,7 +986,7 @@ TEST(ApiRequest, deleteZone) {
             auto res = api.onResourceRecord(req, parsed);
 
             EXPECT_EQ(res.code, 201);
-            EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+            EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
         }
 
         // Delete the zone
@@ -995,10 +995,10 @@ TEST(ApiRequest, deleteZone) {
             auto parsed = api.parse(req);
             auto res = api.onZone(req, parsed);
             EXPECT_EQ(res.code, 200);
-            EXPECT_EQ(getSoaSerial(fqdn, *db), 0);
-            EXPECT_TRUE(lookup(soa_fqdn, *db).empty());
-            EXPECT_FALSE(lookup("nsblast.com", *db).empty());
-            EXPECT_FALSE(lookup("awesomeexample.com", *db).empty());
+            EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), 0);
+            EXPECT_TRUE(lookup(soa_fqdn, svr->resource()).empty());
+            EXPECT_FALSE(lookup("nsblast.com", svr->resource()).empty());
+            EXPECT_FALSE(lookup("awesomeexample.com", svr->resource()).empty());
         }
     }
 }
@@ -1007,25 +1007,25 @@ TEST(ApiRequest, diffCreatedForPostNewChild) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.config().dns_enable_ixfr = true;
-        db.createTestZone();
+        svr->config().dns_enable_ixfr = true;
+        svr->createTestZone();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
         auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 201);
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
 
-        auto trx = db->transaction();
+        auto trx = svr->resource().transaction();
 
         ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
         auto data = trx->read(key, ResourceIf::Category::DIFF);
@@ -1072,23 +1072,23 @@ TEST(ApiRequest, diffCreatedForDeleteChild) {
     const string_view fqdn{"www.example.com"};
     const string_view soa_fqdn{"example.com"};
 
-    TmpDb db;
+    MockServer svr;
     {
-        db.config().dns_enable_ixfr = true;
-        db.createTestZone();
-        db.createWwwA();
+        svr->config().dns_enable_ixfr = true;
+        svr->createTestZone();
+        svr->createWwwA();
 
-        EXPECT_EQ(getSoaSerial(fqdn, *db), DEFAULT_SOA_SERIAL);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
 
-        RestApi api{db.config(), db.resource()};
+        RestApi api{svr};
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
         EXPECT_EQ(res.code, 200);
-        EXPECT_EQ(getSoaSerial(soa_fqdn, *db), DEFAULT_SOA_SERIAL + 1);
-        auto trx = db->transaction();
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        auto trx = svr->resource().transaction();
 
         ResourceIf::RealKey key{soa_fqdn, DEFAULT_SOA_SERIAL + 1, ResourceIf::RealKey::Class::DIFF};
         auto data = trx->read(key, ResourceIf::Category::DIFF);

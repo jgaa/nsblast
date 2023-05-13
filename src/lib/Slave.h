@@ -3,9 +3,12 @@
 #include <atomic>
 #include <mutex>
 #include <memory>
-#include "nsblast/nsblast.h"
+#include "nsblast/DnsMessages.h"
 #include "nsblast/ResourceIf.h"
 #include "proto/nsblast.pb.h"
+
+#include <boost/asio.hpp>
+#include <boost/asio/spawn.hpp>
 
 
 namespace nsblast::lib {
@@ -15,7 +18,7 @@ class SlaveMgr;
 class Slave : public std::enable_shared_from_this<Slave> {
 public:
     using tcp_t = boost::asio::ip::tcp;
-    Slave(SlaveMgr& mgr, std::string_view fqdn, pb::Zone  zone);
+    Slave(SlaveMgr& mgr, std::string_view fqdn, pb::SlaveZone zone);
 
     void start();
     void done();
@@ -64,7 +67,7 @@ private:
 
     SlaveMgr& mgr_;
     const std::string fqdn_;
-    const pb::Zone zone_; // Configuration
+    const pb::SlaveZone zone_; // Configuration
     boost::asio::deadline_timer schedule_;
     std::optional<boost::asio::deadline_timer> timeout_;
     mutable std::mutex mutex_;;

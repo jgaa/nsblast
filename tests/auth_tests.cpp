@@ -17,8 +17,8 @@ TEST(AuthMgr, createAndGetTenant) {
     MockServer ms;
     {
         pb::Tenant tenant;
+        tenant.set_root("example.com");
         auto id = ms.auth().createTenant(tenant);
-
         auto nt = ms.auth().getTenant(id);
         EXPECT_TRUE(nt);
         if (nt) {
@@ -37,12 +37,14 @@ TEST(AuthMgr, getNoTenant) {
     }
 }
 
-TEST(AuthMgr, upsertTenantNoId) {
+TEST(AuthMgr, upsertConstraintId) {
 
     MockServer ms;
     {
         pb::Tenant tenant;
-        EXPECT_THROW(ms.auth().upsertTenant(tenant, false), nsblast::MissingIdException);
+        tenant.set_id("foo");
+        tenant.set_root("example.com");
+        EXPECT_THROW(ms.auth().upsertTenant("bar", tenant, false), nsblast::ConstraintException);
     }
 }
 
@@ -51,12 +53,13 @@ TEST(AuthMgr, replaceTenant) {
     MockServer ms;
     {
         pb::Tenant tenant;
+        tenant.set_root("example.com");
         auto id = ms.auth().createTenant(tenant);
 
         tenant.Clear();
         tenant.set_id(id);
         tenant.set_active(false);
-        ms.auth().upsertTenant(tenant, false);
+        ms.auth().upsertTenant(id, tenant, false);
 
         auto nt = ms.auth().getTenant(id);
         EXPECT_TRUE(nt);
@@ -75,6 +78,7 @@ TEST(AuthMgr, mergeTenant) {
     MockServer ms;
     {
         pb::Tenant tenant;
+        tenant.set_root("example.com");
         tenant.set_active(false);
 
         {
@@ -89,14 +93,14 @@ TEST(AuthMgr, mergeTenant) {
 
         auto id = ms.auth().createTenant(tenant);
 
-        tenant.Clear();
-        tenant.set_id(id);
+        pb::Tenant tenant2;
+        tenant2.set_id(id);
         {
-            auto p = tenant.add_properties();
+            auto p = tenant2.add_properties();
             p->set_key("kind");
             p->set_value("Dog");
         }
-        ms.auth().upsertTenant(tenant, true);
+        ms.auth().upsertTenant(id, tenant2, true);
 
         auto nt = ms.auth().getTenant(id);
         EXPECT_TRUE(nt);
@@ -104,9 +108,9 @@ TEST(AuthMgr, mergeTenant) {
             EXPECT_EQ(id, nt->id());
             EXPECT_TRUE(nt->has_active());
             EXPECT_FALSE(nt->active());
-            EXPECT_EQ(nt->properties_size(), 1);
-            EXPECT_EQ(nt->properties(0).key(), "kind");
-            EXPECT_EQ(nt->properties(0).value(), "Dog");
+            EXPECT_EQ(nt->properties_size(), 3);
+            EXPECT_EQ(nt->properties(2).key(), "kind");
+            EXPECT_EQ(nt->properties(2).value(), "Dog");
         }
     }
 }
@@ -116,6 +120,7 @@ TEST(AuthMgr, deleteTenant) {
     MockServer ms;
     {
         pb::Tenant tenant;
+        tenant.set_root("example.com");
         auto id = ms.auth().createTenant(tenant);
         auto nt = ms.auth().getTenant(id);
         EXPECT_TRUE(nt);
@@ -124,6 +129,32 @@ TEST(AuthMgr, deleteTenant) {
         EXPECT_FALSE(nt);
     }
 }
+
+TEST(AuthMgr, createZone) {
+
+    string tname = "ares";
+    string fqdn = "example.com";
+    MockServer ms;
+    {
+        pb::Tenant tenant;
+        tenant.set_root(fqdn);
+        tenant.set_id(tname);
+        auto id = ms.auth().createTenant(tenant);
+        auto nt = ms.auth().getTenant(id);
+        EXPECT_TRUE(nt);
+        EXPECT_EQ(nt->id(), tname);
+
+        auto trx = ms->resource().transaction();
+
+        ms.auth().addZone(*trx, "example.com", tname);
+
+        ResourceIf::RealKey key_zone{fqdn, ResourceIf::RealKey::Class::ZONE};
+        ResourceIf::RealKey key_tzone{tname, fqdn, ResourceIf::RealKey::Class::TZONE};
+        EXPECT_TRUE(trx->keyExists(key_zone, ResourceIf::Category::ACCOUNT));
+        EXPECT_TRUE(trx->keyExists(key_tzone, ResourceIf::Category::ACCOUNT));
+    }
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
