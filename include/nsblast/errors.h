@@ -70,6 +70,17 @@ public:
     int httpError() const noexcept override { return 400; }
 };
 
+class DeniedException : public Exception {
+public:
+    DeniedException(const std::string& what = "Access Denied") noexcept
+        : Exception(what) {}
+
+    DeniedException(const std::string& what, const std::string& httpMessage) noexcept
+        : Exception(what, httpMessage) {}
+
+    int httpError() const noexcept override { return 403; }
+};
+
 
 class InternalErrorException : public Exception {
 public:

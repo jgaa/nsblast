@@ -32,6 +32,8 @@ message SlaveZone {
 }
 
 enum Permission {
+    USE_API = 41;
+
     READ_ZONE = 1;
     LIST_ZONES = 2;
     CREATE_ZONE = 3;
@@ -162,7 +164,7 @@ message UserAuth {
  *
  * Users are owned by the Tenant.
  * Indexes:
- *  - USER loginName / ACCOUNT
+ *  - USER loginName / ACCOUNT --> tenant
  *
  */
 message User {
@@ -170,12 +172,12 @@ message User {
     required string loginName = 2; // Globally unique name
     optional bool active = 3;
     repeated KeyValue properties = 4;
-    repeated Role roles = 5;
+    repeated string roles = 5;
     required UserAuth auth = 6;
 }
 
 /**
- * Tenant/Owner of zones, vzones, users and roles
+ * Tenant/Owner of zones, vzones, users roles and API keys.
  *
  * Indexes:
  *  - TENANT id / ACCOUNT
@@ -186,9 +188,10 @@ message Tenant {
     optional bool active = 3;
     optional string root = 4; // Absolute root of fqdn's for this tenant
     repeated KeyValue properties = 5;
-    repeated Role allowedRoles = 6; // Roles that can be assigned to users/apikeys for this tenant
-    repeated User users = 7;
-    repeated ApiKey apiKeys = 8;
+    repeated Permission allowedPermissions = 6; // Permissions that can be assigned to the tenants roles
+    repeated Role roles = 7; // Roles that can be assigned to users/apikeys for this tenant
+    repeated User users = 8;
+    //repeated ApiKey apiKeys = 9;
 }
 
 message ReplyTenant {

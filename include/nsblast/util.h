@@ -1,11 +1,15 @@
 #pragma once
 
 #include <variant>
+#include <locale>
+
 #include <boost/asio.hpp>
 #include <boost/core/span.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_serialize.hpp>
+
+
 
 #include "nsblast/DnsMessages.h"
 
@@ -17,6 +21,16 @@ namespace nsblast::lib {
     uint64_t getRandomNumber64();
     uint32_t getRandomNumber32();
     uint16_t getRandomNumber16();
+    std::string getRandomStr(size_t len);
+
+    /*! Calculate a sha256 checksum on the input
+     *
+     *  \param what Input, data to calculate a has from
+     *  \param encodeToBase64 If true, return a base64 encoded string. If false, \
+     *          return the binary hash value.
+     *  \throws InternalErrorException If for some reason the hash calculatioon fails.
+     */
+    std::string sha256(span_t what, bool encodeToBase64 = true);
 
     template <typename T>
     auto make_unique_from(T *ptr) {
@@ -97,6 +111,53 @@ namespace nsblast::lib {
         }
 
         return out;
+    }
+
+    /*! ASCII compare character sequence, case insensitive
+     *
+     * \param start Character sequence we want to match
+     * \param full Character sequence we want to look at
+     * \param fullMatch If true, require the two striungs to be equalk.
+     *          If false, require the two strings to be eual until the end of `start`.
+     */
+    template <typename startT, typename fullT>
+    bool compareCaseInsensitive(const startT& start, const fullT& full, bool fullMatch = true) {
+        static const std::locale loc{"C"};
+
+        auto r = full.begin();
+        for(auto ch : start) {
+            if (r == full.end()) {
+                return false;
+            }
+            if (tolower(ch, loc) != tolower(*r, loc)) {
+                return false;
+            }
+            ++r;
+        }
+
+        if (fullMatch) {
+            if (r != full.end()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    template <typename T>
+    void trim(T& str) {
+        static const std::locale loc{"C"};
+
+        size_t num_front = 0, num_end = 0;
+        for (auto it = str.begin(); it != str.end() && isspace(*it, loc); ++it, ++num_front)
+            ;
+
+        if (num_front < str.size()) {
+            for (auto it = str.rbegin(); it != str.rend() && isspace(*it, loc); ++it, ++num_end)
+                ;
+        }
+
+        str = str.substr(num_front, str.size() - num_front - num_end);
     }
 
     // Simple return value that may or may not own it's buffer.

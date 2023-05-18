@@ -1710,7 +1710,7 @@ MutableRrSoa::MutableRrSoa(uint32_t serial)
     // No need to call finish(). We don't need the index and the extras.
 
     // Take ownership of the buffer with the soa,
-    buffer_ = move(soaSb.stealBuffer());
+    buffer_ = soaSb.stealBuffer();
 
     // Now, do what the RR's constructor does to get the internals right...
     reset();
@@ -1729,7 +1729,7 @@ MutableRrSoa &MutableRrSoa::operator =(const RrSoa &soa)
     // No need to call finish(). We don't need the index and the extras.
 
     // Take ownership of the buffer with the soa,
-    buffer_ = move(soaSb.stealBuffer());
+    buffer_ = soaSb.stealBuffer();
 
     // Now, do what the RR's constructor does to get the internals right...
     reset();

@@ -459,6 +459,8 @@ void RocksDbResource::bootstrap()
             throw runtime_error{"Failed to bootstrap RocksDB"};
         }
     }
+
+    bootstrapped_ = true;
 }
 
 bool RocksDbResource::needBootstrap() const

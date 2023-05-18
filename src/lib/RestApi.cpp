@@ -782,6 +782,8 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         } catch(const NotFoundException&) {
             return {404, "The zone don't exist"};
         }
+
+        server().auth().deleteZone(*trx, lowercaseFqdn, req.owner);
     } break;
     default:
         return {405, "Only POST and DELETE is valid for 'zone' entries"};

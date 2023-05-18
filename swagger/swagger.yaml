@@ -1019,6 +1019,98 @@ definitions:
       rr:
         $ref: "#/definitions/Rr"
 
+  ZoneFilter:
+    type: object
+    properties:
+      fqdn:
+        type: string
+      recursive:
+        type: bool
+      regex:
+        type: string
+      rrTypes:
+        type: string
+        enum:
+          - A
+          - NS
+          - CNAME
+          - SOA
+          - PTR
+          - MX
+          - TXT
+          - RP
+          - AFSDB
+          - SRV
+          - DHCID
+          -
+  Permission:
+    type: string
+    enum:
+      - USE_API
+      - READ_ZONE
+      - LIST_ZONES
+      - CREATE_ZONE
+      - UPDATE_ZONE
+      - DELETE_ZONE
+      - READ_VZONE
+      - LIST_VZONES
+      - CREATE_VZONE
+      - UPDATE_VZONE
+      - DELETE_VZONE
+      - READ_RR
+      - LIST_RRS
+      - CREATE_RR
+      - UPDATE_RR
+      - DELETE_RR
+      - CREATE_APIKEY
+      - LIST_APIKEYS
+      - GET_APIKEY
+      - DELETE_APIKEY
+      - GET_SELF_USER
+      - DELETE_SELF_USER
+      - CREATE_USER
+      - LIST_USERS
+      - GET_USER
+      - UPDATE_USER
+      - DELETE_USER
+      - CREATE_ROLE
+      - LIST_ROLES
+      - GET_ROLE
+      - UPDATE_ROLE
+      - DELETE_ROLE
+      - GET_SELF_TENANT
+      - UPDATE_SELF_TENANT
+      - DELETE_SELF_TENANT
+      - CREATE_TENANT
+      - LIST_TENANTS
+      - GET_TENANT
+      - UPDATE_TENANT
+      - DELETE_TENANT
+      - CONFIG_SLAVE
+
+  Role:
+    type object:
+    properties:
+      name:
+        type: string
+        required: true
+      properties:
+        type: array
+        description: Optional properties.
+        items:
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+      permissions:
+        type: array
+        description: List of permissions for this Role
+        items:
+          $ref: "#/definitions/Permission"
+      filter:
+        $ref: "#/definitions/ZoneFilter"
+
   Tenant:
     type: object
     properties:
@@ -1034,6 +1126,14 @@ definitions:
               type: string
             value:
               type: string
+      allowedPermissions:
+        type: array
+        items:
+          $ref: "#/definitions/Permission"
+      roles:
+        type: array
+        items:
+          $ref: "#/definitions/Role"
 
   CreateUser:
     type: object

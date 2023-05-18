@@ -3,6 +3,9 @@
 #include <random>
 #include "nsblast/util.h"
 #include "nsblast/logging.h"
+#include "nsblast/errors.h"
+
+#include <openssl/evp.h>
 
 using namespace std;
 
@@ -103,6 +106,20 @@ uint16_t getRandomNumber16()
     return getRandomNumberT<uint32_t>();
 }
 
+string getRandomStr(size_t len)
+{
+    string rval;
+    rval.reserve(len);
+    while(rval.size() < (len)) {
+        auto v = getRandomNumberT<uint8_t>();
+        if (v < ' ' || v > '~' || v == '\"' || v == '\'' || v == '`') {
+            continue;
+        }
+        rval.push_back(v);
+    }
+    return rval;
+}
+
 // Modified from ChatGPT generated code
 vector<char> base64Decode(const string_view in) {
     std::vector<char> binary_data;
@@ -164,5 +181,31 @@ string newUuidStr()
 {
     return toLower(boost::uuids::to_string(newUuid()));
 }
+
+// Impl. based from https://stackoverflow.com/questions/2262386/generate-sha256-with-openssl-and-c
+string sha256(span_t what, bool encodeToBase64)
+{
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    ScopedExit bye{[context] {
+        EVP_MD_CTX_free(context);
+    }};
+
+    if(context != NULL) {
+        if(EVP_DigestInit_ex(context, EVP_sha256(), NULL)) {
+            if(EVP_DigestUpdate(context, what.data(), what.size())) {
+                array<uint8_t, EVP_MAX_MD_SIZE> hash;
+                unsigned int lengthOfHash = 0;
+                if(EVP_DigestFinal_ex(context, hash.data(), &lengthOfHash)) {
+                    if (encodeToBase64) {
+                        return Base64Encode({reinterpret_cast<const char *>(hash.data()), lengthOfHash});
+                    }
+                    return {reinterpret_cast<const char *>(hash.data()), lengthOfHash};
+                }
+            }
+        }
+    }
+    throw InternalErrorException{"sha256 failed!"};
+}
+
 
 } // ns

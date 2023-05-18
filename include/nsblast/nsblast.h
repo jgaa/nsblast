@@ -135,6 +135,15 @@ struct Config {
     /// HTTP configuration
     yahat::HttpConfig http;
     ///@}
+
+    /*! \name Authentication */
+    ///@{
+    /// Enable authentication
+    bool enable_auth = true;
+
+    /// The size of authentication tokens/ sessions that can be cached in memory.
+    size_t auth_cache_lru_size = 1024 * 1024;
+    ///@}
 };
 
 // RFC 1035

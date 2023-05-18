@@ -105,6 +105,10 @@ public:
     /*! Release the id from the repository of active ID's */
     void idDone(uint32_t id);
 
+    bool wasBootstrapped() const noexcept {
+        return bootstrapped_;
+    }
+
 protected:
     void runWorker(const std::string& name);
     void handleSignals();
@@ -127,6 +131,7 @@ protected:
     std::once_flag stop_once_;
     std::optional<std::future<void>> ft_http_;
     std::optional<boost::asio::signal_set> signals_;
+    bool bootstrapped_ = false;
 };
 
 

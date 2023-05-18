@@ -79,6 +79,10 @@ public:
         return *db_;
     }
 
+    bool wasBootstrapped() const noexcept {
+        return bootstrapped_;
+    }
+
 private:
     static constexpr size_t DEFAULT = 0;
     static constexpr size_t MASTER_ZONE = 1;
@@ -98,6 +102,7 @@ private:
     rocksdb::TransactionDB *db_ = {};
     std::vector<rocksdb::ColumnFamilyDescriptor> cfd_;
     std::vector<rocksdb::ColumnFamilyHandle *> cfh_;
+    bool bootstrapped_ = false;
 };
 
 } // ns

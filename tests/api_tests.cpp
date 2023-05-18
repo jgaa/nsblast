@@ -142,7 +142,7 @@ auto makeRequest(const string& what, string_view fqdn, string json, yahat::Reque
 
     std::string full_target = base + "/" + what + "/" + string{fqdn};
 
-    return yahat::Request{nullptr, full_target, "/api/v1", "", "", move(json), type};
+    return yahat::Request{nullptr, full_target, "/api/v1", "", "", json, type};
 }
 
 uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {

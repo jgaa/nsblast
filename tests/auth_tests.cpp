@@ -1,3 +1,6 @@
+
+#include <filesystem>
+
 #include "gtest/gtest.h"
 
 #include "TmpDb.h"
@@ -109,6 +112,10 @@ TEST(AuthMgr, mergeTenant) {
             EXPECT_TRUE(nt->has_active());
             EXPECT_FALSE(nt->active());
             EXPECT_EQ(nt->properties_size(), 3);
+            EXPECT_EQ(nt->properties(0).key(), "kind");
+            EXPECT_EQ(nt->properties(0).value(), "Cat");
+            EXPECT_EQ(nt->properties(1).key(), "kind");
+            EXPECT_EQ(nt->properties(1).value(), "Horse");
             EXPECT_EQ(nt->properties(2).key(), "kind");
             EXPECT_EQ(nt->properties(2).value(), "Dog");
         }
@@ -146,7 +153,7 @@ TEST(AuthMgr, createZone) {
 
         auto trx = ms->resource().transaction();
 
-        ms.auth().addZone(*trx, "example.com", tname);
+        ms.auth().addZone(*trx, fqdn, tname);
 
         ResourceIf::RealKey key_zone{fqdn, ResourceIf::RealKey::Class::ZONE};
         ResourceIf::RealKey key_tzone{tname, fqdn, ResourceIf::RealKey::Class::TZONE};
@@ -155,6 +162,44 @@ TEST(AuthMgr, createZone) {
     }
 }
 
+
+TEST(AuthMgr, deleteZone) {
+
+    string tname = "ares";
+    string fqdn = "example.com";
+    MockServer ms;
+    {
+        pb::Tenant tenant;
+        tenant.set_root(fqdn);
+        tenant.set_id(tname);
+        auto id = ms.auth().createTenant(tenant);
+        auto trx = ms->resource().transaction();
+        ms.auth().addZone(*trx, fqdn, tname);
+        ms.auth().deleteZone(*trx, fqdn, tname);
+
+
+        ResourceIf::RealKey key_zone{fqdn, ResourceIf::RealKey::Class::ZONE};
+        ResourceIf::RealKey key_tzone{tname, fqdn, ResourceIf::RealKey::Class::TZONE};
+        EXPECT_FALSE(trx->keyExists(key_zone, ResourceIf::Category::ACCOUNT));
+        EXPECT_FALSE(trx->keyExists(key_tzone, ResourceIf::Category::ACCOUNT));
+    }
+}
+
+TEST(AuthMgr, bootstrap) {
+    MockServer ms;
+    ms.auth().bootstrap();
+    string admin = "admin";
+
+    auto trx = ms->resource().transaction();
+
+    const ResourceIf::RealKey key{admin, ResourceIf::RealKey::Class::USER};
+    EXPECT_TRUE(trx->keyExists(key, ResourceIf::Category::ACCOUNT));
+
+    filesystem::path pwd_file_path = ms->config().db_path;
+    pwd_file_path /= "password.txt";
+    EXPECT_TRUE(filesystem::is_regular_file(pwd_file_path));
+    EXPECT_EQ(filesystem::file_size(pwd_file_path), 42);
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

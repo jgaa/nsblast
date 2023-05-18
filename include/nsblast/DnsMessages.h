@@ -269,7 +269,7 @@ protected:
     buffer_t self_view_;
 };
 
-#pragma pack(1)
+#pragma pack(push, 1)
 struct RrInfo {
     uint16_t offset;
     uint16_t size;
@@ -296,7 +296,7 @@ struct RrInfo {
         return {buffer, offset};
     }
 };
-#pragma pack(0)
+#pragma pack(pop)
 
 
 /*! Wrapper over a RR SOA instance.
@@ -511,7 +511,7 @@ public:
 
 class RrOpt : public Rr{
 public:
-#pragma pack(1)
+#pragma pack(push, 1)
     // The data in the 32 bit ttl field in network order
     struct TtlBits {
         uint32_t extRcode: 8;
@@ -531,7 +531,8 @@ public:
         RcodeBits bits;
     };
 
-#pragma pack(0)
+#pragma pack(pop)
+
     RrOpt() = delete;
 
     /*! Construct from existing data, f.eks. received in a query
@@ -581,7 +582,7 @@ class RrList {
 public:
     using buffer_t = boost::span<const char>;
 
-#pragma pack(1)
+#pragma pack(push, 1)
     struct Index {
         Index(uint16_t type, uint16_t offset)
             : type{type}, offset{offset} {}
@@ -593,7 +594,7 @@ public:
         uint16_t type;
         uint16_t offset;
     };
-#pragma pack(0)
+#pragma pack(pop)
     using index_t = std::deque<Index>;
 
     /*! Simple forward iterator to allow us to iterate over the rr's */
@@ -953,7 +954,7 @@ protected:
 
 struct StorageTypes {
 
-#pragma pack(1)
+#pragma pack(push, 1)
     struct Flags {
         uint8_t soa: 1;
         uint8_t ns: 1;
@@ -978,7 +979,7 @@ struct StorageTypes {
         uint16_t ixoffset = 0;
     };
 
-#pragma pack(0)
+#pragma pack(pop)
 
 };
 

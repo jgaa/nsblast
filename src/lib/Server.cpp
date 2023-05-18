@@ -67,7 +67,8 @@ void Server::startRocksDb()
     LOG_DEBUG << "Initializing RocksDB";
     rdb->init();
 
-    resource_ = move(rdb);
+    bootstrapped_ = rdb->wasBootstrapped();
+    resource_ = rdb;
 }
 
 void Server::startIoThreads()
@@ -85,12 +86,13 @@ void Server::startHttpServer()
     assert(api_);
 
      // TODO: Add actual authentication
-    http_ = make_shared<yahat::HttpServer>(config().http, [](const AuthReq& ar) {
-        Auth auth;
-        LOG_DEBUG << "Authenticating - auth header: " << ar.auth_header;
-        auth.access = true;
-        auth.account = "nobody";
-        return auth;
+    http_ = make_shared<yahat::HttpServer>(config().http, [this](const AuthReq& ar) {
+            return auth_->authorize(ar);
+//        LOG_DEBUG << "Authenticating - auth header: " << ar.auth_header;
+//        auth_.authorize(ar.auth_header);
+//        auth.access = true;
+//        auth.account = "nobody";
+//        return auth;
     }, "nsblast "s + NSBLAST_VERSION);
 
     http_->addRoute("/api/v1", api_);
@@ -135,6 +137,10 @@ void Server::startNotifications()
 void Server::startAuth()
 {
     auth_ = make_shared<AuthMgr>(*this);
+
+    if (wasBootstrapped()) {
+        auth_->bootstrap();
+    }
 }
 
 void Server::stop()
