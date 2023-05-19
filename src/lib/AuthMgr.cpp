@@ -6,6 +6,7 @@
 #include "AuthMgr.h"
 #include "nsblast/logging.h"
 #include "nsblast/errors.h"
+#include "proto_util.h"
 
 using namespace std;
 
@@ -60,11 +61,8 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 {
     auto hash = sha256(ar.auth_header, false);
     if (auto existing = keys_.get(hash)) {
-        yahat::Auth a;
-        a.access = existing->isAllowed(pb::Permission::USE_API);
-        a.extra = existing;
-        a.account = existing->tenant();
-        return a;
+        LOG_TRACE << "Request " <<  ar.req.uuid << " proceeded with session-key " << Base64Encode(hash);
+        return existing->getAuth();
     }
 
     static constexpr string_view basic = "basic ";
@@ -243,6 +241,7 @@ void AuthMgr::bootstrap()
     if (auto p = getenv("NSBLAST_ADMIN_PASSWORD")) {
         if (*p) {
             passwd = p;
+            LOG_INFO << "Setting admin password to value in envvar NSBLAST_ADMIN_PASSWORD";
         }
     } else {
         filesystem::path path = server_.config().db_path;
@@ -279,11 +278,54 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
         return {};
     }
 
-    auto user = user_pass.substr(0, pos);
+    auto loginName = toLower(user_pass.substr(0, pos));
     auto pass = user_pass.substr(pos + 1);
 
-    LOG_TRACE << "AuthMgr::authorize: User='" << user << "', pass='" << pass << "'.";
+    //LOG_TRACE << "AuthMgr::authorize: User='" << loginName << "', pass='" << pass << "'.";
 
+    const ResourceIf::RealKey key{loginName, ResourceIf::RealKey::Class::USER};
+
+    std::string tenantId;
+    auto trx = server_.resource().transaction();
+    if (trx->read(key, tenantId, ResourceIf::Category::ACCOUNT, false)) {
+        const ResourceIf::RealKey tkey{tenantId, ResourceIf::RealKey::Class::TENANT};
+        if (auto tenant = get<pb::Tenant>(*trx, tkey)) {
+            for(const auto& user: tenant->users()) {
+                const auto lcName = toLower(user.loginname());
+                if (lcName == loginName) {
+                    if (!user.has_auth()) {
+                        LOG_DEBUG << " AuthMgr::basicAuth No Auth data for login for user " << loginName
+                                  << " at tenant " << tenant->id()
+                                  << " for request " << ar.req.uuid;
+                        return {};
+                    }
+                    auto pwhash = createHash(user.auth().seed(), string{pass});
+                    if (pwhash != user.auth().hash()) {
+                        LOG_DEBUG << " AuthMgr::basicAuth Invalid password for login from user " << loginName
+                                  << " at tenant " << tenant->id()
+                                  << " for request " << ar.req.uuid;
+                        return {};
+                    }
+
+                    vector<string_view> role_names;
+                    for(const auto& name : user.roles()) {
+                        role_names.push_back(name);
+                    }
+                    auto session = make_shared<Session>(*this, *tenant, role_names);
+                    keys_.emplace(hash, session);
+                    LOG_DEBUG << " AuthMgr::basicAuth Added session key "
+                              << Base64Encode(hash) << " for user " << loginName
+                              << " at tenant " << tenant->id()
+                              << " for request " << ar.req.uuid;
+
+                    return session->getAuth();
+                }
+            }
+        }
+    }
+
+    LOG_DEBUG << " AuthMgr::basicAuth User " << toPrintable(loginName)
+              << " not found for request " << ar.req.uuid;
     return {};
 }
 
@@ -326,9 +368,125 @@ void AuthMgr::deleteUserIndexes(trx_t &trx, const pb::Tenant &tenant)
     }
 }
 
+bool Session::isAllowed(pb::Permission perm, bool throwOnFailure) const {
+    const auto bit = detail::getBit(perm);
+    auto result = (non_zone_perms_ & bit) == bit;
+    if (!result && throwOnFailure) {
+        auto pname = pb::Permission_Name(perm);
+        throw DeniedException{"Access denied for "s + pname + "."};
+    }
+    return result;
+}
+
 bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure) const
 {
-    return isAllowed(perm, throwOnFailure);
+    auto perms = non_zone_perms_;
+
+    for(const auto& role : roles_) {
+        if (!role.appliesToAll()) {
+            if (role.matchesFqdn(lowercaseFqdn)) {
+                perms |= role.permissions_;
+            }
+        }
+    }
+
+    const auto bit = detail::getBit(perm);
+    const auto result = (perms & bit) == bit;
+    if (!result && throwOnFailure) {
+        auto pname = pb::Permission_Name(perm);
+        throw DeniedException{"Access denied for "s + pname + ": " + string{lowercaseFqdn}};
+    }
+    return result;
 }
+
+yahat::Auth Session::getAuth() const noexcept
+{
+    yahat::Auth a;
+    a.access = isAllowed(pb::Permission::USE_API);
+    a.extra = shared_from_this();
+    a.account = tenant();
+    return a;
+}
+
+void Session::init(const pb::Tenant& tenant)
+{
+    auto root = PB_GET(tenant, root, "");
+
+    for (auto& role : roles_) {
+        if (role.appliesToAll()) {
+            non_zone_perms_ |= role.permissions_;
+        }
+
+        if (role.filters_) {
+            auto& filter = *role.filters_;
+            string pattern;
+            pattern.reserve(root.size() + filter.fqdn_.size() + filter.regex_.size() + 16);
+            if (filter.fqdn_.empty()) {
+                if (!filter.recursive_) {
+                    LOG_DEBUG << "Filter in role " << role.name_
+                              << " is invalid (fqdn is empty, and the filter is non-recuirsive)";
+                    continue;
+                }
+            } else {
+                static const regex is_valid_hostname{R"(^[_a-zA-Z0-9.\-]*$)"};
+                if (!std::regex_match(filter.fqdn_, is_valid_hostname)) {
+                    LOG_DEBUG << "Filter in role " << role.name_
+                              << " is invalid (fqdn contains invalid characters): "
+                              << " pattern: " << pattern;
+                    continue;
+                }
+
+                pattern = filter.fqdn_;
+                assert(!pattern.empty());
+                if (!pattern.ends_with('.')) {
+                    pattern += ".";
+                }
+            }
+            pattern += root;
+            if (pattern.find('\\') != string::npos) {
+                LOG_DEBUG << "Filter in role " << role.name_ << " is invalid (contains backslash): "
+                          << " pattern: " << pattern;
+                continue;
+            }
+            boost::replace_all(pattern, ".", "\\.");
+            if (!filter.regex_.empty()) {
+                // TODO: Validate assumtion:
+                //   - The user cannot affect the second part of the pattern with the value
+                //     of the regex because the paranthesis would become unbalance and
+                //     the regex compilation would fail ann hence invalidate the filter.
+                pattern = "^("s + filter.regex_ + ")(" + pattern + ")$";
+            } else {
+                if (filter.recursive_) {
+                    pattern = "^(.*\\.)*(" + pattern + ")$";
+                } else {
+                    pattern = "^(" + pattern + ")$";
+                }
+            }
+
+            LOG_TRACE << "Session::init Assigning filter regex " << pattern
+                      << " to role " << role.name_
+                      << " for tenant " << tenant.id();
+            try {
+                role.filters_->match_.emplace(toLower(pattern));
+            } catch(const std::exception& ex) {
+                LOG_INFO << "Session::init Discarding role " << role.name_
+                         << " for tenant " << tenant.id()
+                         << " with regex " << pattern
+                         << ": " << ex.what();
+            }
+        }
+    }
+}
+
+
+bool detail::Role::matchesFqdn(std::string_view fqdn) const noexcept
+{
+    if (filters_ && filters_->match_) {
+        return regex_match(fqdn.begin(), fqdn.end(), *filters_->match_);
+    }
+
+    return false;
+}
+
 
 } // ns

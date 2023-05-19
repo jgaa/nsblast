@@ -91,23 +91,6 @@ enum Permission {
 }
 
 /**
- * RR types
- */
-enum RrType {
-    A = 1;
-    NS = 2;
-    CNAME = 5;
-    SOA = 6;
-    PTR = 11;
-    MX = 15;
-    TXT = 16;
-    RP = 17;
-    AFSDB = 18;
-    SRV = 33;
-    DHCID = 49;
-}
-
-/**
  * Specifies a specific branch of the domain-three where
  * a rule apply.
  */
@@ -115,7 +98,6 @@ message ZoneFilter {
     optional string fqdn = 1; // Filter applies for
     optional bool recursive = 2; // Filter applies for sub-domains of fqdn
     optional string regex = 3; // aplies only for fqdn's that match the regex
-    repeated RrType rrTypes = 4; // If non-empty, applies only for the types within
 }
 
 /**

@@ -1028,21 +1028,7 @@ definitions:
         type: bool
       regex:
         type: string
-      rrTypes:
-        type: string
-        enum:
-          - A
-          - NS
-          - CNAME
-          - SOA
-          - PTR
-          - MX
-          - TXT
-          - RP
-          - AFSDB
-          - SRV
-          - DHCID
-          -
+
   Permission:
     type: string
     enum:

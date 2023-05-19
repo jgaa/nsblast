@@ -5,12 +5,14 @@
 #include <chrono>
 #include <atomic>
 #include <list>
+#include <regex>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
 #include "proto/nsblast.pb.h"
 #include "nsblast/Server.h"
 #include "nsblast/errors.h"
+#include "proto_util.h"
 
 
 namespace nsblast::lib {
@@ -25,6 +27,9 @@ public:
     struct Item;
     using lru_iterator_t = typename std::list<Item *>::iterator;
     struct Item {
+        Item(keyT && key, dataT && data)
+            : data_{std::move(data)}, key_{std::move(key)} {}
+
         lru_iterator_t lruIt_;
         dataT data_;
         keyT key_;
@@ -32,10 +37,10 @@ public:
 
     Lru(size_t capacity) : capacity_{capacity} {}
 
-    void emplace(keyT && key, Item && item) {
-        auto instance = std::make_unique<Item>({}, std::move(item), std::move(key));
+    void emplace(keyT key, dataT data) {
+        auto instance = std::make_unique<Item>(std::move(key), std::move(data));
         std::lock_guard lock{mutex_};
-        instance->lruIt_ = lru_.push_front(instance.get());
+        instance->lruIt_ = lru_.insert(lru_.begin(), instance.get());
         auto [_, inserted] = items_.insert_or_assign(instance->key_, std::move(instance));
         if (inserted) {
             makeSpace();
@@ -118,16 +123,40 @@ static detail::perms_t getPerms(const T& perms) noexcept {
     return perm;
 }
 
-class ZoneFilter {
+struct ZoneFilter {
+    ZoneFilter() = default;
+
+    ZoneFilter(const std::string& fqdn,
+               bool recursive,
+               const std::string& regex)
+        : fqdn_{fqdn}, recursive_{recursive}, regex_{regex}
+    {}
+
+
     std::string fqdn_;
-    std::string regex;
     bool recursive_ = false;
-    uint32_t rrTypes_ = {};
+    std::string regex_;
+    std::optional<std::regex> match_;
 };
 
-class Role {
+struct Role {
+
+    Role() = default;
+
+    Role(std::string name)
+        : name_{std::move(name)} {}
+
+    bool appliesToAll() const noexcept {
+        return !filters_
+               || (filters_->fqdn_.empty()
+                   && filters_->regex_.empty()
+               );
+    }
+
+    bool matchesFqdn(std::string_view fqdn) const noexcept;
+
     std::string name_;
-    perms_t permissions_;
+    perms_t permissions_ = 0;
     std::optional<ZoneFilter> filters_;
 };
 
@@ -136,21 +165,18 @@ class Role {
 
 /*! Session object that follows an individual request.
  */
-class Session {
+class Session : public std::enable_shared_from_this<Session> {
 public:
 
-    Session(AuthMgr& mgr, const std::string tenant, detail::perms_t perms)
-        : perms_{perms}, mgr_{mgr}, tenant_{tenant} {};
+    template <typename T>
+    Session(AuthMgr& mgr, const pb::Tenant& tenant, const T& roles)
+        : mgr_{mgr}, tenant_{tenant.id()} {
+        populate(tenant, roles);
+        init(tenant);
+    };
 
     // Check if a non-zone permission is granted
-    bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const {
-        const auto bit = detail::getBit(perm);
-        auto result = (perms_ & bit) == bit;
-        if (!result && throwOnFailure) {
-            throw DeniedException{};
-        }
-        return result;
-    }
+    bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const;
 
     std::string_view tenant() const {
         return tenant_;
@@ -159,9 +185,38 @@ public:
     // Check if a zone-permission is granted
     bool isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure = false) const;
 
+    yahat::Auth getAuth() const noexcept;
+
 private:
-    std::optional<pb::ZoneFilter> filter_;
-    const detail::perms_t perms_ = 0;
+    void init(const pb::Tenant& tenant);
+    template <typename T>
+    void populate(const pb::Tenant& tenant, const T& roles) {
+
+        auto exists_in = [&roles](const auto& name) {
+            for(const auto& rn : roles) {
+                if (compareCaseInsensitive(rn, name)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        for(const auto& r : tenant.roles()) {
+            const auto& name = toLower(r.name());
+            if (exists_in(r.name())) {
+                auto& nr = roles_.emplace_back(toLower(r.name()));
+                nr.permissions_ = detail::getPerms(r.permissions());
+                if (r.has_filter()) {
+                    nr.filters_.emplace(PB_GET(r.filter(), fqdn, ""),
+                                        PB_GET(r.filter(), recursive, true),
+                                        PB_GET(r.filter(), regex, ""));
+                }
+            }
+        }
+    }
+
+    detail::perms_t non_zone_perms_ = 0;
+    std::vector<detail::Role> roles_;
     AuthMgr& mgr_;
     const std::string tenant_;
 };
