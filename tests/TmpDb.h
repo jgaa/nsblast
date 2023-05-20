@@ -33,6 +33,15 @@ string getUuid() {
     return boost::lexical_cast<string>(uuid_gen_());
 }
 
+struct MockSession : public Session {
+
+};
+
+auto mockSession() {
+    static MockAuthMgr
+    return make_shared<Session>
+}
+
 class TmpDb {
 public:
     TmpDb()
@@ -44,6 +53,7 @@ public:
         LOG_TRACE << "Created unique tmp directory: " << path_;
         db_->init();
         c_.dns_enable_notify = false;
+        c_.enable_auth = false;
     }
 
     auto& operator -> () {

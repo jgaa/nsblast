@@ -57,6 +57,13 @@ optional<T> get(trx_t& trx, const ResourceIf::RealKey& key) {
 } // anon ns
 
 
+bool AuthMgr::has_auth_ = true;
+
+AuthMgr::AuthMgr(Server &server)
+    : server_{server}, keys_{server.config().auth_cache_lru_size} {
+    has_auth_ = server.config().enable_auth;
+}
+
 yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 {
     auto hash = sha256(ar.auth_header, false);

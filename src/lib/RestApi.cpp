@@ -11,9 +11,8 @@
 #include "SlaveMgr.h"
 #include "AuthMgr.h"
 #include "Notifications.h"
-#include "nsblast/DnsEngine.h"
+//#include "nsblast/DnsEngine.h"
 #include "nsblast/errors.h"
-#include "proto/nsblast.pb.h"
 #include "google/protobuf/util/json_util.h"
 
 #include "glad/AsyncCache.hpp"
@@ -25,6 +24,18 @@ using namespace yahat;
 namespace nsblast::lib {
 
 namespace {
+
+std::shared_ptr<Session> getSession(const yahat::Request& req) {
+    try {
+        if (auto session = any_cast<std::shared_ptr<Session>>(req.auth.extra)) {
+            return session;
+        }
+    } catch(const std::bad_any_cast&) {
+        assert(false);
+    }
+
+    return {};
+}
 
 auto test_glad(boost::asio::io_context& ctx) {
     jgaa::glad::AsyncCache<string, string> cache([](const string& key, const auto& cb){;}, ctx);
@@ -218,7 +229,7 @@ RestApi::RestApi(Server& server)
 RestApi::RestApi(const Config &config, ResourceIf &resource)
     : config_{config}, resource_{resource} {}
 
-Response RestApi::onReqest(const Request &req, const Auth & /*auth*/)
+Response RestApi::onReqest(const Request &req)
 {
     const auto p = parse(req);
 
@@ -678,6 +689,7 @@ auto makeReply(pb::Tenant& tenant, int okCode = 200) {
 
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
 {
+    auto session = getSession(req);
     auto lowercaseKey = toLower(parsed.fqdn);
     auto trx = resource_.transaction();
 
@@ -697,6 +709,14 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
     try {
         switch(req.type) {
         case Request::Type::GET:
+            if (!session->isAllowed(pb::Permission::GET_TENANT, false)) {
+                if (lowercaseKey == session->tenant()) {
+                    if (session->isAllowed(pb::Permission::GET_SELF_TENANT, false)) {
+                        goto return_tenant;
+                    }
+                }
+                return {403, "Access Denied"};
+            }
 return_tenant:
             if (auto tenant = server().auth().getTenant(lowercaseKey)) {
                 return makeReply(*tenant);
@@ -704,6 +724,9 @@ return_tenant:
             return {404, "Not Found"};
          break;
         case Request::Type::POST: {
+            if (!session->isAllowed(pb::Permission::CREATE_TENANT, false)) {
+                return {403, "Access Denied"};
+            }
             auto id = server().auth().createTenant(tenant);
             if (auto tenant = server().auth().getTenant(id)) {
                 return makeReply(*tenant, 201);
@@ -713,12 +736,27 @@ return_tenant:
             return {500, "Internal Server Error"};
         } break;
         case Request::Type::PUT:
+            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+                return {403, "Access Denied"};
+            }
             server().auth().upsertTenant(lowercaseKey, tenant, false);
             goto return_tenant;
         case Request::Type::PATCH:
+            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+                return {403, "Access Denied"};
+            }
             server().auth().upsertTenant(lowercaseKey, tenant, true);
             goto return_tenant;
         case Request::Type::DELETE:
+            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+                if (lowercaseKey == session->tenant()) {
+                    if (session->isAllowed(pb::Permission::DELETE_SELF_TENANT, false)) {
+                        goto return_tenant;
+                    }
+                }
+                return {403, "Access Denied"};
+            }
+delete_tenant:
             server().auth().deleteTenant(lowercaseKey);
             return {200, "OK"};
         default:
@@ -745,8 +783,13 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
     auto exists = trx->zoneExists(lowercaseFqdn);
 
+    auto session = getSession(req);
+
     switch(req.type) {
     case Request::Type::POST: {
+        if (!session->isAllowed(pb::Permission::CREATE_ZONE, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
         if (exists) {
             return {409, "The zone already exists"};
         }
@@ -770,10 +813,13 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
             return {409, "The zone already exists"};
         }
 
-        server().auth().addZone(*trx, lowercaseFqdn, req.owner);
+        server().auth().addZone(*trx, lowercaseFqdn, session->tenant());
 
     } break;
     case Request::Type::DELETE: {
+        if (!session->isAllowed(pb::Permission::DELETE_ZONE, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
         if (!exists) {
             return {404, "The zone don't exist"};
         }
@@ -783,7 +829,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
             return {404, "The zone don't exist"};
         }
 
-        server().auth().deleteZone(*trx, lowercaseFqdn, req.owner);
+        server().auth().deleteZone(*trx, lowercaseFqdn, session->tenant());
     } break;
     default:
         return {405, "Only POST and DELETE is valid for 'zone' entries"};
@@ -795,9 +841,9 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
-    // Validate the request
-    StorageBuilder sb;
+    auto session = getSession(req);
 
+    StorageBuilder sb;
     auto trx = resource_.transaction();
     const auto lowercaseFqdn = toFqdnKey(parsed.fqdn);
     // Get the zone
@@ -812,7 +858,6 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         }
     }
 
-    // TODO: Check that the user has write access to the zone
     if (!existing.hasSoa()) {
         return {404, "Not authorative for zone"};
     }
@@ -837,6 +882,9 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     // Apply change
     switch(req.type) {
     case Request::Type::POST: {
+        if (!session->isAllowed(pb::Permission::CREATE_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
         if (existing.hasRr()) {
             return {409, "The rr already exists"};
         }
@@ -858,6 +906,9 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     } break;
 
     case Request::Type::PUT: {
+        if (!session->isAllowed(pb::Permission::UPDATE_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
 put:
         if (existing.isSame()) {
             sb.incrementSoaVersion(existing.soa());
@@ -874,6 +925,9 @@ put:
     } break;
 
     case Request::Type::PATCH: {
+        if (!session->isAllowed(pb::Permission::UPDATE_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
         if (!existing.hasRr()) {
             // No existing data to patch. Just write the new rr's.
             goto put;
@@ -917,6 +971,9 @@ put:
     } break;
 
     case Request::Type::DELETE: {
+        if (!session->isAllowed(pb::Permission::DELETE_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
         if (!existing.hasRr()) {
             return {404, "The rr don't exist"};
         }
@@ -986,6 +1043,10 @@ put:
 
 Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &parsed)
 {
+    if (!hasAccess(req, pb::Permission::CONFIG_SLAVE)) {
+        return {403, "Access Denied"};
+    }
+
     pb::SlaveZone zone;
     if (req.expectBody() && !fromJson(req.body, zone)) {
         return {400, "Failed to parse json payload into a Zone object"};
@@ -1055,6 +1116,26 @@ void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)
             throw Response{400, "SRV records' targets must point to an existing fqdn with address record(s)"};
         }
     }
+}
+
+bool RestApi::hasAccess(const yahat::Request &req, pb::Permission perm) const noexcept
+{
+    if (auto session = getSession(req)) {
+        return session->isAllowed(perm, false);
+    }
+
+    return false;
+}
+
+bool RestApi::hasAccess(const yahat::Request &req,
+                        std::string_view lowercaseFqdn,
+                        pb::Permission perm) const noexcept
+{
+    if (auto session = getSession(req)) {
+        return session->isAllowed(perm, lowercaseFqdn, false);
+    }
+
+    return false;
 }
 
 

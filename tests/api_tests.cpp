@@ -6,6 +6,7 @@
 
 #include "nsblast/DnsMessages.h"
 #include "nsblast/logging.h"
+#include "yahat/HttpServer.h"
 
 //#include "test_res.h"
 
@@ -142,7 +143,9 @@ auto makeRequest(const string& what, string_view fqdn, string json, yahat::Reque
 
     std::string full_target = base + "/" + what + "/" + string{fqdn};
 
-    return yahat::Request{nullptr, full_target, "/api/v1", "", "", json, type};
+    yahat::Request req{full_target, json, type, {}};
+    req.route = base;
+    return req;
 }
 
 uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {

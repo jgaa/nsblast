@@ -6,6 +6,7 @@
 #include "nsblast/ResourceIf.h"
 #include "yahat/HttpServer.h"
 #include "nsblast/Server.h"
+#include "proto/nsblast.pb.h"
 
 namespace nsblast::lib {
 
@@ -24,7 +25,7 @@ public:
 
 
     // RequestHandler interface
-    yahat::Response onReqest(const yahat::Request &req, const yahat::Auth &auth) override;
+    yahat::Response onReqest(const yahat::Request &req) override;
 
 
     Parsed parse(const yahat::Request &req);
@@ -41,6 +42,8 @@ public:
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
+    bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;
+    bool hasAccess(const yahat::Request& req, std::string_view lowercaseFqdn, pb::Permission) const noexcept;
 private:
     Server& server() noexcept {
         assert(server_);

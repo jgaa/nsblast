@@ -223,8 +223,7 @@ private:
 
 class AuthMgr {
 public:
-    AuthMgr(Server& server)
-        : server_{server}, keys_{server.config().auth_cache_lru_size} {}
+    AuthMgr(Server& server);
 
     yahat::Auth authorize(const yahat::AuthReq& ar);
 
@@ -270,6 +269,10 @@ public:
 
     static std::string createHash(const std::string& seed, const std::string& passwd);
 
+    static bool hasAuth() noexcept {
+        return has_auth_;
+    }
+
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant);
@@ -277,6 +280,7 @@ private:
 
     Server& server_;
     detail::Lru<std::shared_ptr<Session>> keys_;
+    static bool has_auth_;
 };
 
 } // ns
