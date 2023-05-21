@@ -62,7 +62,7 @@ Other dependencies that are handled automatically by CMake:
 
 ## Debian dependencies
 ```sh
-sudo apt install googletest libgtest-dev protobuf-compiler libprotobuf-dev libicu-dev libsnappy-dev libssl-dev libz3-dev
+sudo apt install googletest libgtest-dev protobuf-compiler libprotobuf-dev libicu-dev libsnappy-dev libssl-dev libz3-dev libgflags-dev libbz2-dev liblz4-dev
 ```
 
 Example on building the application (with custom built boost-library in /opt):
