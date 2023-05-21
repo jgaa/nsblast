@@ -19,9 +19,6 @@ make -j `nproc` || die "Build failed"
 if ${DO_STRIP} ; then
     echo "Stripping binary"
     strip bin/*
-    strip /usr/local/lib/libboost*
 fi
 
 cp -v bin/* /artifacts/bin
-cp -rv /usr/local/lib/libboost* /artifacts/lib
-#cp -v external-projects/installed/lib/*.so /artifacts/lib

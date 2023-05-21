@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export NSBLAST_ADMIN_PASSWORD=VerySecret
+
 die() {
     echo "$*" 1>&2
     exit 1;

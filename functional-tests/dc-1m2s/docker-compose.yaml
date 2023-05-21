@@ -3,6 +3,8 @@ version: "3.0"
 services:
   master:
     image: lastviking/nsblast
+    environment:
+        NSBLAST_ADMIN_PASSWORD: VerySecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
     # The cursed avahi-daemon use udp port 5353, so we can't safely use that :/
     ports:
@@ -12,6 +14,8 @@ services:
 
   slave-axfr:
     image: lastviking/nsblast
+    environment:
+        NSBLAST_ADMIN_PASSWORD: VerySecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
     ports:
       - "127.0.0.1:8081:80"
@@ -20,6 +24,8 @@ services:
       
   slave-ixfr:
     image: lastviking/nsblast
+    environment:
+        NSBLAST_ADMIN_PASSWORD: VerySecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-level trace --http-port 80
     ports:
       - "127.0.0.1:8082:80"

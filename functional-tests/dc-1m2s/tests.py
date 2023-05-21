@@ -9,7 +9,7 @@ import json
 import pytest
 import dns.resolver
 import time
-
+import os
 
 @pytest.fixture(scope = 'module')
 def global_data():
@@ -24,13 +24,15 @@ def global_data():
     slave_ixfr = dns.resolver.Resolver(configure=False)
     slave_ixfr.nameservers = ['127.0.0.1']
     slave_ixfr.port = 5356
+    password = os.environ['NSBLAST_ADMIN_PASSWORD']
 
     return {'master-dns': mresolver,
             'slave-axfr': slave_axfr,
             'slave-ixfr': slave_ixfr,
             'master-url': 'http://127.0.0.1:8080/api/v1',
             'slave-axfr-url': 'http://127.0.0.1:8081/api/v1',
-            'slave-ixfr-url': 'http://127.0.0.1:8082/api/v1'
+            'slave-ixfr-url': 'http://127.0.0.1:8082/api/v1',
+            'pass': password
            }
 
 
@@ -59,7 +61,7 @@ def test_create_zone(global_data):
     print('Creating example.com zone')
     url = global_data['master-url'] + '/zone/example.com'
     body = yaml.load(zone, Loader=yaml.Loader)
-    r = requests.post(url, json=body)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 
@@ -84,7 +86,7 @@ def test_setup_axfr_slave(global_data):
     }
     """
     url = global_data['slave-axfr-url'] + '/config/example.com/master'
-    r = requests.post(url, json=json.loads(data))
+    r = requests.post(url, json=json.loads(data), auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 
@@ -101,7 +103,7 @@ def test_setup_ixfr_slave(global_data):
     }
     """
     url = global_data['slave-ixfr-url'] + '/config/example.com/master'
-    r = requests.post(url, json=json.loads(data))
+    r = requests.post(url, json=json.loads(data), auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 
@@ -135,7 +137,7 @@ def test_create_www(global_data):
     print('Creating www.example.com A entry')
     url = global_data['master-url'] + '/rr/www.example.com'
     body = yaml.load(entry, Loader=yaml.Loader)
-    r = requests.post(url, json=body)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 
@@ -179,7 +181,7 @@ def test_create_TeSt1(global_data):
 
     url = global_data['master-url'] + '/rr/TeSt1.example.com'
     body = yaml.load(entry, Loader=yaml.Loader)
-    r = requests.post(url, json=body)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 
@@ -269,7 +271,7 @@ def test_zero_ttl(global_data):
     print('Creating zero.example.com A entry')
     url = global_data['master-url'] + '/rr/zero.example.com'
     body = yaml.load(entry, Loader=yaml.Loader)
-    r = requests.post(url, json=body)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']))
     print(r.text)
     assert r.ok
 

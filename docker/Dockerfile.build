@@ -1,4 +1,4 @@
-FROM debian:buster
+FROM debian:bookworm
 LABEL maintainer="jgaa@jgaa.com"
 
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
@@ -6,12 +6,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q cmake \
     build-essential g++ git vim curl libssl-dev zlib1g-dev libprotobuf-dev \
     protobuf-compiler libicu-dev libbz2-dev libsnappy-dev gcc libgtest-dev libgflags-dev \
-    liblz4-dev &&\
-    mkdir -p /tmp/boost &&\
-    curl -L https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\
-    cd /tmp/boost && ./bootstrap.sh && ./b2 --with-program_options --with-system --with-date_time --with-coroutine --with-context --with-chrono --with-regex --with-json install &&\
-    cd / &&\
-    rm -rf /tmp/boost
-    
+    liblz4-dev libboost1.81-all-dev libboost-json1.81-dev libboost-json1.81.0
+
 ENV CC=gcc
 ENV CPP=g++

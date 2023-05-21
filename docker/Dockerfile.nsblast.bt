@@ -6,10 +6,10 @@ ENV USER_UID=999 USER_NAME=nsblast
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
-        libssl1.1 libprotobuf-dev libicu-dev liblz4-1 libz3-4 libsnappy1v5 gdb bash
+        libssl1.1 libprotobuf-dev libicu-dev liblz4-1 libz3-4 libsnappy1v5 \
+        libboost1.81-all libboost-json1.81.0 gdb bash
 
 COPY bin/* /usr/local/bin/
-COPY lib/* /usr/local/lib/
 COPY logbt.sh /usr/local/bin/logbt
 COPY startup.sh /usr/local/bin/startup.sh
 
