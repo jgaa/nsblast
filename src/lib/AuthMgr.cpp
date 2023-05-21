@@ -376,6 +376,9 @@ void AuthMgr::deleteUserIndexes(trx_t &trx, const pb::Tenant &tenant)
 }
 
 bool Session::isAllowed(pb::Permission perm, bool throwOnFailure) const {
+    if (!AuthMgr::hasAuth()) {
+        return true;
+    }
     const auto bit = detail::getBit(perm);
     auto result = (non_zone_perms_ & bit) == bit;
     if (!result && throwOnFailure) {
@@ -385,8 +388,15 @@ bool Session::isAllowed(pb::Permission perm, bool throwOnFailure) const {
     return result;
 }
 
+string_view Session::tenant() const {
+    return tenant_;
+}
+
 bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure) const
 {
+    if (!AuthMgr::hasAuth()) {
+        return true;
+    }
     auto perms = non_zone_perms_;
 
     for(const auto& role : roles_) {
@@ -406,7 +416,7 @@ bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, boo
     return result;
 }
 
-yahat::Auth Session::getAuth() const noexcept
+yahat::Auth Session::getAuth() noexcept
 {
     yahat::Auth a;
     a.access = isAllowed(pb::Permission::USE_API);

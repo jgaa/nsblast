@@ -33,15 +33,6 @@ string getUuid() {
     return boost::lexical_cast<string>(uuid_gen_());
 }
 
-struct MockSession : public Session {
-
-};
-
-auto mockSession() {
-    static MockAuthMgr
-    return make_shared<Session>
-}
-
 class TmpDb {
 public:
     TmpDb()
@@ -159,14 +150,20 @@ public:
         : Server(db->config()), db_{db} {
         resource_ = db->resourcePtr();
         auth_ = make_shared<AuthMgr>(*this);
+        admin_session_ = make_shared<Session>(*auth_);
     }
 
     auto& operator -> () {
         return db_;
     }
 
+    auto& getAdminSession() {
+        return admin_session_;
+    }
+
 private:
     std::shared_ptr<TmpDb> db_;
+    std::shared_ptr<Session> admin_session_;
 };
 
 } // ns

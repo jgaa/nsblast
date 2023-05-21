@@ -175,17 +175,18 @@ public:
         init(tenant);
     };
 
+    Session(AuthMgr& mgr)
+        : mgr_{mgr}, tenant_{"nsblast"} {};
+
     // Check if a non-zone permission is granted
     bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const;
 
-    std::string_view tenant() const {
-        return tenant_;
-    }
+    std::string_view tenant() const;
 
     // Check if a zone-permission is granted
     bool isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure = false) const;
 
-    yahat::Auth getAuth() const noexcept;
+    yahat::Auth getAuth() noexcept;
 
 private:
     void init(const pb::Tenant& tenant);

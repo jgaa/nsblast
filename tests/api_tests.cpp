@@ -135,7 +135,7 @@ auto getSrvNoAddressTargetJson() {
     })";
 }
 
-auto makeRequest(const string& what, string_view fqdn, string json, yahat::Request::Type type) {
+auto makeRequest(MockServer& ms, const string& what, string_view fqdn, string json, yahat::Request::Type type) {
     static const string base = "/api/v1";
 
     LOG_DEBUG << "makeRequest fqdn=" << fqdn << ", what=" << what
@@ -145,6 +145,7 @@ auto makeRequest(const string& what, string_view fqdn, string json, yahat::Reque
 
     yahat::Request req{full_target, json, type, {}};
     req.route = base;
+    req.auth = ms.getAdminSession()->getAuth();
     return req;
 }
 
@@ -506,7 +507,7 @@ TEST(ApiRequest, onZoneOk) {
     MockServer svr;
     {
         auto json = getZoneJson();
-        auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
         RestApi api{svr};
 
@@ -524,7 +525,7 @@ TEST(ApiRequest, onZoneExists) {
     {
         auto json = getZoneJson();
 
-        auto req = makeRequest("zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "zone", "example.com", boost::json::serialize(json), yahat::Request::Type::POST);
 
         RestApi api{svr};
 
@@ -545,7 +546,7 @@ TEST(ApiRequest, postRrWithSoa) {
     MockServer svr;
     {
         auto json = boost::json::serialize(getZoneJson());
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -563,7 +564,7 @@ TEST(ApiRequest, postRrOverwriteZone) {
         svr->createTestZone();
 
         auto json = boost::json::serialize(getZoneJson());
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -584,7 +585,7 @@ TEST(ApiRequest, postSubRr) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -604,7 +605,7 @@ TEST(ApiRequest, postSubRrZeroTtl) {
         svr->createTestZone();
 
         auto json = getAJsonZeroTtl();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -629,7 +630,7 @@ TEST(ApiRequest, postSubRrExists) {
     {
         svr->createTestZone();
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -648,7 +649,7 @@ TEST(ApiRequest, postSubRrNoZone) {
     {
         svr->createTestZone();
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -669,7 +670,7 @@ TEST(ApiRequest, putSubRr) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PUT);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -688,7 +689,7 @@ TEST(ApiRequest, putSubRrNoZone) {
     {
         svr->createTestZone();
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PUT);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -704,7 +705,7 @@ TEST(ApiRequest, putSubRrExists) {
     {
         svr->createTestZone();
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PUT);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PUT);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -728,7 +729,7 @@ TEST(ApiRequest, patchSubRr) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PATCH);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -747,7 +748,7 @@ TEST(ApiRequest, patchSubRrNoZone) {
     {
         svr->createTestZone();
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::PATCH);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PATCH);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -763,7 +764,7 @@ TEST(ApiRequest, postRrHinfo) {
     {
         svr->createTestZone();
         auto json = getHinfoJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -779,7 +780,7 @@ TEST(ApiRequest, postRrRp) {
     {
         svr->createTestZone();
         auto json = getRpJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -795,7 +796,7 @@ TEST(ApiRequest, postRrAfsdb) {
     {
         svr->createTestZone();
         auto json = getAfsdbJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -811,7 +812,7 @@ TEST(ApiRequest, postRrSrv) {
     {
         svr->createTestZone();
         auto json = getSrvJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -828,7 +829,7 @@ TEST(ApiRequest, postRrSrvNoAddressTarget) {
         svr->createTestZone();
         svr->createFooWithHinfo();
         auto json = getSrvNoAddressTargetJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -843,7 +844,7 @@ TEST(ApiRequest, postRrDhcid) {
     {
         svr->createTestZone();
         auto json = getSrvDhcidJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -862,7 +863,7 @@ TEST(ApiRequest, postRrOpenpgpkey) {
         const string json = R"({
         "openpgpkey":"AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA="
         })";
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -893,7 +894,7 @@ TEST(ApiRequest, postRr) {
             }]
         })";
 
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -922,7 +923,7 @@ TEST(ApiRequest, deleteRr) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -931,7 +932,7 @@ TEST(ApiRequest, deleteRr) {
         EXPECT_EQ(res.code, 201);
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
 
-        req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+        req = makeRequest(svr, "rr", fqdn, {}, yahat::Request::Type::DELETE);
         parsed = api.parse(req);
         res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 200);
@@ -950,7 +951,7 @@ TEST(ApiRequest, deleteZoneViaRrError) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -959,7 +960,7 @@ TEST(ApiRequest, deleteZoneViaRrError) {
         EXPECT_EQ(res.code, 201);
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
 
-        req = makeRequest("rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
+        req = makeRequest(svr, "rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
         parsed = api.parse(req);
         res = api.onResourceRecord(req, parsed);
         EXPECT_EQ(res.code, 409);
@@ -983,7 +984,7 @@ TEST(ApiRequest, deleteZone) {
         // Set up the test
         {
             auto json = getAJson();
-            auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+            auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
             auto parsed = api.parse(req);
             auto res = api.onResourceRecord(req, parsed);
@@ -994,7 +995,7 @@ TEST(ApiRequest, deleteZone) {
 
         // Delete the zone
         {
-            auto req = makeRequest("zone", soa_fqdn, {}, yahat::Request::Type::DELETE);
+            auto req = makeRequest(svr, "zone", soa_fqdn, {}, yahat::Request::Type::DELETE);
             auto parsed = api.parse(req);
             auto res = api.onZone(req, parsed);
             EXPECT_EQ(res.code, 200);
@@ -1018,7 +1019,7 @@ TEST(ApiRequest, diffCreatedForPostNewChild) {
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
         auto json = getAJson();
-        auto req = makeRequest("rr", fqdn, json, yahat::Request::Type::POST);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::POST);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
@@ -1083,7 +1084,7 @@ TEST(ApiRequest, diffCreatedForDeleteChild) {
 
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
 
-        auto req = makeRequest("rr", fqdn, {}, yahat::Request::Type::DELETE);
+        auto req = makeRequest(svr, "rr", fqdn, {}, yahat::Request::Type::DELETE);
 
         RestApi api{svr};
         auto parsed = api.parse(req);
