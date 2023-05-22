@@ -10,6 +10,26 @@
 using namespace std;
 using namespace nsblast;
 
+namespace {
+
+optional<logfault::LogLevel> toLogLevel(string_view name) {
+    if (name.empty() || name == "off" || name == "false") {
+        return {};
+    }
+
+    if (name == "debug") {
+        return logfault::LogLevel::DEBUGGING;
+    }
+
+    if (name == "trace") {
+        return logfault::LogLevel::TRACE;
+    }
+
+    return logfault::LogLevel::INFO;
+}
+
+}
+
 int main(int argc, char* argv[]) {
     try {
         locale loc("");
@@ -20,7 +40,9 @@ int main(int argc, char* argv[]) {
 
 
     Config config;
+    config.http.http_basic_auth_realm = "nsBLAST";
     std::string log_level = "info";
+    std::string log_level_console = "info";
     std::string log_file;
     bool trunc_log = true;
 
@@ -34,12 +56,15 @@ int main(int argc, char* argv[]) {
         ("db-path,d",
             po::value<string>(&config.db_path)->default_value(config.db_path),
             "Definition file to deploy")
+        ("log-to-console,C",
+             po::value<string>(&log_level_console)->default_value(log_level_console),
+             "Log-level to the consolee; one of 'info', 'debug', 'trace'. Empty string to disable.")
         ("log-level,l",
-             po::value<string>(&log_level)->default_value(log_level),
-             "Log-level to use; one of 'info', 'debug', 'trace'")
+            po::value<string>(&log_level)->default_value(log_level),
+            "Log-level; one of 'info', 'debug', 'trace'.")
         ("log-file,L",
              po::value<string>(&log_file),
-             "Log-file to write a log to. Default is to use the console.")
+             "Log-file to write a log to. Default is to use only the console.")
         ("truncate-log-file,T",
              po::value<bool>(&trunc_log)->default_value(trunc_log),
              "Log-file to write a log to. Default is to use the console.")
@@ -92,37 +117,36 @@ int main(int argc, char* argv[]) {
     po::positional_options_description kfo;
     kfo.add("kubeconfig", -1);
     po::variables_map vm;
-    po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(kfo).run(), vm);
-    po::notify(vm);
+    try {
+        po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(kfo).run(), vm);
+        po::notify(vm);
+    } catch (const std::exception& ex) {
+        cerr << filesystem::path(argv[0]).stem().string()
+             << " Failed to parse command-line arguments: " << ex.what() << endl;
+        return -1;
+    }
+
     if (vm.count("help")) {
         std::cout << filesystem::path(argv[0]).stem().string() << " [options]";
         std::cout << cmdline_options << std::endl;
-        return -1;
+        return -2;
     }
 
     if (vm.count("version")) {
         std::cout << filesystem::path(argv[0]).stem().string() << ' '  << NSBLAST_VERSION << endl;
-        return -2;
-    }
-
-    auto llevel = logfault::LogLevel::INFO;
-    if (log_level == "debug") {
-        llevel = logfault::LogLevel::DEBUGGING;
-    } else if (log_level == "trace") {
-        llevel = logfault::LogLevel::TRACE;
-    } else if (log_level == "info") {
-        ;  // Do nothing
-    } else {
-        std::cerr << "Unknown log-level: " << log_level << endl;
-        return -1;
+        return -3;
     }
 
     if (!log_file.empty()) {
+        if (auto level = toLogLevel(log_level)) {
         logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(log_file, llevel, trunc_log));
-    } else {
+                make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+        }
+    }
+
+    if (auto level = toLogLevel(log_level_console)) {
         logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, llevel));
+                make_unique<logfault::StreamHandler>(clog, *level));
     }
 
     LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
