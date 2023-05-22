@@ -67,7 +67,7 @@ bool ResourceIf::RealKey::isReversed(Class kclass) noexcept
 
 ResourceIf::RealKey::Class ResourceIf::RealKey::kClass() const noexcept {
     if (!empty()) {
-        return static_cast<Class>(bytes_.at(0));
+        return static_cast<Class>(bytes_[0]);
     }
     return Class::ENTRY;
 }
@@ -96,7 +96,7 @@ string ResourceIf::RealKey::dataAsString() const {
                 return fqdn;
             }
             if (!postfix.empty()) {
-                bytes_.substr(1) + postfix;
+                return bytes_.substr(1) + postfix;
             }
             return bytes_.substr(1);
         }

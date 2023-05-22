@@ -28,8 +28,6 @@ struct Config {
     ///@{
     /// Path to the database directory
     std::string db_path = "/var/lib/nsblast";
-
-
     ///@}
 
     /*! \name DNS */
@@ -134,6 +132,9 @@ struct Config {
     ///@{
     /// HTTP configuration
     yahat::HttpConfig http;
+
+    /// Max page size in a REST list reply
+    size_t rest_max_page_size = 1000;
     ///@}
 
     /*! \name Authentication */

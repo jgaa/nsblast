@@ -38,22 +38,60 @@ public:
         void commit() override;
         void rollback() override;
 
-        /*! Search for a key and return the range of keys that match
-         *
-         *  Used for example for zone transfers, where the key would be the
-         *  fqdn to the zone, and the range would be all entries starting
-         *  with that key.
-         *
-         *  Interlally a rocksdb iterator is opened for the key, and the user
-         *  can iterate over the range as it is lazily fetched from the database.
-         *
-         *  The range should be closed or disposed over as quick as possible to
-         *  not keep the rocksdb iterator open longer than required.
-         */
-        //Range search(key_t key);
-
         auto operator -> () {
             return trx_.get();
+        }
+
+        template <typename fnT>
+        void iterateFromPrevT(key_t& key,  Category category, fnT& fn) {
+            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            it->SeekForPrev(toSlice(key));
+            if (it->Valid()) {
+                // Skip the 'last' key.
+                it->Next();
+            }
+
+            for(; it->Valid(); it->Next()) {
+                const auto& k = it->key();
+                if (!key.isSameKeyClass(k)) [[unlikely]] {
+                    return;
+                }
+
+                if (!fn({k, key.kClass(), true}, it->value())) {
+                    return;
+                }
+            }
+        }
+
+        template <typename fnT>
+        void iterateT(key_t& key, Category category, fnT& fn)
+        {
+            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
+                const auto& k = it->key();
+                if (!key.isSameKeyClass(k)) [[unlikely]] {
+                    return;
+                }
+                if (!fn({k, key.kClass(), true}, it->value())) {
+                    return;
+                }
+            }
+        }
+
+        template <typename fnT>
+        void iterateT(Category category, RealKey::Class kclass, fnT& fn)
+        {
+            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            for(it->SeekToFirst(); it->Valid(); it->Next()) {
+                if (!fn({it->key(), kclass, true}, it->value())) {
+                    return;
+                }
+            }
+        }
+
+        template <typename T>
+        rocksdb::Slice toSlice(const T& v) {
+            return  rocksdb::Slice{v.data(), v.size()};
         }
 
     private:

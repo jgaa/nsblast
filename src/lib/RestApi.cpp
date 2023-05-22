@@ -11,6 +11,7 @@
 #include "SlaveMgr.h"
 #include "AuthMgr.h"
 #include "Notifications.h"
+#include "RocksDbResource.h"
 //#include "nsblast/DnsEngine.h"
 #include "nsblast/errors.h"
 #include "google/protobuf/util/json_util.h"
@@ -245,7 +246,6 @@ Response RestApi::onReqest(const Request &req)
         return onTenant(req, p);
     }
 
-
     if (p.what == "config") {
         if (p.operation == "master") {
             return onConfigMaster(req, p);
@@ -270,7 +270,7 @@ RestApi::Parsed RestApi::parse(const Request &req)
     Parsed p;
     p.base = req.target;
     p.base = p.base.substr(req.route.size());
-    while(!p.base.empty() && p.base.at(0) == '/') {
+    while(!p.base.empty() && p.base.starts_with('/')) {
         p.base = p.base.substr(1);
     }
 
@@ -287,6 +287,8 @@ RestApi::Parsed RestApi::parse(const Request &req)
                 p.fqdn = p.fqdn.substr(0, end);
             }
         }
+    } else {
+        p.what = p.base;
     }
 
     return p;
@@ -709,6 +711,12 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
     try {
         switch(req.type) {
         case Request::Type::GET:
+            if (parsed.fqdn.empty()) {
+                if (!session->isAllowed(pb::Permission::LIST_TENANTS, false)) {
+                    return {403, "Access Denied"};
+                }
+                return listTenants(req, parsed);
+            }
             if (!session->isAllowed(pb::Permission::GET_TENANT, false)) {
                 if (lowercaseKey == session->tenant()) {
                     if (session->isAllowed(pb::Permission::GET_SELF_TENANT, false)) {
@@ -1136,6 +1144,68 @@ bool RestApi::hasAccess(const yahat::Request &req,
     }
 
     return false;
+}
+
+Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*/)
+{
+    auto trx_ = server().resource().transaction();
+    auto& trx = dynamic_cast<RocksDbResource::Transaction&>(*trx_);
+
+    boost::json::object out;
+    out["error"] = false;
+    out["status"] = 200;
+    auto& tenants = out["value"] = boost::json::array{};
+
+    auto page_size = server().config().rest_max_page_size;
+    if (auto it = req.arguments.find("limit"); it != req.arguments.end()) {
+        if (auto psize = std::stoi(string{it->second})) {
+            page_size = psize;
+        }
+    }
+
+    size_t count = 0;
+
+    auto on_tenant = [&](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+        pb::Tenant tenant;
+        if (!tenant.ParseFromArray(value.data(), value.size())) {
+            LOG_WARN << "RestApi::listTenants - Failed to parse tenant "
+                     << key << " into an object!";
+            throw Response{500, "Internal Server Error - failed to deserialize object"};
+        }
+        boost::json::object item;
+        item["id"] = tenant.id();
+        item["active"] = tenant.active();
+        item["root"] = tenant.root();
+        auto& users = item["users"] = boost::json::array{};
+        for(const auto& user : tenant.users()) {
+            users.as_array().emplace_back(user.loginname());
+        }
+
+        auto& roles = item["roles"] = boost::json::array{};
+        for(const auto& role: tenant.roles()) {
+            roles.as_array().emplace_back(role.name());
+        }
+
+        auto& perms = item["allowedPermissions"] = boost::json::array{};
+        for(auto perm : tenant.allowedpermissions()) {
+            perms.as_array().emplace_back(pb::Permission_Name(perm));
+        }
+
+        tenants.as_array().emplace_back(item);
+        return ++count <= page_size;
+    };
+
+    if (auto it = req.arguments.find("from"); it != req.arguments.end()) {
+        // From last key
+        ResourceIf::TransactionIf::key_t key{it->second, ResourceIf::RealKey::Class::TENANT};
+        trx.iterateFromPrevT(key, ResourceIf::Category::ACCOUNT, on_tenant);
+    } else {
+        // From start
+        ResourceIf::TransactionIf::key_t key{"", ResourceIf::RealKey::Class::TENANT};
+        trx.iterateT(key, ResourceIf::Category::ACCOUNT, on_tenant);
+    }
+
+    return {200, "Ok", boost::json::serialize(out)};
 }
 
 

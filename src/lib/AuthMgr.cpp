@@ -72,6 +72,11 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
         return existing->getAuth();
     }
 
+    if (ar.auth_header.empty()) {
+        LOG_TRACE << "Request " <<  ar.req.uuid << " provided no Authorization header.";
+        return {};
+    }
+
     static constexpr string_view basic = "basic ";
     if (compareCaseInsensitive(basic, ar.auth_header, false)) {
         return basicAuth(hash, ar.auth_header.substr(basic.size()), ar);

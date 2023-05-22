@@ -44,6 +44,7 @@ public:
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
     bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;
     bool hasAccess(const yahat::Request& req, std::string_view lowercaseFqdn, pb::Permission) const noexcept;
+    yahat::Response listTenants(const yahat::Request &req, const Parsed& parsed);
 private:
     Server& server() noexcept {
         assert(server_);

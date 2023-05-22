@@ -400,12 +400,11 @@ paths:
           schema:
             type: integer
           default: 100
-        - name: offset
+        - name: from
           in: query
-          description: Specifies the page number be returned
+          description: Start the listing after this tenant-id. This can be used to paginate a listing of more items than firts in one retrurned list (max 1000 items).
           schema:
-            type: integer
-          default: 1
+            type: string
       responses:
         "200":
           description: "Success"
@@ -1176,34 +1175,6 @@ definitions:
         items:
           type: string
 
-  ListTenantsResult:
-    type: object
-    properties:
-      rcode:
-        type: integer
-      error:
-        type: bool
-      page:
-        type: integer
-      value:
-        type: array
-        items:
-          $ref: "#/definitions/Tenant"
-
-  ListUsersResult:
-    type: object
-    properties:
-      rcode:
-        type: integer
-      error:
-        type: bool
-      page:
-        type: integer
-      value:
-        type: array
-        items:
-          $ref: "#/definitions/User"
-
   Returns:
     type: object
     properties:
@@ -1249,7 +1220,7 @@ definitions:
         type: array
         items:
           type: object
-        description: Object if the request succeeds
+        description: Object(s) if the request succeeds
 
 
 externalDocs:

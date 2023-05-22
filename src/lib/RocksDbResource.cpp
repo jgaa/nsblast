@@ -21,10 +21,6 @@ namespace nsblast::lib {
 
 namespace {
 
-template <typename T>
-auto toSlice(const T& v) {
-    return  rocksdb::Slice{v.data(), v.size()};
-}
 
 } // anon ns
 
@@ -123,12 +119,7 @@ void RocksDbResource::Transaction::iterate(ResourceIf::TransactionIf::key_t key,
                                            ResourceIf::TransactionIf::iterator_fn_t fn,
                                            Category category)
 {
-    auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
-    for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
-        if (!fn({it->key(), key.kClass(), true}, it->value())) {
-            return;
-        }
-    }
+    iterateT(key, category, fn);
 }
 
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key, Category category)
