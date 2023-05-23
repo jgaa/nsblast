@@ -156,7 +156,13 @@ bool AuthMgr::upsertTenant(std::string_view tenantId,
     upsertUserIndexes(*trx, tenant);
 commit:
     trx->commit();
-    return !existing.has_value();
+
+    auto was_new = !existing.has_value();
+    if (!was_new) {
+        resetTokensForTenant(tenantId);
+    }
+
+    return was_new;
 }
 
 void AuthMgr::deleteTenant(std::string_view tenantId)
@@ -181,6 +187,7 @@ void AuthMgr::deleteTenant(std::string_view tenantId)
 
     LOG_INFO << "Deleting tenant " << tenantId;
     trx->commit();
+    resetTokensForTenant(tenantId);
 }
 
 void AuthMgr::addZone(trx_t &trx, std::string_view fqdn, std::string_view tenant)
@@ -278,6 +285,13 @@ string AuthMgr::createHash(const std::string &seed, const std::string &passwd)
 {
     auto combined = seed + passwd;
     return sha256(combined);
+}
+
+void AuthMgr::resetTokensForTenant(std::string_view tenantId)
+{
+    // For now, just delete all the tokens.
+    LOG_INFO << "Resetting auth-keys after change in tenant " << tenantId;
+    keys_.clear();
 }
 
 yahat::Auth AuthMgr::basicAuth(std::string hash,

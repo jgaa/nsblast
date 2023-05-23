@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
     std::string log_level_console = "info";
     std::string log_file;
     bool trunc_log = true;
+    bool reset_auth = false;
 
     namespace po = boost::program_options;
     po::options_description general("Options");
@@ -68,6 +69,9 @@ int main(int argc, char* argv[]) {
         ("truncate-log-file,T",
              po::value<bool>(&trunc_log)->default_value(trunc_log),
              "Log-file to write a log to. Default is to use the console.")
+        ("reset-auth",
+            "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
+            "The server will terminate after the changes are made.")
     ;
     po::options_description http("HTTP/API server");
     http.add_options()
@@ -153,6 +157,12 @@ int main(int argc, char* argv[]) {
 
     try {        
         Server server{config};
+
+        if (vm.count("reset-auth")) {
+            server.resetAuth();
+            return 0;
+        }
+
         server.start();
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception from Server: " << ex.what();

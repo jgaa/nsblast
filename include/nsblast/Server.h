@@ -35,6 +35,9 @@ public:
      */
     void start();
 
+    /*! Resets the admin user and nsblast account to it's initial, default state." */
+    void resetAuth();
+
     void startRocksDb();
 
     void startIoThreads();

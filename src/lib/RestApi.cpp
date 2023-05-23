@@ -777,10 +777,10 @@ return_tenant:
             }
             goto return_tenant;
         case Request::Type::DELETE:
-            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::DELETE_TENANT, false)) {
                 if (lowercaseKey == session->tenant()) {
                     if (session->isAllowed(pb::Permission::DELETE_SELF_TENANT, false)) {
-                        goto return_tenant;
+                        goto delete_tenant;
                     }
                 }
                 return {403, "Access Denied"};

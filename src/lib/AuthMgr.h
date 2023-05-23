@@ -80,6 +80,12 @@ public:
         return false;
     }
 
+    void clear() {
+        std::lock_guard lock{mutex_};
+        items_.clear();
+        lru_.clear();
+    }
+
     size_t size() {
         std::lock_guard lock{mutex_};
         assert(items_.size() == lru_.size());
@@ -275,6 +281,8 @@ public:
     static bool hasAuth() noexcept {
         return has_auth_;
     }
+
+    void resetTokensForTenant(std::string_view tenantId);
 
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);

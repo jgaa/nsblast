@@ -347,9 +347,9 @@ RocksDbResource::~RocksDbResource()
             if (fh) {
                 LOG_TRACE << "RocksDbResource::~RocksDbResource - ... " << fh->GetName();
 
-                if (fh->GetName() != "default") {
-                    db_->DropColumnFamily(fh);
-                }
+//                if (fh->GetName() != "default") {
+//                    db_->DropColumnFamily(fh);
+//                }
                 db_->DestroyColumnFamilyHandle(fh);
             }
         }

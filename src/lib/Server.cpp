@@ -60,6 +60,21 @@ void Server::start()
     runWorker("main thread");
 }
 
+void Server::resetAuth()
+{
+    startRocksDb();
+    startAuth();
+
+    LOG_WARN << "Resetting the 'admin' user and the 'nsblast' tenant to it's initial, default state.";
+    try {
+        auth_->deleteTenant("nsblast");
+    } catch(const NotFoundException&) {
+        ;
+    }
+
+    auth_->bootstrap();
+}
+
 void Server::startRocksDb()
 {
     auto rdb = make_shared<lib::RocksDbResource>(config());
