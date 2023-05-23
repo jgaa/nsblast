@@ -389,7 +389,7 @@ paths:
                 $ref: "#/definitions/Returns"
 
   /tenant:
-     get:
+    get:
       tags:
         - tenant
       summary: List tenants
@@ -420,43 +420,6 @@ paths:
                 $ref: "#/definitions/Returns"
         "403":
           description: "Forbidden. (Access denied)"
-          content:
-            application/json:
-              schema:
-                $ref: "#/definitions/Returns"
-
-  /tenant/{tenantname}:
-    parameters:
-      - in: path
-        name: tenantname
-        description: Unique name or UUID for a tenant.
-        required: true
-        type: string
-    get:
-      tags:
-        - tenant
-      summary: Get a tenant
-      responses:
-        "200":
-          description: "Tenant object"
-          content:
-            application/json:
-              schema:
-                $ref: "#/definitions/ReturnsValue"
-        "401":
-          description: "Unauthorized."
-          content:
-            application/json:
-              schema:
-                $ref: "#/definitions/Returns"
-        "403":
-          description: "Forbidden. (Access denied)"
-          content:
-            application/json:
-              schema:
-                $ref: "#/definitions/Returns"
-        "404":
-          description: "Not Found"
           content:
             application/json:
               schema:
@@ -505,6 +468,43 @@ paths:
                 $ref: "#/definitions/Returns"
         "409":
           description: "Tenant already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /tenant/{tenantname}:
+    parameters:
+      - in: path
+        name: tenantname
+        description: Unique name or UUID for a tenant.
+        required: true
+        type: string
+    get:
+      tags:
+        - tenant
+      summary: Get a tenant
+      responses:
+        "200":
+          description: "Tenant object"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "404":
+          description: "Not Found"
           content:
             application/json:
               schema:

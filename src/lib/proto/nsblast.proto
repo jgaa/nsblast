@@ -135,8 +135,9 @@ message ApiKey {
  * We store a hash of the users password + seed.
  */
 message UserAuth {
-    required string hash = 2;
-    optional string seed = 3;
+    optional string hash = 1;
+    optional string seed = 2;
+    optional string password = 3;
 }
 
 /**
@@ -150,7 +151,7 @@ message UserAuth {
  *
  */
 message User {
-    required string id = 1;
+    optional string id = 1;
     required string loginName = 2; // Globally unique name
     optional bool active = 3;
     repeated KeyValue properties = 4;

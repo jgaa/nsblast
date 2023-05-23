@@ -682,10 +682,8 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 auto makeReply(pb::Tenant& tenant, int okCode = 200) {
     pb::ReplyTenant r;
     r.set_error(false);
-    r.set_status(200);
-    auto v = make_unique<pb::Tenant>();
-    v->Swap(&tenant);
-    tenant.Clear();
+    r.set_status(okCode);
+    r.mutable_value()->Swap(&tenant);
     return Response{okCode, "OK", toJson(r)};
 }
 
@@ -694,6 +692,7 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
     auto session = getSession(req);
     auto lowercaseKey = toLower(parsed.fqdn);
     auto trx = resource_.transaction();
+    int rcode = 200;
 
     pb::Tenant tenant;
     if (req.expectBody()) {
@@ -701,11 +700,26 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
             return {400, "Failed to parse json payload into a Tenant object"};
         }
 
-        if (req.type != Request::Type::POST) {
+        if (req.type == Request::Type::POST) {
             if (!parsed.fqdn.empty()) {
-                return {404, "POST Tenant cannot specify tenant-id in target"};
+                return {400, "POST Tenant cannot specify tenant-id in target"};
             }
         }
+
+        if (req.type == Request::Type::PUT || req.type == Request::Type::PATCH){
+            if (parsed.fqdn.empty()) {
+                return {400, "Tenant-id must be in the target"};
+            }
+
+            if (tenant.has_id()) {
+                if (toLower(tenant.id()) != lowercaseKey) {
+                    return {400, "Tenant-id in the tenant object is not the same as tenant-d in the target"};
+                }
+            } else {
+                tenant.set_id(lowercaseKey);
+            }
+        }
+
     }
 
     try {
@@ -727,11 +741,14 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
             }
 return_tenant:
             if (auto tenant = server().auth().getTenant(lowercaseKey)) {
-                return makeReply(*tenant);
+                return makeReply(*tenant, rcode);
             }
             return {404, "Not Found"};
          break;
         case Request::Type::POST: {
+            if (!parsed.fqdn.empty()) {
+                return {400, "Create Tenant does not allow tenant-id in the target."};
+            }
             if (!session->isAllowed(pb::Permission::CREATE_TENANT, false)) {
                 return {403, "Access Denied"};
             }
@@ -747,13 +764,17 @@ return_tenant:
             if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
                 return {403, "Access Denied"};
             }
-            server().auth().upsertTenant(lowercaseKey, tenant, false);
+            if (server().auth().upsertTenant(lowercaseKey, tenant, false)) {
+                rcode = 201;
+            }
             goto return_tenant;
         case Request::Type::PATCH:
             if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
                 return {403, "Access Denied"};
             }
-            server().auth().upsertTenant(lowercaseKey, tenant, true);
+            if (server().auth().upsertTenant(lowercaseKey, tenant, true)) {
+                rcode = 201;
+            }
             goto return_tenant;
         case Request::Type::DELETE:
             if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {

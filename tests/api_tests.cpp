@@ -41,6 +41,101 @@ auto getZoneJson() {
     return soa;
 }
 
+string getJsonForNewTenant(string_view id = {}) {
+
+    ostringstream out;
+
+    out << "{";
+
+    if (!id.empty()) {
+        out << R"("id":")" << id << R"(",)";
+    }
+
+    out << R"(
+  "root": "example.com",
+  "properties": [
+    {
+      "key": "is-test",
+      "value": "true"
+    }
+  ],
+  "allowedPermissions": [
+    "USE_API"
+  ],
+  "roles": [
+    {
+      "name": "test",
+      "properties": [
+        {
+          "key": "created",
+          "value": "yes"
+        },
+        {
+          "key": "kind",
+          "value": "dog"
+        }
+      ],
+      "permissions": [
+        "USE_API",
+        "CREATE_ZONE"
+      ],
+      "filter": {
+        "fqdn": "",
+        "recursive": true,
+        "regex": ".*test.*"
+      }
+    },
+    {
+      "name": "guest",
+      "permissions": [
+        "USE_API"
+      ],
+      "filter": {
+        "fqdn": "guest",
+        "recursive": false
+      }
+    }
+  ],
+  "users": [
+    {
+      "loginName": "admin@example.com",
+      "active": true,
+      "properties": [
+        {
+          "key": "kind",
+          "value": "Cat"
+        }
+      ],
+      "roles": [
+        "test",
+        "guest"
+      ],
+      "auth": {
+        "password": "very $ecure123"
+      }
+    },
+    {
+      "loginName": "guest@example.com",
+      "active": true,
+      "properties": [
+        {
+          "key": "kind",
+          "value": "Camel"
+        }
+      ],
+      "roles": [
+        "guest"
+      ],
+      "auth": {
+        "password": "even more $ecure123"
+      }
+    }
+  ]
+})";
+
+    return out.str();
+}
+
 auto getAJson() {
    boost::json::object json;
    json["a"] = {"127.0.0.1", "127.0.0.2"};
@@ -1144,6 +1239,192 @@ TEST(ApiRequest, diffCreatedForDeleteChild) {
         EXPECT_EQ(it, entry.end());
     }
 }
+
+TEST(ApiRequest, createTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant();
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, createExistingTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant("teste-id");
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 409);
+}
+
+
+TEST(ApiRequest, createTenantInvalidTarget) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant();
+    auto req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 400);
+}
+
+
+TEST(ApiRequest, putNewTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant("testme");
+    auto req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+}
+
+TEST(ApiRequest, putTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant("testme");
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PUT);
+    parsed = api.parse(req);
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 200);
+}
+
+TEST(ApiRequest, patchTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant("testme");
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PATCH);
+    parsed = api.parse(req);
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 200);
+}
+
+TEST(ApiRequest, listTenants) {
+    MockServer svr;
+    auto req = makeRequest(svr, "tenant", "", {}, yahat::Request::Type::GET);
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 200);
+}
+
+TEST(ApiRequest, getTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant();
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    auto tobuf = boost::json::parse(res.body);
+    auto to = tobuf.as_object().at("value").as_object();
+    EXPECT_FALSE(to.at("id").as_string().empty());
+
+    const auto tid = to.at("id").as_string();
+
+    req = makeRequest(svr, "tenant/"s + string{tid}, "", json, yahat::Request::Type::GET);
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 200);
+    const auto gbuf = boost::json::parse(res.body);
+    const auto& go = tobuf.as_object().at("value").as_object();
+    EXPECT_TRUE(go.contains("id"));
+    EXPECT_EQ(go.at("id").as_string(), to.at("id").as_string());
+
+    const auto& users = go.at("users").as_array();
+    EXPECT_EQ(users.size(), 2);
+
+    const auto& u1 = users.at(0).as_object();
+    EXPECT_EQ(string(u1.at("loginName").as_string()), string("admin@example.com"));
+    EXPECT_TRUE(u1.contains("id"));
+    EXPECT_FALSE(u1.at("id").as_string().empty());
+    EXPECT_TRUE(u1.contains("active"));
+    EXPECT_TRUE(u1.at("active").as_bool());
+    const auto& auth1 = u1.at("auth").as_object();
+    EXPECT_FALSE(auth1.contains("password"));
+    EXPECT_TRUE(auth1.contains("hash"));
+    EXPECT_TRUE(auth1.contains("seed"));
+    auto hash1 = nsblast::lib::AuthMgr::createHash(
+        string{auth1.at("seed").as_string()},
+        "very $ecure123");
+    EXPECT_EQ(string(auth1.at("hash").as_string()), hash1);
+
+    const auto& u2 = users.at(1).as_object();
+    EXPECT_EQ(string(u2.at("loginName").as_string()), string("guest@example.com"));
+    EXPECT_TRUE(u2.contains("id"));
+    EXPECT_FALSE(u2.at("id").as_string().empty());
+    EXPECT_TRUE(u2.contains("active"));
+    EXPECT_TRUE(u2.at("active").as_bool());
+    const auto& auth2 = u2.at("auth").as_object();
+    EXPECT_FALSE(auth2.contains("password"));
+    EXPECT_TRUE(auth2.contains("hash"));
+    EXPECT_TRUE(auth2.contains("seed"));
+    auto hash2 = nsblast::lib::AuthMgr::createHash(
+        string{auth2.at("seed").as_string()},
+        "even more $ecure123");
+    EXPECT_EQ(string(auth2.at("hash").as_string()), hash2);
+}
+
+TEST(ApiRequest, deleteTenant) {
+    MockServer svr;
+
+    auto json = getJsonForNewTenant("testme");
+    auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::DELETE);
+    parsed = api.parse(req);
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    res = api.onTenant(req, parsed);
+    EXPECT_EQ(res.code, 404);
+}
+
+
 
 
 int main(int argc, char **argv) {

@@ -35,7 +35,7 @@ string getUuid() {
 
 class TmpDb {
 public:
-    TmpDb()
+    TmpDb(bool enableAuth = false)
         : path_{filesystem::temp_directory_path() /= getUuid()}
         , c_{false, path_}
         , db_{make_shared<RocksDbResource>(c_)}
@@ -44,7 +44,7 @@ public:
         LOG_TRACE << "Created unique tmp directory: " << path_;
         db_->init();
         c_.dns_enable_notify = false;
-        c_.enable_auth = false;
+        c_.enable_auth = enableAuth;
     }
 
     auto& operator -> () {

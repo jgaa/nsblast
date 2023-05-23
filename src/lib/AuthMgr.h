@@ -240,7 +240,9 @@ public:
     std::optional<pb::Tenant> getTenant(std::string_view tenantId) const;
 
     std::string createTenant(pb::Tenant& tenant);
-    void upsertTenant(std::string_view tenantId, const pb::Tenant& tenant, bool merge);
+
+    // Returns true if a tenant was created
+    bool upsertTenant(std::string_view tenantId, const pb::Tenant& tenant, bool merge);
 
     /*! Delete an existing tenant
      *
@@ -276,6 +278,7 @@ public:
 
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);
+    void processUsers(pb::Tenant& tenant);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);
 

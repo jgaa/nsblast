@@ -14,6 +14,9 @@ namespace nsblast::lib {
 
 namespace {
 
+auto getSeed() {
+    return getRandomStr(6);
+}
 
 void validate(const pb::Tenant& tenant) {
     // TODO: Validate
@@ -117,6 +120,8 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
         throw AlreadyExistException{"Tenant already exist"};
     }
 
+    processUsers(tenant);
+
     LOG_INFO << "Creating tenant " << id;
     upsert(*trx, key, tenant, true);
     upsertUserIndexes(*trx, tenant);
@@ -124,7 +129,7 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
     return id;
 }
 
-void AuthMgr::upsertTenant(std::string_view tenantId,
+bool AuthMgr::upsertTenant(std::string_view tenantId,
                            const pb::Tenant &tenant, bool merge)
 {
     assert(!tenantId.empty());
@@ -138,8 +143,8 @@ void AuthMgr::upsertTenant(std::string_view tenantId,
     auto id = toLower(tenant.id());
     ResourceIf::RealKey key{id, ResourceIf::RealKey::Class::TENANT};
 
+    auto existing = getTenant(id);
     if (merge) {
-        auto existing = getTenant(id);
         if (existing) {
             existing->MergeFrom(tenant);
             upsert(*trx, key, *existing, false);
@@ -151,6 +156,7 @@ void AuthMgr::upsertTenant(std::string_view tenantId,
     upsertUserIndexes(*trx, tenant);
 commit:
     trx->commit();
+    return !existing.has_value();
 }
 
 void AuthMgr::deleteTenant(std::string_view tenantId)
@@ -248,7 +254,7 @@ void AuthMgr::bootstrap()
     *user->add_roles() = role->name();
 
     auto auth = user->mutable_auth();
-    auth->set_seed(getRandomStr(6));
+    auth->set_seed(getSeed());
     string passwd = getRandomStr(42);
     if (auto p = getenv("NSBLAST_ADMIN_PASSWORD")) {
         if (*p) {
@@ -339,6 +345,39 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
     LOG_DEBUG << " AuthMgr::basicAuth User " << toPrintable(loginName)
               << " not found for request " << ar.req.uuid;
     return {};
+}
+
+void AuthMgr::processUsers(pb::Tenant &tenant)
+{
+    for(auto it = tenant.mutable_users()->begin(); it != tenant.mutable_users()->end(); ++it) {
+
+        // Make sure the users have id's
+        if (!it->has_id()) {
+            *it->mutable_id() = newUuidStr();
+        }
+
+        if (!it->has_auth()) {
+            throw ConstraintException("Missing auth section in user "s + it->loginname());
+        }
+
+        // Set seed if not set, create hash if password is set.
+        auto& auth = *it->mutable_auth();
+
+        if (!auth.has_seed()) {
+            auth.set_seed(getSeed());
+        }
+
+        if (auth.has_password()) {
+            auth.set_hash(createHash(auth.seed(), auth.password()));
+            auth.clear_password();
+        }
+
+        if (!auth.has_hash()) {
+            if (!auth.has_password()) {
+                throw ConstraintException("Must have password or hash in user "s + it->loginname());
+            }
+        }
+    }
 }
 
 void AuthMgr::upsertUserIndexes(trx_t &trx, const pb::Tenant& tenant)
