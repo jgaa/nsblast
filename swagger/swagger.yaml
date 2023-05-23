@@ -1024,7 +1024,7 @@ definitions:
       fqdn:
         type: string
       recursive:
-        type: bool
+        type: boolean
       regex:
         type: string
 
@@ -1072,6 +1072,16 @@ definitions:
       - UPDATE_TENANT
       - DELETE_TENANT
       - CONFIG_SLAVE
+      -
+  KeyValueList:
+    type array:
+    description: Optional properties.
+    items:
+      properties:
+        key:
+          type: string
+        value:
+          type: string
 
   Role:
     type object:
@@ -1080,14 +1090,7 @@ definitions:
         type: string
         required: true
       properties:
-        type: array
-        description: Optional properties.
-        items:
-          properties:
-            name:
-              type: string
-            value:
-              type: string
+        $ref: "#/definitions/KeyValueList"
       permissions:
         type: array
         description: List of permissions for this Role
@@ -1102,15 +1105,11 @@ definitions:
       active:
         type: boolean
         default: true
+      root:
+        type: string
+        description: The start of the domain-tree this tenant can modify
       properties:
-        type: array
-        description: Optional properties.
-        items:
-          properties:
-            name:
-              type: string
-            value:
-              type: string
+         $ref: "#/definitions/KeyValueList"
       allowedPermissions:
         type: array
         items:
@@ -1119,6 +1118,10 @@ definitions:
         type: array
         items:
           $ref: "#/definitions/Role"
+      users:
+        type: array
+        items:
+          $ref: "#/definitions/User"
 
   CreateUser:
     type: object
@@ -1134,19 +1137,25 @@ definitions:
         type: string
         description: "Optional password if HTTP BasicAuth is to be used."
       properties:
-        type: array
-        description: Optional properties.
-        items:
-          properties:
-            name:
-              type: string
-            value:
-              type: string
+        $ref: "#/definitions/KeyValueList"
       roles:
         type: array
         description: "List of (existing) roles to apply to the user"
         items:
           type: string
+
+  UserAuth:
+    type: object
+    properties:
+      hash:
+        type: string
+        description: Cryptographic hash from seed and password
+      seed:
+        type: string
+        description: Seed (random, short string) to make it harder to perform dicetionary attacks against the hashed passwords if they are leaked.
+      password:
+        type: string
+        description: Password in clear text. Can be sent to the server when a user is created/updated. The server will calculate and populate the hash value and then forget the pwssword.
 
   User:
     type: object
@@ -1156,24 +1165,20 @@ definitions:
         description: UUID for the user
       active:
         type: boolean
-      name:
+      loginName:
         type: string
         description: "Name for the user. Can be a traditional (unix-like) user-name or an email. Must be unique within the scope of a tenant."
         required: true
       properties:
-        type: array
-        description: Optional properties.
-        items:
-          properties:
-            name:
-              type: string
-            value:
-              type: string
+         $ref: "#/definitions/KeyValueList"
       roles:
         type: array
         description: "List of (existing) roles to apply to the user"
         items:
           type: string
+      auth:
+        $ref: "#/definitions/UserAuth"
+
 
   Returns:
     type: object
