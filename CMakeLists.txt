@@ -64,7 +64,7 @@ if (NSBLAST_WITH_DOCS)
 endif() # docs
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.81)
+    set(USE_BOOST_VERSION 1.82)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS

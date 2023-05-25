@@ -378,6 +378,38 @@ TEST(lookupEntryAndSoa, noRrOk) {
     }
 }
 
+TEST(Rocksdb, canReload) {
+    TmpDb db;
+
+    EXPECT_TRUE(db->wasBootstrapped());
+
+    const string_view fqdn = "example.com";
+    StorageBuilder sb;
+    sb.createSoa(fqdn, 1000, "hostmaster.example.com", "ns1.example.com", 1,
+                 1001, 1002, 1003, 1004);
+    sb.finish();
+
+    {
+        auto tx = db->transaction();
+        EXPECT_FALSE(tx->keyExists({fqdn}));
+        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+        EXPECT_NO_THROW(tx->commit());
+    }
+
+    {
+        auto tx = db->transaction();
+        EXPECT_TRUE(tx->keyExists({fqdn}));
+    }
+
+    EXPECT_NO_THROW(db.reload());
+    EXPECT_FALSE(db->wasBootstrapped());
+
+    {
+        auto tx = db->transaction();
+        EXPECT_TRUE(tx->keyExists({fqdn}));
+    }
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

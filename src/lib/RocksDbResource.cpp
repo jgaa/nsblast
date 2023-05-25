@@ -39,11 +39,12 @@ RocksDbResource::Transaction::Transaction(RocksDbResource &owner)
 
     // Nice to have the same name in rocksdb logs
     trx_->SetName(boost::uuids::to_string(uuid()));
+    ++owner_.transaction_count_;
 }
 
 RocksDbResource::Transaction::~Transaction()
 {
-    LOG_TRACE << "Ending transaction " << uuid();
+    LOG_TRACE << "Ending " << (trx_ ? "actual" : "closed/failed")  << " transaction " << uuid();
     if (trx_) {
         try {
             rollback();
@@ -53,6 +54,7 @@ RocksDbResource::Transaction::~Transaction()
         }
 
         trx_.reset();
+        --owner_.transaction_count_;
     }
 }
 
@@ -261,7 +263,7 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
         // Note that DeleteRange is probably a better option for large zones.
         // Unfortunately, it's not yet available in transactions
         rocksdb::ReadOptions options = {};
-        auto it = trx_->GetIterator(options, owner_.handle(category));
+        auto it = make_unique_from(trx_->GetIterator(options, owner_.handle(category)));
         for(it->Seek(toSlice(key.key())); it->Valid() ; it->Next()) {
             const auto ck = it->key();
             const auto extra_len = static_cast<int>(ck.size() - key.size());
@@ -341,6 +343,9 @@ RocksDbResource::RocksDbResource(const Config &config)
 RocksDbResource::~RocksDbResource()
 {
     // https://stackoverflow.com/questions/56173836/rocksdb-assertion-last-ref-failed-when-closing-db-while-using-unique-pointers
+
+    LOG_INFO << "Closing RocksDB. " << transaction_count_ << " active transactions.";
+
     if (db_) {
         LOG_TRACE << "RocksDbResource::~RocksDbResource - Removing ColumnFamilyHandle ...";
         for(auto fh : cfh_) {
@@ -350,12 +355,22 @@ RocksDbResource::~RocksDbResource()
 //                if (fh->GetName() != "default") {
 //                    db_->DropColumnFamily(fh);
 //                }
-                db_->DestroyColumnFamilyHandle(fh);
+                auto result = db_->DestroyColumnFamilyHandle(fh);
+                if (!result.ok()) {
+                    LOG_ERROR << "Failed to destroy ColumnFamilyHandle " << fh->GetName();
+                }
             }
         }
 
+
+        auto result = db_->SyncWAL();
+        if (!result.ok()) {
+            LOG_ERROR << "RocksDbResource::~RocksDbResource - Failed to sync WAL: "
+                      << result.ToString();
+        }
+
         LOG_TRACE << "RocksDbResource::~RocksDbResource - Closing db_";
-        const auto result = db_->Close();
+        result = db_->Close();
         if (!result.ok()) {
             LOG_ERROR << "RocksDbResource::~RocksDbResource - Failed to close the database: "
                       << result.ToString();
@@ -363,6 +378,7 @@ RocksDbResource::~RocksDbResource()
 
         LOG_TRACE << "RocksDbResource::~RocksDbResource - deleting db_";
         delete db_;
+        db_ = {};
     }
 }
 
@@ -405,15 +421,16 @@ void RocksDbResource::open()
                 << ": " << getDbPath();
     rocksdb::Options options;
     options.create_if_missing = false;
+    options.create_missing_column_families = true;
 
     TransactionDBOptions txn_db_options;
-    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(),
-                                          cfd_, &cfh_, &db_);
+    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
         LOG_ERROR << "Failed to open database " << config_.db_path
                   << status.ToString();
         throw runtime_error{"Failed to open database"};
     }
+
 }
 
 void RocksDbResource::bootstrap()
@@ -424,31 +441,13 @@ void RocksDbResource::bootstrap()
     filesystem::create_directories(getDbPath());
     rocksdb::Options options;
     options.create_if_missing = true;
+    options.create_missing_column_families = true;
     TransactionDBOptions txn_db_options;
-    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(), &db_);
+    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
-        LOG_ERROR << "Failed to open database " << getDbPath()
+        LOG_ERROR << "Failed to create database " << getDbPath()
                   << status.ToString();
-        throw runtime_error{"Failed to open database"};
-    }
-
-    rocksdb::ColumnFamilyOptions o;
-
-    for(const auto& cf: cfd_) {
-        if (cf.name == "default") {
-            cfh_.emplace_back(db_->DefaultColumnFamily());
-            continue; // crazyness in action
-        }
-
-        cfh_.emplace_back(nullptr);
-
-        LOG_TRACE << "Creating column family " << cf.name;
-        const auto r = db_->CreateColumnFamily(cf.options, cf.name, &cfh_.back());
-        if (!r.ok()) {
-            LOG_ERROR << "Failed to create RocksDN Column Family " << cf.name
-                      << ": " << r.ToString();
-            throw runtime_error{"Failed to bootstrap RocksDB"};
-        }
+        throw runtime_error{"Failed to create the database"};
     }
 
     bootstrapped_ = true;

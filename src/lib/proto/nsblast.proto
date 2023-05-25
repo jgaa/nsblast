@@ -86,8 +86,11 @@ enum Permission {
     GET_TENANT = 37;
     UPDATE_TENANT = 38;
     DELETE_TENANT = 39;
+    IMPERSONATE_TENANT = 42; // tenant={tenantId} query is valid
 
     CONFIG_SLAVE = 40;
+
+    // last 42
 }
 
 /**

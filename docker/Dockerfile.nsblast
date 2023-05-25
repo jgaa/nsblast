@@ -6,10 +6,10 @@ ENV USER_UID=999 USER_NAME=nsblast
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
-        libssl3 libprotobuf-dev libicu-dev liblz4-1 libz3-4 libsnappy1v5 \
-        libboost1.81-all libboost-json1.81.0
+        libssl3 libprotobuf-dev libicu-dev liblz4-1 libz3-4 libsnappy1v5
 
 COPY bin/* /usr/local/bin/
+COPY lib/* /usr/local/lib/
 
 RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
     && mkdir -m=755 -p /var/home/ \

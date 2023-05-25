@@ -15,7 +15,7 @@ public:
     struct Parsed {
         std::string_view base;
         std::string_view what;
-        std::string_view fqdn;
+        std::string_view target;
         std::string_view operation;
     };
 

@@ -6,7 +6,13 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q cmake \
     build-essential g++ git vim curl libssl-dev zlib1g-dev libprotobuf-dev \
     protobuf-compiler libicu-dev libbz2-dev libsnappy-dev gcc libgtest-dev libgflags-dev \
-    liblz4-dev libboost1.81-all-dev libboost-json1.81-dev libboost-json1.81.0
+    liblz4-dev
+
+RUN mkdir -p /tmp/boost &&\
+    curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\
+    cd /tmp/boost && ./bootstrap.sh && ./b2 --with-program_options --with-system --with-date_time --with-coroutine --with-context --with-chrono --with-regex --with-json --with-url install &&\
+    cd / &&\
+    rm -rf /tmp/boost
 
 ENV CC=gcc
 ENV CPP=g++

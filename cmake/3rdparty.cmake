@@ -63,11 +63,10 @@ add_dependencies(externalYahat logfault)
 ExternalProject_Add(rocksdb
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
-    GIT_TAG "v7.10.2"
+    GIT_TAG "v8.1.1"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DUSE_RTTI=1
-        -DCMAKE_CXX_STANDARD=20
         -DWITH_TESTS=OFF
         -DWITH_ALL_TESTS=OFF
         -DWITH_TOOLS=OFF
@@ -80,6 +79,7 @@ ExternalProject_Add(rocksdb
         -DWITH_SNAPPY=ON
         -DWITH_ZLIB=ON
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 
 
      # Required because CMake don't work really well with ninja

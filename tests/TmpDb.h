@@ -75,6 +75,12 @@ public:
         return db_;
     }
 
+    void reload() {
+        db_.reset();
+        db_ = make_shared<RocksDbResource>(c_);
+        db_->init();
+    }
+
     void createTestZone(const std::string zone = "example.com") {
         StorageBuilder sb;
         string fqdn = zone;

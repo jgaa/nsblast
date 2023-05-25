@@ -278,13 +278,13 @@ RestApi::Parsed RestApi::parse(const Request &req)
         p.what = p.base.substr(0, pos);
 
         if (p.base.size() > pos) {
-            p.fqdn = p.base.substr(pos + 1);
+            p.target = p.base.substr(pos + 1);
 
-            if (auto end = p.fqdn.find('/') ; end != string_view::npos) {
-                if (p.fqdn.size() > end) {
-                    p.operation = p.fqdn.substr(end + 1);
+            if (auto end = p.target.find('/') ; end != string_view::npos) {
+                if (p.target.size() > end) {
+                    p.operation = p.target.substr(end + 1);
                 }
-                p.fqdn = p.fqdn.substr(0, end);
+                p.target = p.target.substr(0, end);
             }
         }
     } else {
@@ -690,7 +690,7 @@ auto makeReply(pb::Tenant& tenant, int okCode = 200) {
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
 {
     auto session = getSession(req);
-    auto lowercaseKey = toLower(parsed.fqdn);
+    auto lowercaseKey = toLower(parsed.target);
     auto trx = resource_.transaction();
     int rcode = 200;
 
@@ -701,13 +701,13 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
         }
 
         if (req.type == Request::Type::POST) {
-            if (!parsed.fqdn.empty()) {
+            if (!parsed.target.empty()) {
                 return {400, "POST Tenant cannot specify tenant-id in target"};
             }
         }
 
         if (req.type == Request::Type::PUT || req.type == Request::Type::PATCH){
-            if (parsed.fqdn.empty()) {
+            if (parsed.target.empty()) {
                 return {400, "Tenant-id must be in the target"};
             }
 
@@ -725,7 +725,7 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
     try {
         switch(req.type) {
         case Request::Type::GET:
-            if (parsed.fqdn.empty()) {
+            if (parsed.target.empty()) {
                 if (!session->isAllowed(pb::Permission::LIST_TENANTS, false)) {
                     return {403, "Access Denied"};
                 }
@@ -746,7 +746,7 @@ return_tenant:
             return {404, "Not Found"};
          break;
         case Request::Type::POST: {
-            if (!parsed.fqdn.empty()) {
+         if (!parsed.target.empty()) {
                 return {400, "Create Tenant does not allow tenant-id in the target."};
             }
             if (!session->isAllowed(pb::Permission::CREATE_TENANT, false)) {
@@ -808,7 +808,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
     auto trx = resource_.transaction();
 
-    auto lowercaseFqdn = toLower(parsed.fqdn);
+    auto lowercaseFqdn = toLower(parsed.target);
 
     auto exists = trx->zoneExists(lowercaseFqdn);
 
@@ -834,7 +834,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         // Build binary buffer
         StorageBuilder sb;
         uint32_t ttl = config_.default_ttl;
-        build(parsed.fqdn, ttl, sb, json);
+        build(parsed.target, ttl, sb, json);
 
         try {
             trx->write({lowercaseFqdn}, sb.buffer(), true);
@@ -874,7 +874,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     StorageBuilder sb;
     auto trx = resource_.transaction();
-    const auto lowercaseFqdn = toFqdnKey(parsed.fqdn);
+    const auto lowercaseFqdn = toFqdnKey(parsed.target);
     // Get the zone
     auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
@@ -897,7 +897,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     }
 
     if (req.expectBody()) {
-        build(parsed.fqdn, config_.default_ttl, sb, parseJson(req.body));
+        build(parsed.target, config_.default_ttl, sb, parseJson(req.body));
         checkSrv(sb.buffer(), *trx);
     }
 
@@ -1084,19 +1084,19 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
     try {
         switch(req.type) {
         case Request::Type::GET:
-            server().slave().getZone(parsed.fqdn, zone);
+            server().slave().getZone(parsed.target, zone);
             return {200, "OK", toJson(zone)};
         case Request::Type::POST:
-            server().slave().addZone(parsed.fqdn, zone);
+            server().slave().addZone(parsed.target, zone);
             break;
         case Request::Type::PUT:
-            server().slave().replaceZone(parsed.fqdn, zone);
+            server().slave().replaceZone(parsed.target, zone);
             break;
         case Request::Type::PATCH:
-            server().slave().mergeZone(parsed.fqdn, zone);
+            server().slave().mergeZone(parsed.target, zone);
             break;
         case Request::Type::DELETE:
-            server().slave().deleteZone(parsed.fqdn);
+            server().slave().deleteZone(parsed.target);
             return {200, "OK"};
         default:
             return {400, "Invalid method"};

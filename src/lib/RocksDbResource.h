@@ -141,6 +141,7 @@ private:
     std::vector<rocksdb::ColumnFamilyDescriptor> cfd_;
     std::vector<rocksdb::ColumnFamilyHandle *> cfh_;
     bool bootstrapped_ = false;
+    std::atomic_int transaction_count_{0};
 };
 
 } // ns
