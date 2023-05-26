@@ -263,7 +263,7 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
         // Note that DeleteRange is probably a better option for large zones.
         // Unfortunately, it's not yet available in transactions
         rocksdb::ReadOptions options = {};
-        auto it = make_unique_from(trx_->GetIterator(options, owner_.handle(category)));
+        auto it = makeUniqueFrom(trx_->GetIterator(options, owner_.handle(category)));
         for(it->Seek(toSlice(key.key())); it->Valid() ; it->Next()) {
             const auto ck = it->key();
             const auto extra_len = static_cast<int>(ck.size() - key.size());

@@ -175,14 +175,14 @@ class Session : public std::enable_shared_from_this<Session> {
 public:
 
     template <typename T>
-    Session(AuthMgr& mgr, const pb::Tenant& tenant, const T& roles)
-        : mgr_{mgr}, tenant_{tenant.id()} {
+    Session(AuthMgr& mgr, const pb::Tenant& tenant, const std::string& who, const T& roles)
+        : mgr_{mgr}, tenant_{tenant.id()}, who_{who} {
         populate(tenant, roles);
         init(tenant);
     };
 
     Session(AuthMgr& mgr)
-        : mgr_{mgr}, tenant_{"nsblast"} {};
+        : mgr_{mgr}, tenant_{"nsblast"}, who_{"somebody"} {};
 
     // Check if a non-zone permission is granted
     bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const;
@@ -193,6 +193,10 @@ public:
     bool isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure = false) const;
 
     yahat::Auth getAuth() noexcept;
+
+    const std::string& who() const noexcept {
+        return who_;
+    }
 
 private:
     void init(const pb::Tenant& tenant);
@@ -226,6 +230,7 @@ private:
     std::vector<detail::Role> roles_;
     AuthMgr& mgr_;
     const std::string tenant_;
+    const std::string who_;
 };
 
 class AuthMgr {

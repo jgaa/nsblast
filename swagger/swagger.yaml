@@ -25,6 +25,8 @@ tags:
   description: "Operations about a user"
 - name: "config"
   description: "Local server configuration (admin access)"
+- name: role
+  description: RBAC roles. RBAC are supported for users and api keys.
 
 # schemes:
 # - "https"
@@ -473,10 +475,10 @@ paths:
               schema:
                 $ref: "#/definitions/Returns"
 
-  /tenant/{tenantname}:
+  /tenant/{tenantId}:
     parameters:
       - in: path
-        name: tenantname
+        name: tenantId
         description: Unique name or UUID for a tenant.
         required: true
         type: string
@@ -647,178 +649,392 @@ paths:
                 $ref: "#/definitions/Returns"
 
 
-  /tenant/{tenantname}/users:
-    parameters:
-      - name: tenantname
-        in: path
-        description: Unique name or UUID for a tenant
-        required: true
-        type: string
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          default: 100
-      - name: offset
-        in: query
-        schema:
-          type: integer
-          default: 100
+  /role:
     get:
       tags:
-        - user
-      summary: List users
-      operationId: listUsers
-      responses:
-        "200":
-          description: "Tenant object"
-          content:
-            application/json:
-              schema:
-                $ref: "#/definitions/ListUsersResult"
-        "403":
-          description: "Forbidden. (Access denied)"
-
-
-  /tenant/{tenantname}/user:
-    parameters:
-      - in: path
-        name: tenantname
-        description: Unique name or UUID for a tenant
-        required: true
-        type: string
-
-    get:
-      tags:
-        - user
-      summary: Get a user
-      responses:
-        "200":
-          description: "User object"
-          content:
-            application/json:
-              schema:
-                rcode:
-                  type: integer
-                error:
-                  type: bool
-                value:
-                  $ref: "#/definitions/User"
-        "403":
-          description: "Forbidden. (Access denied)"
-        "404":
-          description: "User not found"
-
-    post:
-      tags:
-        - user
-      summary: Create a new user for a tenant.
-      operationId: addUser
-      consumes:
-      - "application/json"
-      produces:
-      - "application/json"
+      - role
+      summary: List rules
       parameters:
-      - in: "body"
-        name: "body"
-        description: Properties for the User.
-        required: true
-        schema:
-          $ref: "#/definitions/CreateUser"
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
       responses:
         "200":
           description: "Success"
           content:
             application/json:
               schema:
-                rcode:
-                  type: integer
-                error:
-                  type: bool
-                value:
-                  $ref: "#/definitions/User"
-        "400":
-          description: "Invalid input"
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "403":
           description: "Forbidden. (Access denied)"
-        "409":
-          description: "User already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
 
-  /tenant/{tenantname}/user/{userid}:
-    parameters:
-      - in: path
-        name: tenantname
-        description: Unique name or UUID for a tenant
-        required: true
-        type: string
-      - in: path
-        name: userid
-        description: Globally unique ID of the user
-        required: true
-        type: string
+    post:
+      tags:
+      - role
+      summary: Create Role
+      parameters:
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
+        - in: "body"
+          name: "body"
+          description: Properties for the Role.
+          required: true
+          schema:
+            $ref: "#/definitions/Role"
+      responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "400":
+          description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+        "409":
+          description: "Role already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /role/{roleName}:
+    get:
+      tags:
+      - role
+      summary: Get Role
+      parameters:
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
+        - in: path
+          name: roleName
+          description: Name of the role to fetch
+          required: true
+          type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
     put:
       tags:
-        - user
-      summary: Update user. Replaces the user's data.
-      operationId: putUser
-      consumes:
-      - "application/json"
-      produces:
-      - "application/json"
+      - role
+      summary: Upsert Role
       parameters:
-      - in: "body"
-        name: "body"
-        description: Properties for the User.
-        required: true
-        schema:
-          $ref: "#/definitions/CreateUser"
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
+        - in: path
+          name: roleName
+          description: Name of a role.
+          required: true
+          type: string
+        - in: "body"
+          name: "body"
+          description: Properties for the Role. If the name in the body is not the same as the name in the path, this is understood as a valid rename operation.
+          required: true
+          schema:
+            $ref: "#/definitions/Role"
       responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "201":
+          description: "Success (created)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
         "400":
           description: "Invalid input"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "403":
           description: "Forbidden. (Access denied)"
-
-    patch:
-      tags:
-        - user
-      summary: Update user. Merges old and new data.
-      operationId: putUser
-      consumes:
-      - "application/json"
-      produces:
-      - "application/json"
-      parameters:
-      - in: "body"
-        name: "body"
-        description: Properties for the User.
-        required: true
-        schema:
-          $ref: "#/definitions/CreateUser"
-      responses:
-        "400":
-          description: "Invalid input"
-        "403":
-          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "409":
-          description: "User already exist"
+          description: "Role already exist"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
 
     delete:
       tags:
-      - user
-      summary: "Delete a user"
-      description: "This command deletes a user."
-      operationId: "userDelete"
+      - role
+      summary: "Delete a Role"
+      description: "This command deletes a Role."
+      parameters:
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
+        - in: path
+          name: roleName
+          description: Name of a role.
+          required: true
+          type: string
       produces:
       - "application/json"
       responses:
         "200":
-          description: "Ok"
-        "400":
-          description: "Invalid input"
+          description: "Success (deleted)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
         "403":
           description: "Forbidden. (Access denied)"
-        "404":
-          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+
+  # /tenant/{tenantname}/users:
+  #   parameters:
+  #     - name: tenantname
+  #       in: path
+  #       description: Unique name or UUID for a tenant
+  #       required: true
+  #       type: string
+  #     - name: limit
+  #       in: query
+  #       schema:
+  #         type: integer
+  #         default: 100
+  #     - name: offset
+  #       in: query
+  #       schema:
+  #         type: integer
+  #         default: 100
+  #   get:
+  #     tags:
+  #       - user
+  #     summary: List users
+  #     operationId: listUsers
+  #     responses:
+  #       "200":
+  #         description: "Tenant object"
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/definitions/ListUsersResult"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+
+
+  # /tenant/{tenantname}/user:
+  #   parameters:
+  #     - in: path
+  #       name: tenantname
+  #       description: Unique name or UUID for a tenant
+  #       required: true
+  #       type: string
+
+  #   get:
+  #     tags:
+  #       - user
+  #     summary: Get a user
+  #     responses:
+  #       "200":
+  #         description: "User object"
+  #         content:
+  #           application/json:
+  #             schema:
+  #               rcode:
+  #                 type: integer
+  #               error:
+  #                 type: bool
+  #               value:
+  #                 $ref: "#/definitions/User"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+  #       "404":
+  #         description: "User not found"
+
+  #   post:
+  #     tags:
+  #       - user
+  #     summary: Create a new user for a tenant.
+  #     operationId: addUser
+  #     consumes:
+  #     - "application/json"
+  #     produces:
+  #     - "application/json"
+  #     parameters:
+  #     - in: "body"
+  #       name: "body"
+  #       description: Properties for the User.
+  #       required: true
+  #       schema:
+  #         $ref: "#/definitions/CreateUser"
+  #     responses:
+  #       "200":
+  #         description: "Success"
+  #         content:
+  #           application/json:
+  #             schema:
+  #               rcode:
+  #                 type: integer
+  #               error:
+  #                 type: bool
+  #               value:
+  #                 $ref: "#/definitions/User"
+  #       "400":
+  #         description: "Invalid input"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+  #       "409":
+  #         description: "User already exist"
+
+  # /tenant/{tenantname}/user/{userid}:
+  #   parameters:
+  #     - in: path
+  #       name: tenantname
+  #       description: Unique name or UUID for a tenant
+  #       required: true
+  #       type: string
+  #     - in: path
+  #       name: userid
+  #       description: Globally unique ID of the user
+  #       required: true
+  #       type: string
+  #   put:
+  #     tags:
+  #       - user
+  #     summary: Update user. Replaces the user's data.
+  #     operationId: putUser
+  #     consumes:
+  #     - "application/json"
+  #     produces:
+  #     - "application/json"
+  #     parameters:
+  #     - in: "body"
+  #       name: "body"
+  #       description: Properties for the User.
+  #       required: true
+  #       schema:
+  #         $ref: "#/definitions/CreateUser"
+  #     responses:
+  #       "400":
+  #         description: "Invalid input"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+
+  #   patch:
+  #     tags:
+  #       - user
+  #     summary: Update user. Merges old and new data.
+  #     operationId: putUser
+  #     consumes:
+  #     - "application/json"
+  #     produces:
+  #     - "application/json"
+  #     parameters:
+  #     - in: "body"
+  #       name: "body"
+  #       description: Properties for the User.
+  #       required: true
+  #       schema:
+  #         $ref: "#/definitions/CreateUser"
+  #     responses:
+  #       "400":
+  #         description: "Invalid input"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+  #       "409":
+  #         description: "User already exist"
+
+  #   delete:
+  #     tags:
+  #     - user
+  #     summary: "Delete a user"
+  #     description: "This command deletes a user."
+  #     operationId: "userDelete"
+  #     produces:
+  #     - "application/json"
+  #     responses:
+  #       "200":
+  #         description: "Ok"
+  #       "400":
+  #         description: "Invalid input"
+  #       "403":
+  #         description: "Forbidden. (Access denied)"
+  #       "404":
+  #         description: "User not found"
 
 definitions:
 
@@ -1072,7 +1288,8 @@ definitions:
       - UPDATE_TENANT
       - DELETE_TENANT
       - CONFIG_SLAVE
-      -
+      - IMPERSONATE_TENANT
+
   KeyValueList:
     type array:
     description: Optional properties.

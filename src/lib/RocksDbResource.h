@@ -44,7 +44,7 @@ public:
 
         template <typename fnT>
         void iterateFromPrevT(key_t& key,  Category category, fnT& fn) {
-            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             it->SeekForPrev(toSlice(key));
             if (it->Valid()) {
                 // Skip the 'last' key.
@@ -66,7 +66,7 @@ public:
         template <typename fnT>
         void iterateT(key_t& key, Category category, fnT& fn)
         {
-            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
                 const auto& k = it->key();
                 if (!key.isSameKeyClass(k)) [[unlikely]] {
@@ -81,7 +81,7 @@ public:
         template <typename fnT>
         void iterateT(Category category, RealKey::Class kclass, fnT& fn)
         {
-            auto it = make_unique_from(trx_->GetIterator({}, owner_.handle(category)));
+            auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             for(it->SeekToFirst(); it->Valid(); it->Next()) {
                 if (!fn({it->key(), kclass, true}, it->value())) {
                     return;

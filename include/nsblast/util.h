@@ -33,7 +33,7 @@ namespace nsblast::lib {
     std::string sha256(span_t what, bool encodeToBase64 = true);
 
     template <typename T>
-    auto make_unique_from(T *ptr) {
+    auto makeUniqueFrom(T *ptr) {
         return std::unique_ptr<T>{ptr};
     }
 

@@ -22,6 +22,11 @@ using namespace std;
 using namespace std::string_literals;
 using namespace yahat;
 
+ostream& operator << (ostream& out, nsblast::lib::Session& session) {
+    return out << " {tenant=" << session.tenant()
+               << ", user=" << session.who() << '}';
+}
+
 namespace nsblast::lib {
 
 namespace {
@@ -36,6 +41,22 @@ std::shared_ptr<Session> getSession(const yahat::Request& req) {
     }
 
     return {};
+}
+
+optional<string_view> getQueryArg(const yahat::Request& req, const std::string& name) {
+    if (auto it = req.arguments.find(name); it != req.arguments.end()) {
+        return it->second;
+    }
+
+    return {};
+}
+
+string_view getQueryArg(const yahat::Request& req, const std::string& name, string_view defaultVal) {
+    if (auto it = req.arguments.find(name); it != req.arguments.end()) {
+        return it->second;
+    }
+
+    return defaultVal;
 }
 
 auto test_glad(boost::asio::io_context& ctx) {
@@ -82,17 +103,60 @@ bool fromJson(const std::string& json, T& obj) {
     return true;
 }
 
+
 template <typename T>
+concept ProtoList = requires(T container) {
+    requires std::ranges::range<T>;
+};
+
+template <typename T>
+concept ProtoMessage = std::is_base_of<google::protobuf::Message, T>::value;
+
+template <ProtoMessage T>
 std::string toJson(const T& obj) {
     string str;
     auto res = google::protobuf::util::MessageToJsonString(obj, &str);
     if (!res.ok()) {
         LOG_DEBUG << "Failed to convert object to json: "
-                 << typeid(T).name() << ": "
-                 << res.ToString();
+                  << typeid(T).name() << ": "
+                  << res.ToString();
         throw std::runtime_error{"Failed to convertt object to json"};
     }
     return str;
+}
+
+template <ProtoList T>
+ostream& toJson(ostream& out, const T& list) {
+    out << '[';
+    auto num = 0;
+    for(const auto& message: list) {
+        if (++num > 1) {
+            out << ',';
+        }
+        out << toJson(message);
+    }
+    return out << ']';
+}
+
+template <ProtoList T, typename nameT, typename messageT = T::value_type>
+optional<messageT>  getFromList(const T& list, const nameT& name) {
+    for(const auto& item : list) {
+        if (item.has_name() && compareCaseInsensitive(item.name(), name)) {
+            return item;
+        }
+    }
+
+    return {};
+}
+
+template <ProtoList T, typename nameT, typename messageT = T::value_type>
+void removeFromList(T *list, const nameT& name) {
+    for(auto it = list->begin(); it != list->end(); ++it) {
+        if (it->has_name() && compareCaseInsensitive(it->name(), name)) {
+            list->erase(it);
+            return;
+        }
+    }
 }
 
 // Convert a plain email-address from "some.persone.name@example.com" to some\.persons\.name.example.com
@@ -219,6 +283,37 @@ void addDiff(string_view zoneName,
     trx.write(key, sb.buffer(), false, ResourceIf::Category::DIFF);
 }
 
+tuple<std::optional<Response>, shared_ptr<Session>, optional<pb::Tenant>>
+getSessionAndTenant(const yahat::Request &req, Server& server) {
+
+    auto session = getSession(req);
+    //auto lowercaseKey = toLower(parsed.target);
+    auto tenant_id = string{session->tenant()};
+    //auto trx = resource_.transaction();
+    int rcode = 200;
+
+    if (auto impersonate = getQueryArg(req, "tenant")) {
+        if (session->isAllowed(pb::Permission::IMPERSONATE_TENANT)) {
+            tenant_id = toLower(*impersonate);
+            LOG_INFO << "In request" << req.uuid << ", session "
+                     << *session << " the client is impersonating  "
+                     << *impersonate;
+        } else {
+            LOG_WARN << "In request" << req.uuid << ", session "
+                     << *session << " the client tried to impersonate "
+                     << *impersonate;
+            return {Response{403, "You are not allowed to impersonate another tenant!"}, {}, {}};
+        }
+    }
+
+    auto tenant = server.auth().getTenant(tenant_id);
+    if (!tenant) {
+        return {Response{404, "Tenant not found"}, {}, {}};
+    }
+
+    return {{}, session, tenant};
+}
+
 } // anon ns
 
 RestApi::RestApi(Server& server)
@@ -246,6 +341,11 @@ Response RestApi::onReqest(const Request &req)
         return onTenant(req, p);
     }
 
+    if (p.what == "role") {
+        return onRole(req, p);
+    }
+
+
     if (p.what == "config") {
         if (p.operation == "master") {
             return onConfigMaster(req, p);
@@ -261,7 +361,7 @@ RestApi::Parsed RestApi::parse(const Request &req)
     // target syntax: /api/v1/zone|rr/{fqdn}[/verb]
     //                        ^
     //                        +------               = what
-    //                        |        -----        = fqdn
+    //                        |        -----        = target
     //                        |               ----  = operation
     //                        +-------------------- = base
 
@@ -679,12 +779,32 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
     }
 }
 
-auto makeReply(pb::Tenant& tenant, int okCode = 200) {
-    pb::ReplyTenant r;
-    r.set_error(false);
-    r.set_status(okCode);
-    r.mutable_value()->Swap(&tenant);
-    return Response{okCode, "OK", toJson(r)};
+template <ProtoList T>
+auto makeReply(T& what, int okCode = 200) {
+    ostringstream out;
+
+    out << R"({"error":false, "status":)"
+        << okCode
+        << R"(, "value":)";
+
+    toJson(out, what);
+
+    out << '}';
+
+    return Response{okCode, "OK", out.str()};
+}
+
+template <ProtoMessage T>
+auto makeReply(T& what, int okCode = 200) {
+    ostringstream out;
+
+    out << R"({"error":false, "status":)"
+        << okCode
+        << R"(, "value":)"
+        << toJson(what)
+        << '}';
+
+    return Response{okCode, "OK", out.str()};
 }
 
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
@@ -804,14 +924,95 @@ delete_tenant:
     return {200, "OK"};
 }
 
+Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
+{
+    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
+    int rcode = 200;
+
+    pb::Role role;
+    if (req.expectBody()) {
+        if (!fromJson(req.body, role)) {
+            return {400, "Failed to parse json to a Role"};
+
+            if (!role.has_name()) {
+                return {400, "The Role must have a name"};
+            }
+        }
+    }
+
+    switch(req.type) {
+    case Request::Type::GET:
+        if (parsed.target.empty()) {
+            if (!session->isAllowed(pb::Permission::LIST_ROLES, false)) {
+                return {403, "Access Denied"};
+            }
+            // List
+            return makeReply(tenant->roles());
+        }
+        // Get one by name
+        if (!session->isAllowed(pb::Permission::GET_ROLE, false)) {
+            return {403, "Access Denied"};
+        }
+        for(const auto& role : tenant->roles()) {
+            if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+                return makeReply(*existing);
+            }
+        }
+        return {404, "Role not found"};
+
+    case Request::Type::POST:
+        if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
+            return {403, "Access Denied"};
+        }
+        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+            return {409, "Role already exists"};
+        }
+
+        *tenant->add_roles() = role;
+        server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
+        return makeReply(role, 201);
+
+    case Request::Type::PUT:
+        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+            if (!session->isAllowed(pb::Permission::UPDATE_ROLE, false)) {
+                return {403, "Access Denied"};
+            }
+            removeFromList(tenant->mutable_roles(), role.name());
+        } else {
+            if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
+                return {403, "Access Denied"};
+            }
+            rcode = 201;
+        }
+        assert(role.has_name());
+        *tenant->add_roles() = role;
+        server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
+        return makeReply(role, rcode);
+
+    case Request::Type::DELETE:
+        if (!session->isAllowed(pb::Permission::DELETE_ROLE, false)) {
+            return {403, "Access Denied"};
+        }
+        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+            removeFromList(tenant->mutable_roles(), role.name());
+            server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
+            return {};
+        }
+        return {404, "Role not found"};
+
+    default:
+        return {400, "Invalid method"};
+    }
+}
+
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
     auto trx = resource_.transaction();
-
     auto lowercaseFqdn = toLower(parsed.target);
-
     auto exists = trx->zoneExists(lowercaseFqdn);
-
     auto session = getSession(req);
 
     switch(req.type) {

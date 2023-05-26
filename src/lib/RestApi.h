@@ -38,6 +38,7 @@ public:
                       const boost::json::value& json, bool finish = true);
 
     yahat::Response onTenant(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onRole(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);

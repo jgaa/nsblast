@@ -343,7 +343,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                     for(const auto& name : user.roles()) {
                         role_names.push_back(name);
                     }
-                    auto session = make_shared<Session>(*this, *tenant, role_names);
+                    auto session = make_shared<Session>(*this, *tenant, loginName, role_names);
                     keys_.emplace(hash, session);
                     LOG_DEBUG << " AuthMgr::basicAuth Added session key "
                               << Base64Encode(hash) << " for user " << loginName
