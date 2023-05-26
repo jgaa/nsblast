@@ -653,7 +653,7 @@ paths:
     get:
       tags:
       - role
-      summary: List rules
+      summary: List Roles
       parameters:
         - name: tenant
           in: query

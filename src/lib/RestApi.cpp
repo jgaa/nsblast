@@ -996,8 +996,8 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         if (!session->isAllowed(pb::Permission::DELETE_ROLE, false)) {
             return {403, "Access Denied"};
         }
-        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
-            removeFromList(tenant->mutable_roles(), role.name());
+        if (auto existing = getFromList(tenant->roles(), toLower(parsed.target))) {
+            removeFromList(tenant->mutable_roles(), parsed.target);
             server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
             return {};
         }
