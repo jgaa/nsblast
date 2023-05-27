@@ -138,7 +138,7 @@ ostream& toJson(ostream& out, const T& list) {
     return out << ']';
 }
 
-template <ProtoList T, typename nameT, typename messageT = T::value_type>
+template <ProtoList T, typename nameT, typename messageT = typename T::value_type>
 optional<messageT>  getFromList(const T& list, const nameT& name) {
     for(const auto& item : list) {
         if (item.has_name() && compareCaseInsensitive(item.name(), name)) {
@@ -149,7 +149,7 @@ optional<messageT>  getFromList(const T& list, const nameT& name) {
     return {};
 }
 
-template <ProtoList T, typename nameT, typename messageT = T::value_type>
+template <ProtoList T, typename nameT, typename messageT = typename T::value_type>
 void removeFromList(T *list, const nameT& name) {
     for(auto it = list->begin(); it != list->end(); ++it) {
         if (it->has_name() && compareCaseInsensitive(it->name(), name)) {
@@ -936,10 +936,14 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
     if (req.expectBody()) {
         if (!fromJson(req.body, role)) {
             return {400, "Failed to parse json to a Role"};
+        }
 
+        if (req.type == Request::Type::POST) {
             if (!role.has_name()) {
                 return {400, "The Role must have a name"};
             }
+        } else if (parsed.target.empty()) {
+            return {400, "Target must contain the role-name"};
         }
     }
 
@@ -976,11 +980,11 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         return makeReply(role, 201);
 
     case Request::Type::PUT:
-        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+        if (auto existing = getFromList(tenant->roles(), toLower(parsed.target))) {
             if (!session->isAllowed(pb::Permission::UPDATE_ROLE, false)) {
                 return {403, "Access Denied"};
             }
-            removeFromList(tenant->mutable_roles(), role.name());
+            removeFromList(tenant->mutable_roles(), parsed.target);
         } else {
             if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
                 return {403, "Access Denied"};

@@ -41,6 +41,30 @@ auto getZoneJson() {
     return soa;
 }
 
+string getJsonForNewRole(string_view name = {}) {
+
+    ostringstream out;
+
+    out << "{";
+
+    if (!name.empty()) {
+        out << R"("name":")" << name << R"(",)";
+    }
+
+    out << R"(
+ "permissions": [
+    "USE_API",
+    "CREATE_ZONE"
+  ],
+  "filter": {
+    "fqdn": "test",
+    "recursive": true,
+    "regex": ".*"
+  }})";
+
+    return out.str();
+}
+
 string getJsonForNewTenant(string_view id = {}) {
 
     ostringstream out;
@@ -1424,13 +1448,143 @@ TEST(ApiRequest, deleteTenant) {
     EXPECT_EQ(res.code, 404);
 }
 
+TEST(ApiRequest, createRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
 
+    auto json = getJsonForNewRole("testrole");
+    auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto roleit = tenant->roles().begin();
+    EXPECT_EQ(roleit->name(), "Administrator");
+    ++roleit;
+    EXPECT_EQ(roleit->name(), "testrole");
+}
+
+TEST(ApiRequest, upsertNewRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewRole("testrole");
+    auto req = makeRequest(svr, "role", "testrole", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto roleit = tenant->roles().begin();
+    EXPECT_EQ(roleit->name(), "Administrator");
+    ++roleit;
+    EXPECT_EQ(roleit->name(), "testrole");
+}
+
+TEST(ApiRequest, upsertNewRoleMissingTarget) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewRole("testrole");
+    auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 400);
+}
+
+TEST(ApiRequest, createRoleNoName) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewRole("");
+    auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 400);
+}
+
+TEST(ApiRequest, upsertExistingRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewRole("testrole");
+    auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    json = getJsonForNewRole("renamed");
+    req = makeRequest(svr, "role", "testrole", json, yahat::Request::Type::PUT);
+
+    parsed = api.parse(req);
+    res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto roleit = tenant->roles().begin();
+    EXPECT_EQ(roleit->name(), "Administrator");
+    ++roleit;
+    EXPECT_EQ(roleit->name(), "renamed");
+}
+
+TEST(ApiRequest, getRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto req = makeRequest(svr, "role", "Administrator", {}, yahat::Request::Type::GET);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    const auto rbuf = boost::json::parse(res.body);
+    const auto& ro = rbuf.as_object().at("value").as_object();
+    EXPECT_EQ(ro.at("name").as_string(), "Administrator");
+}
+
+TEST(ApiRequest, listRoles) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto req = makeRequest(svr, "role", "", {}, yahat::Request::Type::GET);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    const auto rbuf = boost::json::parse(res.body);
+    const auto& ra = rbuf.as_object().at("value").as_array();
+    EXPECT_EQ(ra.at(0).as_object().at("name").as_string(), "Administrator");
+}
 
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::TRACE));
+                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::INFO));
     return RUN_ALL_TESTS();
 }
