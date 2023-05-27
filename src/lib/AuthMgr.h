@@ -253,7 +253,8 @@ public:
     std::string createTenant(pb::Tenant& tenant);
 
     // Returns true if a tenant was created
-    bool upsertTenant(std::string_view tenantId, const pb::Tenant& tenant, bool merge);
+    bool upsertTenant(std::string_view tenantId, const pb::Tenant& tenant,
+                      bool merge);
 
     /*! Delete an existing tenant
      *
@@ -292,12 +293,14 @@ public:
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);
     void processUsers(pb::Tenant& tenant);
-    void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant);
+    void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant,
+                           const std::optional<pb::Tenant>& existingTenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);
 
     Server& server_;
     detail::Lru<std::shared_ptr<Session>> keys_;
     static bool has_auth_;
+    static constexpr std::string_view admin_id_{"d98e539e-fc78-11ed-9f34-bbfe306147e3"};
 };
 
 } // ns

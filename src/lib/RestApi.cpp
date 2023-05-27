@@ -341,10 +341,13 @@ Response RestApi::onReqest(const Request &req)
         return onTenant(req, p);
     }
 
+    if (p.what == "user") {
+        return onUser(req, p);
+    }
+
     if (p.what == "role") {
         return onRole(req, p);
     }
-
 
     if (p.what == "config") {
         if (p.operation == "master") {
@@ -960,10 +963,8 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         if (!session->isAllowed(pb::Permission::GET_ROLE, false)) {
             return {403, "Access Denied"};
         }
-        for(const auto& role : tenant->roles()) {
-            if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
-                return makeReply(*existing);
-            }
+        if (auto existing = getFromList(tenant->roles(), role.name())) {
+            return makeReply(*existing);
         }
         return {404, "Role not found"};
 
@@ -971,7 +972,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
             return {403, "Access Denied"};
         }
-        if (auto existing = getFromList(tenant->roles(), toLower(role.name()))) {
+        if (auto existing = getFromList(tenant->roles(), role.name())) {
             return {409, "Role already exists"};
         }
 
@@ -980,7 +981,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         return makeReply(role, 201);
 
     case Request::Type::PUT:
-        if (auto existing = getFromList(tenant->roles(), toLower(parsed.target))) {
+        if (auto existing = getFromList(tenant->roles(), parsed.target)) {
             if (!session->isAllowed(pb::Permission::UPDATE_ROLE, false)) {
                 return {403, "Access Denied"};
             }
@@ -1006,6 +1007,116 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
             return {};
         }
         return {404, "Role not found"};
+
+    default:
+        return {400, "Invalid method"};
+    }
+}
+
+Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
+{
+    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
+    int rcode = 200;
+
+    auto lcTarget = toLower(parsed.target);
+
+    pb::User user;
+    if (req.expectBody()) {
+        if (!fromJson(req.body, user)) {
+            return {400, "Failed to parse json to a user"};
+        }
+
+        if (req.type == Request::Type::POST) {
+            if (!user.has_name()) {
+                return {400, "The user must have a name"};
+            }
+            lcTarget = toLower(user.name());
+        } else if (parsed.target.empty()) {
+            return {400, "Target must contain the user-name"};
+        }
+
+        if (!user.has_id()) {
+            user.set_id(newUuidStr());
+        }
+    }
+
+    switch(req.type) {
+    case Request::Type::GET:
+        if (parsed.target.empty()) {
+            if (!session->isAllowed(pb::Permission::LIST_USERS, false)) {
+                return {403, "Access Denied"};
+            }
+            // List
+            return makeReply(tenant->users());
+        }
+        // Get one by name
+        if (!session->isAllowed(pb::Permission::GET_USER, false)) {
+            return {403, "Access Denied"};
+        }
+
+get_user:
+        if (auto existing = getFromList(tenant->users(), user.name())) {
+            return makeReply(*existing, rcode);
+        }
+        return {404, "User not found"};
+
+    case Request::Type::POST:
+        if (!session->isAllowed(pb::Permission::CREATE_USER, false)) {
+            return {403, "Access Denied"};
+        }
+        if (auto existing = getFromList(tenant->users(), toLower(user.name()))) {
+            return {409, "user already exists"};
+        }
+
+        *tenant->add_users() = user;
+        server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
+        rcode = 201;
+        // Get the committed data, as upsertTenant may change the user data, like
+        // calculating a hash from the password.
+        tenant = server().auth().getTenant(tenant->id());
+        if (!tenant) {
+            return {500, "Failed to fetch tenant after update."};
+        }
+        goto get_user;
+
+    case Request::Type::PUT:
+        if (auto existing = getFromList(tenant->users(), lcTarget)) {
+            if (!session->isAllowed(pb::Permission::UPDATE_USER, false)) {
+                return {403, "Access Denied"};
+            }
+            removeFromList(tenant->mutable_users(), lcTarget);
+        } else {
+            if (!session->isAllowed(pb::Permission::CREATE_USER, false)) {
+                return {403, "Access Denied"};
+            }
+            rcode = 201;
+        }
+        assert(user.has_name());
+        *tenant->add_users() = user;
+        if (server().auth().upsertTenant(toLower(tenant->id()), *tenant, false)) {
+            rcode = 201;
+        }
+        // Get the committed data, as upsertTenant may change the user data, like
+        // calculating a hash from the password.
+        tenant = server().auth().getTenant(tenant->id());
+        if (!tenant) {
+            return {500, "Failed to fetch tenant after update."};
+        }
+        goto get_user;
+
+    case Request::Type::DELETE:
+        if (!session->isAllowed(pb::Permission::DELETE_USER, false)) {
+            return {403, "Access Denied"};
+        }
+        if (auto existing = getFromList(tenant->users(), lcTarget)) {
+            removeFromList(tenant->mutable_users(), lcTarget);
+            server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
+            return {};
+        }
+        return {404, "User not found"};
 
     default:
         return {400, "Invalid method"};
@@ -1404,7 +1515,7 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
         item["root"] = tenant.root();
         auto& users = item["users"] = boost::json::array{};
         for(const auto& user : tenant.users()) {
-            users.as_array().emplace_back(user.loginname());
+            users.as_array().emplace_back(user.name());
         }
 
         auto& roles = item["roles"] = boost::json::array{};

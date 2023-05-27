@@ -124,14 +124,16 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
 
     LOG_INFO << "Creating tenant " << id;
     upsert(*trx, key, tenant, true);
-    upsertUserIndexes(*trx, tenant);
+    upsertUserIndexes(*trx, tenant, {});
     trx->commit();
     return id;
 }
 
-bool AuthMgr::upsertTenant(std::string_view tenantId,
-                           const pb::Tenant &tenant, bool merge)
+bool AuthMgr::upsertTenant(std::string_view tenantId, const pb::Tenant& ctenant,
+                           bool merge)
 {
+    pb::Tenant tenant{ctenant};
+
     assert(!tenantId.empty());
     auto trx = server_.resource().transaction();
     if (tenant.has_id()) {
@@ -152,8 +154,9 @@ bool AuthMgr::upsertTenant(std::string_view tenantId,
         }
     }
 
+    processUsers(tenant);
     upsert(*trx, key, tenant, false);
-    upsertUserIndexes(*trx, tenant);
+    upsertUserIndexes(*trx, tenant, existing);
 commit:
     trx->commit();
 
@@ -255,8 +258,8 @@ void AuthMgr::bootstrap()
     }
 
     auto user = tenant.add_users();
-    user->set_id("admin-id");
-    user->set_loginname("admin");
+    user->set_id(string{admin_id_});
+    user->set_name("admin");
     user->set_active(true);
     *user->add_roles() = role->name();
 
@@ -310,12 +313,12 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
         return {};
     }
 
-    auto loginName = toLower(user_pass.substr(0, pos));
+    auto userName = toLower(user_pass.substr(0, pos));
     auto pass = user_pass.substr(pos + 1);
 
-    //LOG_TRACE << "AuthMgr::authorize: User='" << loginName << "', pass='" << pass << "'.";
+    //LOG_TRACE << "AuthMgr::authorize: User='" << userName << "', pass='" << pass << "'.";
 
-    const ResourceIf::RealKey key{loginName, ResourceIf::RealKey::Class::USER};
+    const ResourceIf::RealKey key{userName, ResourceIf::RealKey::Class::USER};
 
     std::string tenantId;
     auto trx = server_.resource().transaction();
@@ -323,17 +326,17 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
         const ResourceIf::RealKey tkey{tenantId, ResourceIf::RealKey::Class::TENANT};
         if (auto tenant = get<pb::Tenant>(*trx, tkey)) {
             for(const auto& user: tenant->users()) {
-                const auto lcName = toLower(user.loginname());
-                if (lcName == loginName) {
+                const auto lcName = toLower(user.name());
+                if (lcName == userName) {
                     if (!user.has_auth()) {
-                        LOG_DEBUG << " AuthMgr::basicAuth No Auth data for login for user " << loginName
+                        LOG_DEBUG << " AuthMgr::basicAuth No Auth data for login for user " << userName
                                   << " at tenant " << tenant->id()
                                   << " for request " << ar.req.uuid;
                         return {};
                     }
                     auto pwhash = createHash(user.auth().seed(), string{pass});
                     if (pwhash != user.auth().hash()) {
-                        LOG_DEBUG << " AuthMgr::basicAuth Invalid password for login from user " << loginName
+                        LOG_DEBUG << " AuthMgr::basicAuth Invalid password for login from user " << userName
                                   << " at tenant " << tenant->id()
                                   << " for request " << ar.req.uuid;
                         return {};
@@ -343,10 +346,10 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                     for(const auto& name : user.roles()) {
                         role_names.push_back(name);
                     }
-                    auto session = make_shared<Session>(*this, *tenant, loginName, role_names);
+                    auto session = make_shared<Session>(*this, *tenant, userName, role_names);
                     keys_.emplace(hash, session);
                     LOG_DEBUG << " AuthMgr::basicAuth Added session key "
-                              << Base64Encode(hash) << " for user " << loginName
+                              << Base64Encode(hash) << " for user " << userName
                               << " at tenant " << tenant->id()
                               << " for request " << ar.req.uuid;
 
@@ -356,7 +359,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
         }
     }
 
-    LOG_DEBUG << " AuthMgr::basicAuth User " << toPrintable(loginName)
+    LOG_DEBUG << " AuthMgr::basicAuth User " << toPrintable(userName)
               << " not found for request " << ar.req.uuid;
     return {};
 }
@@ -371,7 +374,7 @@ void AuthMgr::processUsers(pb::Tenant &tenant)
         }
 
         if (!it->has_auth()) {
-            throw ConstraintException("Missing auth section in user "s + it->loginname());
+            throw ConstraintException("Missing auth section in user "s + it->name());
         }
 
         // Set seed if not set, create hash if password is set.
@@ -388,27 +391,52 @@ void AuthMgr::processUsers(pb::Tenant &tenant)
 
         if (!auth.has_hash()) {
             if (!auth.has_password()) {
-                throw ConstraintException("Must have password or hash in user "s + it->loginname());
+                throw ConstraintException("Must have password or hash in user "s + it->name());
             }
         }
     }
 }
 
-void AuthMgr::upsertUserIndexes(trx_t &trx, const pb::Tenant& tenant)
+void AuthMgr::upsertUserIndexes(trx_t &trx, const pb::Tenant& tenant,
+                                const std::optional<pb::Tenant>& existingTenant)
 {
-    for(auto& user: tenant.users()) {
-        const ResourceIf::RealKey key{toLower(user.loginname()), ResourceIf::RealKey::Class::USER};
+    if (existingTenant) {
+        // In order to handle re-name, we must make sure that any old keys
+        // pointing to a name is deleted.
+        // We could make a second round-trip to only delete the old, actually renamed keys,
+        // but for now this should suffice.
+        for(const auto& ou: existingTenant->users()) {
+            const ResourceIf::RealKey old_key{toLower(ou.name()), ResourceIf::RealKey::Class::USER};
 
-        string existing;
-        if (trx.read(key, existing, ResourceIf::Category::ACCOUNT, false)) {
-            if (toLower(existing) != toLower(tenant.id())) {
-                LOG_WARN << "AuthMgr::updateUserIndexes: Rejecting user "
-                         << key << " for tenant " << tenant.id()
-                         << " because the loginName is already used by tenant "
-                         << existing;
-                throw AlreadyExistException{"LoginName "s + user.loginname() + " is already in use"};
+            string tenant_id;
+            if (trx.read(old_key, tenant_id, ResourceIf::Category::ACCOUNT, false)) {
+                if (compareCaseInsensitive(tenant_id, tenant.id())) {
+                    trx.remove(old_key, false, ResourceIf::Category::ACCOUNT);
+                } else {
+                    LOG_ERROR << "AuthMgr::upsertUserIndexes: The tenant " << tenant.id()
+                              << " has an existing user " << ou.name()
+                              << " that belongs (are indexed) to another tenant: " << tenant_id;
+
+                    // We are not exiting here, because the tenant may have deleted this user.
+                }
             }
         }
+    }
+
+    for(auto& user: tenant.users()) {
+        const ResourceIf::RealKey key{toLower(user.name()), ResourceIf::RealKey::Class::USER};
+
+        string tenant_id;
+        if (trx.read(key, tenant_id, ResourceIf::Category::ACCOUNT, false)) {
+            if (!compareCaseInsensitive(tenant_id, tenant.id())) {
+                LOG_WARN << "AuthMgr::updateUserIndexes: Rejecting user "
+                         << key << " for tenant " << tenant.id()
+                         << " because the name is already used by tenant "
+                         << tenant_id;
+                throw AlreadyExistException{"Name "s + user.name() + " is already in use"};
+            }
+        }
+
         trx.write(key, toLower(tenant.id()), false, ResourceIf::Category::ACCOUNT);
     }
 }
@@ -416,7 +444,7 @@ void AuthMgr::upsertUserIndexes(trx_t &trx, const pb::Tenant& tenant)
 void AuthMgr::deleteUserIndexes(trx_t &trx, const pb::Tenant &tenant)
 {
     for(auto& user: tenant.users()) {
-        const ResourceIf::RealKey key{toLower(user.loginname()), ResourceIf::RealKey::Class::USER};
+        const ResourceIf::RealKey key{toLower(user.name()), ResourceIf::RealKey::Class::USER};
 
         string existing;
         if (trx.read(key, existing, ResourceIf::Category::ACCOUNT, false)) {

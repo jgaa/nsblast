@@ -1580,6 +1580,28 @@ TEST(ApiRequest, listRoles) {
     EXPECT_EQ(ra.at(0).as_object().at("name").as_string(), "Administrator");
 }
 
+TEST(ApiRequest, deleteRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewRole("testrole");
+    auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto parsed = api.parse(req);
+    auto res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    req = makeRequest(svr, "role", "testrole", json, yahat::Request::Type::DELETE);
+    parsed = api.parse(req);
+    res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    res = api.onRole(req, parsed);
+    EXPECT_EQ(res.code, 404);
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
