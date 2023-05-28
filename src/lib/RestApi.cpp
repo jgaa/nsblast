@@ -103,15 +103,6 @@ bool fromJson(const std::string& json, T& obj) {
     return true;
 }
 
-
-template <typename T>
-concept ProtoList = requires(T container) {
-    requires std::ranges::range<T>;
-};
-
-template <typename T>
-concept ProtoMessage = std::is_base_of<google::protobuf::Message, T>::value;
-
 template <ProtoMessage T>
 std::string toJson(const T& obj) {
     string str;
@@ -136,27 +127,6 @@ ostream& toJson(ostream& out, const T& list) {
         out << toJson(message);
     }
     return out << ']';
-}
-
-template <ProtoList T, typename nameT, typename messageT = typename T::value_type>
-optional<messageT>  getFromList(const T& list, const nameT& name) {
-    for(const auto& item : list) {
-        if (item.has_name() && compareCaseInsensitive(item.name(), name)) {
-            return item;
-        }
-    }
-
-    return {};
-}
-
-template <ProtoList T, typename nameT, typename messageT = typename T::value_type>
-void removeFromList(T *list, const nameT& name) {
-    for(auto it = list->begin(); it != list->end(); ++it) {
-        if (it->has_name() && compareCaseInsensitive(it->name(), name)) {
-            list->erase(it);
-            return;
-        }
-    }
 }
 
 // Convert a plain email-address from "some.persone.name@example.com" to some\.persons\.name.example.com
@@ -329,30 +299,36 @@ Response RestApi::onReqest(const Request &req)
 {
     const auto p = parse(req);
 
-    if (p.what == "rr") {
-        return onResourceRecord(req, p);
-    }
-
-    if (p.what == "zone") {
-        return onZone(req, p);
-    }
-
-    if (p.what == "tenant") {
-        return onTenant(req, p);
-    }
-
-    if (p.what == "user") {
-        return onUser(req, p);
-    }
-
-    if (p.what == "role") {
-        return onRole(req, p);
-    }
-
-    if (p.what == "config") {
-        if (p.operation == "master") {
-            return onConfigMaster(req, p);
+    try {
+        if (p.what == "rr") {
+            return onResourceRecord(req, p);
         }
+
+        if (p.what == "zone") {
+            return onZone(req, p);
+        }
+
+        if (p.what == "tenant") {
+            return onTenant(req, p);
+        }
+
+        if (p.what == "user") {
+            return onUser(req, p);
+        }
+
+        if (p.what == "role") {
+            return onRole(req, p);
+        }
+
+        if (p.what == "config") {
+            if (p.operation == "master") {
+                return onConfigMaster(req, p);
+            }
+        }
+    } catch(const nsblast::Exception& ex) {
+        LOG_DEBUG << "RestApi::onReqest: Cautht exception while processing request "
+              << req.uuid << ": " << ex.what();
+        return {ex.httpError(), ex.httpMessage()};
     }
 
     LOG_DEBUG << "Unknown subpath: " << p.what;
@@ -367,8 +343,6 @@ RestApi::Parsed RestApi::parse(const Request &req)
     //                        |        -----        = target
     //                        |               ----  = operation
     //                        +-------------------- = base
-
-
 
     Parsed p;
     p.base = req.target;

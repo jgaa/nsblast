@@ -292,7 +292,7 @@ public:
 
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);
-    void processUsers(pb::Tenant& tenant);
+    void processUsers(pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant,
                            const std::optional<pb::Tenant>& existingTenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);

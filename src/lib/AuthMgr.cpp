@@ -120,7 +120,7 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
         throw AlreadyExistException{"Tenant already exist"};
     }
 
-    processUsers(tenant);
+    processUsers(tenant, {});
 
     LOG_INFO << "Creating tenant " << id;
     upsert(*trx, key, tenant, true);
@@ -154,7 +154,7 @@ bool AuthMgr::upsertTenant(std::string_view tenantId, const pb::Tenant& ctenant,
         }
     }
 
-    processUsers(tenant);
+    processUsers(tenant, existing);
     upsert(*trx, key, tenant, false);
     upsertUserIndexes(*trx, tenant, existing);
 commit:
@@ -364,17 +364,68 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
     return {};
 }
 
-void AuthMgr::processUsers(pb::Tenant &tenant)
+void AuthMgr::processUsers(pb::Tenant &tenant, const std::optional<pb::Tenant>& existingTenant)
 {
+    set<string> existing_ids;
     for(auto it = tenant.mutable_users()->begin(); it != tenant.mutable_users()->end(); ++it) {
+
+        if (it->name().size() > 64) {
+            throw ConstraintException("Name is too long (> 64 characters)");
+        }
+
+        if (it->id().size() > 64) {
+            throw ConstraintException("id is too long (> 64 characters)");
+        }
 
         // Make sure the users have id's
         if (!it->has_id()) {
-            *it->mutable_id() = newUuidStr();
+            if (existingTenant) {
+                // FIXIT: This woun't work for a rename!
+                if (auto existing_user = getFromList(existingTenant->users(), it->name())) {
+                    it->set_id(existing_user->id());
+                }
+            }
+
+            if (!it->has_id()) {
+                it->set_id(newUuidStr());
+            }
+        }
+
+        {
+            auto [_, is_new] = existing_ids.insert(it->id());
+            if (!is_new) {
+                throw ConstraintException("user "s + toPrintable(it->name())
+                                          + " has an ID that is already in use by another user!");
+            }
         }
 
         if (!it->has_auth()) {
             throw ConstraintException("Missing auth section in user "s + it->name());
+        }
+
+        if (it->auth().has_hash() && it->auth().hash().size() > 128) {
+            throw ConstraintException("auth.hash is too long (> 128 characters)");
+        }
+
+        if (it->auth().has_seed() && it->auth().seed().size() > 128) {
+            throw ConstraintException("auth.seed is too long (> 128 characters)");
+        }
+
+        if (it->auth().has_password() && it->auth().password().size() > 512) {
+            throw ConstraintException("auth.password is too long (> 512 characters)");
+        }
+
+        for(const auto& role : it->roles()) {
+            if (!getFromList(tenant.roles(), role)) {
+                LOG_DEBUG << "AuthMgr::processUsers - Rejecting user "
+                          << it->name()
+                          << " in tenant "
+                          << tenant.id()
+                          << " because the user specify a role "
+                          << toPrintable(role)
+                          << " that don't exist for that tenant.";
+                throw ConstraintException("Role "s + toPrintable(role) + " for user " + " is undefined.");
+            }
         }
 
         // Set seed if not set, create hash if password is set.

@@ -77,7 +77,7 @@ string getJsonForNewUser(string_view name = {}) {
 
     out << R"(
  "roles": [
-    "Administrator",
+    "Administrator"
   ],
   "auth": {
     "password": "secret123"
@@ -1788,10 +1788,30 @@ TEST(ApiRequest, deleteUser) {
     EXPECT_EQ(ro.at("name").as_string(), "admin");
 }
 
+TEST(ApiRequest, createUserWithNonExistingRole) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+
+    auto user_instance = boost::json::parse(json);
+    auto& uo = user_instance.as_object();
+    uo.at("roles").as_array().push_back("dontexist");
+
+    json = boost::json::serialize(user_instance);
+
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 400);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::INFO));
+        make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::DEBUGGING));
     return RUN_ALL_TESTS();
 }
