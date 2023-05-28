@@ -13,6 +13,7 @@ debug=false
 push=false
 clean=false
 logbt=false
+run_tests=ON
 cmake_build_type=RelWithDebInfo
 image_tag=$project
 build_image="${project}bld:latest"
@@ -35,6 +36,7 @@ usage() {
   echo "  --tag tagname Tag to '--push' to. Defaults to 'latest'"
   echo "  --scripted    Assume that the command is run from a script"
   echo "  --help        Show help and exit."
+  echo "  --skip-tests  Skip running the unit-tests as part of the build"
   echo
   echo "Environment variables"
   echo "  BUILD_DIR     Directory to build with CMake. Default: ${BUILD_DIR}"
@@ -73,6 +75,11 @@ while [ $# -gt 0 ];  do
         --push)
             shift
             push=true
+            ;;
+
+        --skip-tests)
+            shift
+            run_tests=OFF
             ;;
             
         --clean)
@@ -165,13 +172,14 @@ echo "Building ${project} libraries and binaries"
 echo "Artifacts to: ${artifacts_dir}"
 echo "==================================================="
 
-docker run                                                      \
+docker run                                                           \
     --rm ${docker_run_args}                                          \
     -u $UID                                                          \
     --name "${project}-build"                                        \
     -e DO_STRIP=${strip}                                             \
     -e BUILD_DIR=/build                                              \
     -e BUILD_TYPE="${cmake_build_type}"                              \
+    -e NSBLAST_RUN_TESTS="${run_tests}"                              \
     -v ${SOURCE_DIR}:/src                                            \
     -v ${BUILD_DIR}/build:/build                                     \
     -v ${artifacts_dir}:/artifacts                                   \

@@ -1676,7 +1676,7 @@ TEST(ApiRequest, upsertNewUserMissingTarget) {
     EXPECT_EQ(res.code, 400);
 }
 
-TEST(ApiRequest, upsertNewUserUppercaseTarget) {
+TEST(ApiRequest, uppercaseTarget) {
     MockServer svr;
     svr.auth().bootstrap();
 
@@ -1778,7 +1778,7 @@ TEST(ApiRequest, deleteUser) {
     res = api.onReqest(req);
     EXPECT_EQ(res.code, 404);
 
-    // Check that we stillk have the admin-user.
+    // Check that we still have the admin-user.
     req = makeRequest(svr, "user", "admin", {}, yahat::Request::Type::GET);
     res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);

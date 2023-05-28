@@ -222,3 +222,13 @@ target_link_libraries(auth_tests
 )
 
 add_test(NAME auth_tests COMMAND auth_tests)
+
+########## Run the tests
+
+if (NSBLAST_RUN_TESTS)
+
+add_custom_target(run_unit_test ALL
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS dns_messages_tests db_tests api_tests dns_engine_tests auth_tests)
+
+endif()
