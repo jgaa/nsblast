@@ -963,7 +963,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         if (!session->isAllowed(pb::Permission::GET_ROLE, false)) {
             return {403, "Access Denied"};
         }
-        if (auto existing = getFromList(tenant->roles(), role.name())) {
+        if (auto existing = getFromList(tenant->roles(), parsed.target)) {
             return makeReply(*existing);
         }
         return {404, "Role not found"};
@@ -1058,7 +1058,7 @@ Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
         }
 
 get_user:
-        if (auto existing = getFromList(tenant->users(), user.name())) {
+        if (auto existing = getFromList(tenant->users(), lcTarget)) {
             return makeReply(*existing, rcode);
         }
         return {404, "User not found"};
@@ -1095,6 +1095,7 @@ get_user:
             rcode = 201;
         }
         assert(user.has_name());
+        lcTarget = user.name();
         *tenant->add_users() = user;
         if (server().auth().upsertTenant(toLower(tenant->id()), *tenant, false)) {
             rcode = 201;
