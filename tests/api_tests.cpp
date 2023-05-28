@@ -65,6 +65,27 @@ string getJsonForNewRole(string_view name = {}) {
     return out.str();
 }
 
+string getJsonForNewUser(string_view name = {}) {
+
+    ostringstream out;
+
+    out << "{";
+
+    if (!name.empty()) {
+        out << R"("name":")" << name << R"(",)";
+    }
+
+    out << R"(
+ "roles": [
+    "Administrator",
+  ],
+  "auth": {
+    "password": "secret123"
+  }})";
+
+    return out.str();
+}
+
 string getJsonForNewTenant(string_view id = {}) {
 
     ostringstream out;
@@ -122,7 +143,7 @@ string getJsonForNewTenant(string_view id = {}) {
   ],
   "users": [
     {
-      "loginName": "admin@example.com",
+      "name": "admin@example.com",
       "active": true,
       "properties": [
         {
@@ -139,7 +160,7 @@ string getJsonForNewTenant(string_view id = {}) {
       }
     },
     {
-      "loginName": "guest@example.com",
+      "name": "guest@example.com",
       "active": true,
       "properties": [
         {
@@ -1397,7 +1418,7 @@ TEST(ApiRequest, getTenant) {
     EXPECT_EQ(users.size(), 2);
 
     const auto& u1 = users.at(0).as_object();
-    EXPECT_EQ(string(u1.at("loginName").as_string()), string("admin@example.com"));
+    EXPECT_EQ(string(u1.at("name").as_string()), string("admin@example.com"));
     EXPECT_TRUE(u1.contains("id"));
     EXPECT_FALSE(u1.at("id").as_string().empty());
     EXPECT_TRUE(u1.contains("active"));
@@ -1412,7 +1433,7 @@ TEST(ApiRequest, getTenant) {
     EXPECT_EQ(string(auth1.at("hash").as_string()), hash1);
 
     const auto& u2 = users.at(1).as_object();
-    EXPECT_EQ(string(u2.at("loginName").as_string()), string("guest@example.com"));
+    EXPECT_EQ(string(u2.at("name").as_string()), string("guest@example.com"));
     EXPECT_TRUE(u2.contains("id"));
     EXPECT_FALSE(u2.at("id").as_string().empty());
     EXPECT_TRUE(u2.contains("active"));
@@ -1602,6 +1623,170 @@ TEST(ApiRequest, deleteRole) {
     EXPECT_EQ(res.code, 404);
 }
 
+TEST(ApiRequest, createUser) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 201);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto Userit = tenant->users().begin();
+    EXPECT_EQ(Userit->name(), "admin");
+    ++Userit;
+    EXPECT_EQ(Userit->name(), "testUser");
+}
+
+TEST(ApiRequest, upsertNewUser) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "user", "testUser", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 201);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto Userit = tenant->users().begin();
+    EXPECT_EQ(Userit->name(), "admin");
+    ++Userit;
+    EXPECT_EQ(Userit->name(), "testUser");
+}
+
+TEST(ApiRequest, upsertNewUserMissingTarget) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 400);
+}
+
+TEST(ApiRequest, upsertNewUserUppercaseTarget) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "User", "testUser", json, yahat::Request::Type::PUT);
+
+    RestApi api{svr};
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 404);
+}
+
+TEST(ApiRequest, createUserNoName) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("");
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 400);
+}
+
+TEST(ApiRequest, upsertExistingUser) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 201);
+
+    json = getJsonForNewUser("renamed");
+    req = makeRequest(svr, "user", "testUser", json, yahat::Request::Type::PUT);
+
+    res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    auto tenant = svr.auth().getTenant("nsblast");
+    EXPECT_TRUE(tenant);
+    auto Userit = tenant->users().begin();
+    EXPECT_EQ(Userit->name(), "admin");
+    ++Userit;
+    EXPECT_EQ(Userit->name(), "renamed");
+}
+
+TEST(ApiRequest, getUser) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto req = makeRequest(svr, "user", "admin", {}, yahat::Request::Type::GET);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    const auto rbuf = boost::json::parse(res.body);
+    const auto& ro = rbuf.as_object().at("value").as_object();
+    EXPECT_EQ(ro.at("name").as_string(), "admin");
+}
+
+TEST(ApiRequest, listUsers) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto req = makeRequest(svr, "user", "", {}, yahat::Request::Type::GET);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    const auto rbuf = boost::json::parse(res.body);
+    const auto& ra = rbuf.as_object().at("value").as_array();
+    EXPECT_EQ(ra.at(0).as_object().at("name").as_string(), "admin");
+}
+
+TEST(ApiRequest, deleteUser) {
+    MockServer svr;
+    svr.auth().bootstrap();
+
+    auto json = getJsonForNewUser("testUser");
+    auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
+
+    RestApi api{svr};
+
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 201);
+
+    req = makeRequest(svr, "user", "testUser", json, yahat::Request::Type::DELETE);
+    res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    res = api.onReqest(req);
+    EXPECT_EQ(res.code, 404);
+
+    // Check that we stillk have the admin-user.
+    req = makeRequest(svr, "user", "admin", {}, yahat::Request::Type::GET);
+    res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    const auto rbuf = boost::json::parse(res.body);
+    const auto& ro = rbuf.as_object().at("value").as_object();
+    EXPECT_EQ(ro.at("name").as_string(), "admin");
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
