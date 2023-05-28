@@ -119,16 +119,23 @@ message Role {
 
 /**
  * An API key is a randomly generated string that is assigned a
- * list of roles. It's designed to be used by consumerts of the
+ * list of roles. It's designed to be used by consumers of the
  * REST API.
  *
+ * We store a hash computed from the API KEY itself.
+ *
+ * The roles refers to roles in the Tenant. If a role is deleted
+ * in the tenant, the key will still reference it, but it will
+ * be ignored by the auth manager.
+ *
  * Indexes:
- *  - APIKEY hash / ACCOUNT
+ *  - APIKEY hash / ACCOUNT             --> tenantid
+ *  - TAPIKEY tenantid + hash / ACCOUNT --> tenantid
  */
 message ApiKey {
     required string hash = 1;
     optional string name = 2;
-    repeated Role roles = 5;
+    repeated string roles = 3;
 }
 
 /**
@@ -150,7 +157,7 @@ message UserAuth {
  *
  * Users are owned by the Tenant.
  * Indexes:
- *  - USER loginName / ACCOUNT --> tenant
+ *  - USER loginName / ACCOUNT --> tenantid
  *
  */
 message User {
@@ -177,7 +184,6 @@ message Tenant {
     repeated Permission allowedPermissions = 6; // Permissions that can be assigned to the tenants roles
     repeated Role roles = 7; // Roles that can be assigned to users/apikeys for this tenant
     repeated User users = 8;
-    //repeated ApiKey apiKeys = 9;
 }
 
 message ReplyTenant {
