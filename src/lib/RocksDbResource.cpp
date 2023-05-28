@@ -72,10 +72,10 @@ RocksDbResource::Transaction::lookupEntryAndSoa(string_view fqdn)
                     // This is an exact match. RR and Soa is the same
                     assert(rr.empty());
 
-                    return {move(e)};
+                    return {std::move(e)};
                 }
 
-                return {move(rr), move(e)};
+                return {std::move(rr), std::move(e)};
             }
 
             const auto zlen = e.header().zonelen;
@@ -88,7 +88,7 @@ RocksDbResource::Transaction::lookupEntryAndSoa(string_view fqdn)
             if (first) {
                 assert(rr.empty());
                 // Remember rr, we need to return it when the soa is found.
-                rr = move(e);
+                rr = std::move(e);
             }
         } else if (auto pos = key.find('.'); pos != string_view::npos) {
             // Try the next level
@@ -109,7 +109,7 @@ RocksDbResource::Transaction::lookup(std::string_view fqdn)
 {
     try {
         auto buffer = read(key_t{fqdn});
-        return {move(buffer)};
+        return {std::move(buffer)};
     }  catch (const NotFoundException&) {
         ;
     }
@@ -389,6 +389,19 @@ std::unique_ptr<ResourceIf::TransactionIf> RocksDbResource::transaction()
 
 void RocksDbResource::init()
 {
+    rocksdb_options_.db_write_buffer_size = config_.rocksdb_db_write_buffer_size;
+
+    if (config_.rocksdb_optimize_for_small_db) {
+        LOG_INFO << "RocksDbResource::init - OptimizeForSmallDb";
+        rocksdb_options_.OptimizeForSmallDb();
+    }
+
+    if (config_.rocksdb_background_threads) {
+        LOG_INFO << "RocksDbResource::init - IncreaseParallelism("
+                 << config_.rocksdb_background_threads << ")";
+        rocksdb_options_.IncreaseParallelism(config_.rocksdb_background_threads);
+    }
+
     prepareDirs();
     if (needBootstrap()) {
         bootstrap();
@@ -419,12 +432,12 @@ void RocksDbResource::open()
 {
     LOG_INFO << "Openig RocksDB " << rocksdb::GetRocksVersionAsString()
                 << ": " << getDbPath();
-    rocksdb::Options options;
-    options.create_if_missing = false;
-    options.create_missing_column_families = true;
+
+    rocksdb_options_.create_if_missing = false;
+    rocksdb_options_.create_missing_column_families = true;
 
     TransactionDBOptions txn_db_options;
-    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
+    const auto status = TransactionDB::Open(rocksdb_options_, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
         LOG_ERROR << "Failed to open database " << config_.db_path
                   << status.ToString();
@@ -439,11 +452,10 @@ void RocksDbResource::bootstrap()
              <<": " << getDbPath();
 
     filesystem::create_directories(getDbPath());
-    rocksdb::Options options;
-    options.create_if_missing = true;
-    options.create_missing_column_families = true;
+    rocksdb_options_.create_if_missing = true;
+    rocksdb_options_.create_missing_column_families = true;
     TransactionDBOptions txn_db_options;
-    const auto status = TransactionDB::Open(options, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
+    const auto status = TransactionDB::Open(rocksdb_options_, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
         LOG_ERROR << "Failed to create database " << getDbPath()
                   << status.ToString();

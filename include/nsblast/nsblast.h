@@ -145,6 +145,18 @@ struct Config {
     /// The size of authentication tokens/ sessions that can be cached in memory.
     size_t auth_cache_lru_size = 1024 * 1024;
     ///@}
+
+    /*! \name RocksDB */
+    ///@{
+    /// See the RocksDB documentation for 'db_write_buffer_size'
+    size_t rocksdb_db_write_buffer_size = 0;
+
+    /// Calls DBOptions::OptimizeForSmallDb if true.
+    bool rocksdb_optimize_for_small_db = true;
+
+    /// Number of threads for flush and compaction. 0 == use default.
+    size_t rocksdb_background_threads = 0;
+    ///@}
 };
 
 // RFC 1035

@@ -115,9 +115,21 @@ int main(int argc, char* argv[]) {
             po::value<uint16_t>(&config.dns_notify_to_port)->default_value(config.dns_notify_to_port),
            "Port number to send NOTIFY messages to when a zone change")
         ;
+    po::options_description rocksdb("RocksDB");
+    rocksdb.add_options()
+        ("rocksdb-db-write-buffer-size",
+         po::value(&config.rocksdb_db_write_buffer_size)->default_value(config.rocksdb_db_write_buffer_size),
+         "See the RocksDB documentation for 'db_write_buffer_size'")
+        ("rocksdb-optimize-for-small-db",
+         po::value(&config.rocksdb_optimize_for_small_db)->default_value(config.rocksdb_optimize_for_small_db),
+         "Calls DBOptions::OptimizeForSmallDb if true")
+        ("rocksdb-background-threads",
+         po::value(&config.rocksdb_background_threads)->default_value(config.rocksdb_background_threads),
+         "Number of threads for flush and compaction. 0 == use default.")
+        ;
 
     po::options_description cmdline_options;
-    cmdline_options.add(general).add(odns).add(http);
+    cmdline_options.add(general).add(odns).add(http).add(rocksdb);
     po::positional_options_description kfo;
     kfo.add("kubeconfig", -1);
     po::variables_map vm;
