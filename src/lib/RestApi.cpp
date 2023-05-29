@@ -1100,10 +1100,13 @@ get_user:
 
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
+    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
     auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.target);
     auto exists = trx->zoneExists(lowercaseFqdn);
-    auto session = getSession(req);
 
     switch(req.type) {
     case Request::Type::POST: {
@@ -1161,7 +1164,10 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
-    auto session = getSession(req);
+    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
 
     StorageBuilder sb;
     auto trx = resource_.transaction();
