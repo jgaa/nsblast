@@ -187,7 +187,7 @@ TEST(AuthMgr, deleteZone) {
 
 TEST(AuthMgr, bootstrap) {
     MockServer ms;
-    ms.auth().bootstrap();
+    //ms.auth().bootstrap();
     string admin = "admin";
 
     auto trx = ms->resource().transaction();

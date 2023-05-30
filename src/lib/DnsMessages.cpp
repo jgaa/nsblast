@@ -1782,6 +1782,10 @@ void Entry::Iterator::update()
         const auto pos = ntohs(ix_->offset);
         assert(pos < entry_->buffer().size() + 10);
         crr_ = {entry_->buffer(), pos};
+        auto crr_t = crr_.type();
+        auto ix_t_raw = ix_->type;
+        auto ix_t = htons(ix_->type);
+        //auto ix_xx = boost::endian::big_to_native(ix_->type);
         assert(crr_.type() == ntohs(ix_->type));
         return;
     }

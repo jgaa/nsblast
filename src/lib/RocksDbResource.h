@@ -2,6 +2,7 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
+#include "proto/nsblast.pb.h"
 
 #include "rocksdb/db.h"
 #include "rocksdb/utilities/transaction.h"
@@ -95,10 +96,13 @@ public:
         }
 
     private:
+        void handleTrxLog();
+
         RocksDbResource& owner_;
         std::once_flag once_;
         std::unique_ptr<ROCKSDB_NAMESPACE::Transaction> trx_;
         bool dirty_ = false;
+        pb::Transaction trxlog_;
 
         // TransactionIf interface
     public:
@@ -121,12 +125,25 @@ public:
         return bootstrapped_;
     }
 
+    const auto& config() const noexcept {
+        return config_;
+    }
+
+    uint64_t nextTrxId() noexcept {
+        return ++trx_id_;
+    }
+
+    uint64_t currentTrxId() const noexcept {
+        return trx_id_;
+    }
+
 private:
     static constexpr size_t DEFAULT = 0;
     static constexpr size_t MASTER_ZONE = 1;
     static constexpr size_t ENTRY = 2;
     static constexpr size_t DIFF = 3;
     static constexpr size_t ACCOUNT = 4;
+    static constexpr size_t TRXLOG = 5;
 
     rocksdb::ColumnFamilyHandle * handle(const Category category);
 
@@ -135,6 +152,7 @@ private:
     void bootstrap();
     bool needBootstrap() const;
     std::string getDbPath() const;
+    void loadTrxId();
 
     const Config& config_;
     rocksdb::TransactionDB *db_ = {};
@@ -143,6 +161,7 @@ private:
     bool bootstrapped_ = false;
     std::atomic_int transaction_count_{0};
     rocksdb::Options rocksdb_options_;
+    std::atomic_uint64_t trx_id_{0};
 };
 
 } // ns

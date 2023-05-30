@@ -407,6 +407,7 @@ TEST(Rocksdb, canReload) {
     {
         auto tx = db->transaction();
         EXPECT_TRUE(tx->keyExists({fqdn}));
+        EXPECT_TRUE(db->currentTrxId() > 0);
     }
 }
 

@@ -1,16 +1,16 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package nsblast.pb;
 
 message KeyValue {
-    required string key = 1;
-    required string value = 2;
+    string key = 1;
+    optional string value = 2;
 }
 
 
 // Master ns for the zone. Only populated on slaves
 message Master {
-    required string hostname = 1; // Hostname or IP to master
+    optional string hostname = 1; // Hostname or IP to master
     optional uint32 port = 2; // Optional port fo the master (useful for testing)
     optional int32 refresh = 3; // Refresh interval in seconds
     optional string strategy = 4; // Strategy for refresh.
@@ -32,7 +32,7 @@ message SlaveZone {
 }
 
 enum Permission {
-    USE_API = 41;
+    USE_API = 0;
 
     READ_ZONE = 1;
     LIST_ZONES = 2;
@@ -86,11 +86,9 @@ enum Permission {
     GET_TENANT = 37;
     UPDATE_TENANT = 38;
     DELETE_TENANT = 39;
-    IMPERSONATE_TENANT = 42; // tenant={tenantId} query is valid
+    IMPERSONATE_TENANT = 40; // tenant={tenantId} query is valid
 
-    CONFIG_SLAVE = 40;
-
-    // last 42
+    CONFIG_SLAVE = 41;
 }
 
 /**
@@ -111,7 +109,7 @@ message ZoneFilter {
  * in User and ApiKey by it's name.
  */
 message Role {
-    required string name = 2; // Unique for a tenant
+    optional string name = 2; // Unique for a tenant
     repeated KeyValue properties = 3;
     repeated Permission permissions = 4;
     optional ZoneFilter filter = 5;
@@ -133,7 +131,7 @@ message Role {
  *  - TAPIKEY tenantid + hash / ACCOUNT --> tenantid
  */
 message ApiKey {
-    required string hash = 1;
+    optional string hash = 1;
     optional string name = 2;
     repeated string roles = 3;
 }
@@ -162,11 +160,11 @@ message UserAuth {
  */
 message User {
     optional string id = 1;
-    required string name = 2; // Globally unique login-name
+    optional string name = 2; // Globally unique login-name
     optional bool active = 3;
     repeated KeyValue properties = 4;
     repeated string roles = 5;
-    required UserAuth auth = 6;
+    optional UserAuth auth = 6;
 }
 
 /**
@@ -187,8 +185,8 @@ message Tenant {
 }
 
 message ReplyTenant {
-    required int32 status = 1;
-    required bool error = 2;
+    optional int32 status = 1;
+    optional bool error = 2;
     optional string reason = 3;
     optional Tenant value = 4;
 }
@@ -197,8 +195,8 @@ message ReplyTenant {
  * Status for a zone
  */
 enum ZoneStatus {
-    ACTIVE = 1;
-    ZOMBIE = 2; // Status set if the server loads the zone but can't load the tenant.
+    ACTIVE = 0;
+    ZOMBIE = 1; // Status set if the server loads the zone but can't load the tenant.
 }
 
 /**
@@ -210,8 +208,22 @@ enum ZoneStatus {
  */
 message Zone {
     optional string id = 1; // ID for the zone. Immutable from when the zone is created.
-    required string tenantId = 2; // Tenant for the zone
+    optional string tenantId = 2; // Tenant for the zone
     optional ZoneStatus status = 3;
     repeated KeyValue properties = 4;
 }
 
+message TrxPart {
+    int32 columnFamilyIx = 1; // Column family
+    bytes key = 2; // First byte identifies the key class
+    bytes value = 3;
+}
+
+message Transaction {
+    uint64 id = 1; // Unique, incremental counter
+    string node = 2; // Origin node id for the transaction
+    uint64 time = 3; // Time on the origin machine when the transaction was done
+    bytes uuid = 4; // UUID of the actual transaction
+
+    repeated TrxPart parts = 5;
+}

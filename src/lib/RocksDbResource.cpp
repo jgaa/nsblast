@@ -187,6 +187,14 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
         throw AlreadyExistException{"Key exists"};
     }
 
+    if (owner_.config_.db_log_transactions) {
+        if (category == Category::ENTRY) {
+            auto part = trxlog_.add_parts();
+            part->set_key(key.data(), key.size());
+            part->set_value(data.data(), data.size());
+        }
+    }
+
     dirty_ = true;
 }
 
@@ -304,6 +312,7 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
 void RocksDbResource::Transaction::commit()
 {
     call_once(once_, [&] {
+        handleTrxLog();
         LOG_TRACE << "Committing transaction " << uuid();
         auto status = trx_->Commit();
         if (!status.ok()) {
@@ -329,15 +338,40 @@ void RocksDbResource::Transaction::rollback()
     });
 }
 
+void RocksDbResource::Transaction::handleTrxLog()
+{
+    if (trxlog_.parts_size()) {
+        trxlog_.set_node(owner_.config_.node_name);
+        trxlog_.set_uuid(uuid().begin(), uuid().size());
+
+        // The ordering may not be exactely right, as we can't control the
+        // order of transactions execution without serializing them, but we can assume that
+        // no conflicting transactions are committed where the transaxtion-id may
+        // be in the wrong order (dirty writes).
+        // Holes in the sequence, if a commit failes, are OK.
+        trxlog_.set_id(owner_.nextTrxId());
+
+        const RealKey key{trxlog_.id(), RealKey::Class::TRXID};
+
+        LOG_TRACE << "RocksDbResource::Transaction::handleTrxLog - Saving transaction "
+                  << key;
+
+        string val;
+        trxlog_.SerializeToString(&val);
+        write(key, val, false, Category::TRXLOG);
+    }
+}
+
 RocksDbResource::RocksDbResource(const Config &config)
     : config_{config}
 {
-    rocksdb::ColumnFamilyOptions o;
+    rocksdb::ColumnFamilyOptions o = rocksdb_options_;
     cfd_.emplace_back(rocksdb::kDefaultColumnFamilyName, o);
     cfd_.emplace_back("masterZone", o);
     cfd_.emplace_back("entry", o);
     cfd_.emplace_back("diff", o);
     cfd_.emplace_back("account", o);
+    cfd_.emplace_back("trxlog", o);
 }
 
 RocksDbResource::~RocksDbResource()
@@ -407,6 +441,7 @@ void RocksDbResource::init()
         bootstrap();
     } else {
         open();
+        loadTrxId();
     }
 }
 
@@ -475,6 +510,21 @@ string RocksDbResource::getDbPath() const
     filesystem::path p = config_.db_path;
     p /= "rocksdb";
     return p.string();
+}
+
+void RocksDbResource::loadTrxId()
+{
+
+    ReadOptions o;
+    auto it = makeUniqueFrom(db_->NewIterator(o, handle(Category::TRXLOG)));
+    it->SeekToLast();
+    if (it->Valid()) {
+        span_t key = it->key();
+        const RealKey kkey{key, RealKey::Class::TRXID, true};
+        trx_id_ = getValueAt<uint64_t>(key, 1);
+        LOG_DEBUG << "RocksDbResource::loadTrxId - Last committed TRANSACTION-log: " << kkey
+                  << ". trx_id is set to " << trx_id_;
+    }
 }
 
 

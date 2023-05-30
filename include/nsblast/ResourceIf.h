@@ -18,7 +18,8 @@ public:
         MASTER_ZONE,
         ENTRY,
         DIFF,
-        ACCOUNT
+        ACCOUNT,
+        TRXLOG
     };
 
     /*! Real index key.
@@ -37,12 +38,14 @@ public:
             USER,       // class loginName
             ROLE,       // unused
             ZONE,       // class reversed-fqdn
-            TZONE       // class tenant-id / fqdn
+            TZONE,      // class tenant-id / fqdn
+            TRXID       // class uint64-trxid
         };
 
         RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
         RealKey(span_t key, uint32_t version, Class kclass = Class::DIFF);
         RealKey(span_t key, span_t postfix, Class kclass);
+        RealKey(uint64_t num, Class kclass);
 
         span_t key() const noexcept;
 
@@ -90,6 +93,7 @@ public:
 
     protected:            
         static std::string init(span_t key, Class kclass, std::optional<uint32_t> version);
+        static std::string init(uint64_t value, Class kclass);
 
         const std::string bytes_;
     };

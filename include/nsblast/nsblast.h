@@ -28,6 +28,17 @@ struct Config {
     ///@{
     /// Path to the database directory
     std::string db_path = "/var/lib/nsblast";
+
+    /*! Enable logging of transactions. This is required in cluster-mode.
+     *
+     *  Levels:
+     *    - 1: Replicate DNS data. This is sufficient for slave servers that will
+     *         never need to step in (fail-over) and become a master server.
+     */
+    unsigned db_log_transactions = 1;
+
+    /// Unique node-name in a cluster. Defaults to the hostname of the machine.
+    std::string node_name = boost::asio::ip::host_name();
     ///@}
 
     /*! \name DNS */

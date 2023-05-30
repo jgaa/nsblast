@@ -8,7 +8,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_serialize.hpp>
-
+#include <boost/endian/conversion.hpp>
 
 
 #include "nsblast/DnsMessages.h"
@@ -37,7 +37,7 @@ namespace nsblast::lib {
         return std::unique_ptr<T>{ptr};
     }
 
-    template <typename T, typename I>
+    template <typename I, typename T>
     I getValueAt(const T& b, size_t loc) {
         const auto tlen = sizeof(I);
         if (loc + (tlen -1) >= b.size()) {
@@ -45,30 +45,17 @@ namespace nsblast::lib {
         }
 
         auto *v = reinterpret_cast<const I *>(b.data() + loc);
-
-        auto constexpr ilen = sizeof(I);
-
-        if constexpr (ilen == 1) {
-            return *v;
-        } else if constexpr (ilen == 2) {
-            return ntohs(*v);
-        } else if constexpr (ilen == 4) {
-            return ntohl(*v);
-        } else {
-            static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "getValueAt: Unexpected integer length");
-        }
-
-        throw std::runtime_error{"getValueAt: Something is very, very wrong..."};
+        return boost::endian::big_to_native(*v);
     }
 
     template <typename T>
     auto get16bValueAt(const T& b, size_t loc) {
-        return getValueAt<T, uint16_t>(b, loc);
+        return getValueAt<uint16_t>(b, loc);
     }
 
     template <typename T>
     auto get32bValueAt(const T& b, size_t loc) {
-        return getValueAt<T, uint32_t>(b, loc);
+        return getValueAt<uint32_t>(b, loc);
     }
 
     template <typename T, typename I>
@@ -78,18 +65,7 @@ namespace nsblast::lib {
         }
 
         auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
-
-        auto constexpr ilen = sizeof(I);
-
-        if constexpr (ilen == 1) {
-            *v = value;
-        } else if constexpr (ilen == 2) {
-            *v = htons(value);
-        } else if constexpr (ilen == 4) {
-            *v = htonl(value);
-        } else {
-            static_assert (ilen <= 0 || ilen == 3 || ilen > 4, "setValueAt: Unexpected integer length");
-        }
+        *v = boost::endian::native_to_big(value);
     }
 
     // ASCII tolower

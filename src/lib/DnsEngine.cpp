@@ -212,7 +212,7 @@ public:
                LOG_DEBUG << "Failed to accept TCP connection on " << acceptor_.local_endpoint()
                          << ": " << ec.message();
            } else {
-               parent().createTcpSession(move(socket));
+               parent().createTcpSession(std::move(socket));
            }
 
            accept();
@@ -251,7 +251,7 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
         ep->start();
 
         // The engine assumes ownership for the endpoints
-        engine.addEndpoint(move(ep));
+        engine.addEndpoint(std::move(ep));
     }
 }
 
@@ -355,7 +355,7 @@ createBuilder(const DnsEngine::Request &request, const Message& message,
 class DnsTcpSession : public std::enable_shared_from_this<DnsTcpSession> {
 public:
     DnsTcpSession(DnsEngine& parent,  DnsEngine::tcp_t::socket && socket)
-        : parent_{parent}, socket_{move(socket)}
+        : parent_{parent}, socket_{std::move(socket)}
         , idle_timer_{socket_.get_executor()}
     {
         setIdleTimer();
@@ -1200,7 +1200,7 @@ DnsEngine::tcp_session_t DnsEngine::createTcpSession(DnsEngine::tcp_t::socket &&
     const auto lep = socket.local_endpoint();
     tcp_session_t session;
     try {
-        session = make_shared<DnsTcpSession>(*this, move(socket));
+        session = make_shared<DnsTcpSession>(*this, std::move(socket));
     } catch (const exception& ex) {
         LOG_WARN << "Failed to start connection from " << rep
                  << " to " << lep;

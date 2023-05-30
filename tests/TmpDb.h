@@ -156,6 +156,7 @@ public:
         : Server(db->config()), db_{db} {
         resource_ = db->resourcePtr();
         auth_ = make_shared<AuthMgr>(*this);
+        auth_->bootstrap();
         admin_session_ = make_shared<Session>(*auth_);
     }
 

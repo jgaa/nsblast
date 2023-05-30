@@ -6,13 +6,14 @@
 using namespace std;
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat) {
-    static constexpr array<string_view, 5> names = { "DEFAULT", "MASTER_ZONE", "ENTRY", "DIFF", "ACCOUNT" };
+    static constexpr array<string_view, 6> names = { "DEFAULT", "MASTER_ZONE", "ENTRY",
+                                                    "DIFF", "ACCOUNT", "TRXLOG" };
 
     return o << names.at(static_cast<size_t>(cat));
 }
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key) {
-    static constexpr array<string_view, 7> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE", "ZONE", "TZONE" };
+    static constexpr array<string_view, 8> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE", "ZONE", "TZONE", "TRXID" };
 
     return o << names.at(static_cast<size_t>(key.kClass()))
              << ' ' << key.dataAsString();
@@ -50,6 +51,11 @@ ResourceIf::RealKey::RealKey(span_t key, span_t postfix, Class kclass)
 {
 }
 
+ResourceIf::RealKey::RealKey(uint64_t num, Class kclass)
+    : bytes_{init(num, kclass)}
+{
+}
+
 span_t ResourceIf::RealKey::key() const noexcept {
     return bytes_;
 }
@@ -79,6 +85,10 @@ string ResourceIf::RealKey::dataAsString() const {
         auto end = bytes_.end();
         const auto kt = static_cast<ResourceIf::RealKey::Class>(bytes_.at(0));
         switch(kt) {
+        case ResourceIf::RealKey::Class::TRXID: {
+            assert(bytes_.size() == sizeof(uint64_t) + 1);
+            return to_string(getValueAt<uint64_t>(bytes_, 1));
+        }
         case ResourceIf::RealKey::Class::DIFF: {
             assert(bytes_.size() >= 6);
             end -= 5; // 32 bit unsigned + 0 byte-marker
@@ -144,6 +154,18 @@ string ResourceIf::RealKey::init(span_t key,
         setValueAt(value, offset, *version);
     }
     return value;
+}
+
+string ResourceIf::RealKey::init(uint64_t value, Class kclass)
+{
+    if (kclass != Class::TRXID) {
+        throw runtime_error{"kclass must be a type wich is a uint64_t"};
+    }
+    string rval;
+    rval.resize(sizeof(uint64_t) + 1);
+    rval[0] = static_cast<char>(kclass);
+    setValueAt(rval, 1, value);
+    return rval;
 }
 
 } // ns

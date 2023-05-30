@@ -1471,7 +1471,7 @@ TEST(ApiRequest, deleteTenant) {
 
 TEST(ApiRequest, createRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("testrole");
     auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
@@ -1492,7 +1492,7 @@ TEST(ApiRequest, createRole) {
 
 TEST(ApiRequest, upsertNewRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("testrole");
     auto req = makeRequest(svr, "role", "testrole", json, yahat::Request::Type::PUT);
@@ -1513,7 +1513,7 @@ TEST(ApiRequest, upsertNewRole) {
 
 TEST(ApiRequest, upsertNewRoleMissingTarget) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("testrole");
     auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::PUT);
@@ -1527,7 +1527,7 @@ TEST(ApiRequest, upsertNewRoleMissingTarget) {
 
 TEST(ApiRequest, createRoleNoName) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("");
     auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
@@ -1541,7 +1541,7 @@ TEST(ApiRequest, createRoleNoName) {
 
 TEST(ApiRequest, upsertExistingRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("testrole");
     auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
@@ -1569,7 +1569,7 @@ TEST(ApiRequest, upsertExistingRole) {
 
 TEST(ApiRequest, getRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto req = makeRequest(svr, "role", "Administrator", {}, yahat::Request::Type::GET);
 
@@ -1586,7 +1586,7 @@ TEST(ApiRequest, getRole) {
 
 TEST(ApiRequest, listRoles) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto req = makeRequest(svr, "role", "", {}, yahat::Request::Type::GET);
 
@@ -1603,7 +1603,7 @@ TEST(ApiRequest, listRoles) {
 
 TEST(ApiRequest, deleteRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewRole("testrole");
     auto req = makeRequest(svr, "role", "", json, yahat::Request::Type::POST);
@@ -1625,7 +1625,7 @@ TEST(ApiRequest, deleteRole) {
 
 TEST(ApiRequest, createUser) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
@@ -1645,7 +1645,7 @@ TEST(ApiRequest, createUser) {
 
 TEST(ApiRequest, upsertNewUser) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "user", "testUser", json, yahat::Request::Type::PUT);
@@ -1665,7 +1665,7 @@ TEST(ApiRequest, upsertNewUser) {
 
 TEST(ApiRequest, upsertNewUserMissingTarget) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::PUT);
@@ -1678,7 +1678,7 @@ TEST(ApiRequest, upsertNewUserMissingTarget) {
 
 TEST(ApiRequest, uppercaseTarget) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "User", "testUser", json, yahat::Request::Type::PUT);
@@ -1690,7 +1690,7 @@ TEST(ApiRequest, uppercaseTarget) {
 
 TEST(ApiRequest, createUserNoName) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("");
     auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
@@ -1703,7 +1703,7 @@ TEST(ApiRequest, createUserNoName) {
 
 TEST(ApiRequest, upsertExistingUser) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
@@ -1729,7 +1729,7 @@ TEST(ApiRequest, upsertExistingUser) {
 
 TEST(ApiRequest, getUser) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto req = makeRequest(svr, "user", "admin", {}, yahat::Request::Type::GET);
 
@@ -1745,7 +1745,7 @@ TEST(ApiRequest, getUser) {
 
 TEST(ApiRequest, listUsers) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto req = makeRequest(svr, "user", "", {}, yahat::Request::Type::GET);
 
@@ -1761,7 +1761,7 @@ TEST(ApiRequest, listUsers) {
 
 TEST(ApiRequest, deleteUser) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
     auto req = makeRequest(svr, "user", "", json, yahat::Request::Type::POST);
@@ -1790,7 +1790,7 @@ TEST(ApiRequest, deleteUser) {
 
 TEST(ApiRequest, createUserWithNonExistingRole) {
     MockServer svr;
-    svr.auth().bootstrap();
+
 
     auto json = getJsonForNewUser("testUser");
 

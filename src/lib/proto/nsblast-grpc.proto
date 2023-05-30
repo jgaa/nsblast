@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+package grpc.nsblast.pb;
+
+import "nsblast.proto";
+
