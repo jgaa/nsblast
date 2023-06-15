@@ -102,7 +102,7 @@ public:
         std::once_flag once_;
         std::unique_ptr<ROCKSDB_NAMESPACE::Transaction> trx_;
         bool dirty_ = false;
-        pb::Transaction trxlog_;
+        std::unique_ptr<pb::Transaction> trxlog_;
 
         // TransactionIf interface
     public:

@@ -4,3 +4,23 @@ package grpc.nsblast.pb;
 
 import "nsblast.proto";
 
+enum SyncLevel {
+    NONE = 0;
+    ENTRIES = 1;
+    // FAILOVER = 2
+}
+
+message SyncRequest {
+    uint64 startAfter = 1; // Start streaming from the next ID
+    SyncLevel level = 2;
+}
+
+message SyncUpdate {
+    bool isInSync = 1; // True if there is no backlog
+    optional .nsblast.pb.Transaction trx = 2;
+}
+
+service NsblastSvc {
+    rpc Sync(SyncRequest) returns (stream SyncUpdate) {}
+}
+

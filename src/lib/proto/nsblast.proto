@@ -224,6 +224,7 @@ message Transaction {
     string node = 2; // Origin node id for the transaction
     uint64 time = 3; // Time on the origin machine when the transaction was done
     bytes uuid = 4; // UUID of the actual transaction
+    uint32 categories = 5; // Bitflag for what categories are in the parts
 
-    repeated TrxPart parts = 5;
+    repeated TrxPart parts = 6;
 }

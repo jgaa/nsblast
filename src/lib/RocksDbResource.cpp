@@ -189,7 +189,10 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
 
     if (owner_.config_.db_log_transactions) {
         if (category == Category::ENTRY) {
-            auto part = trxlog_.add_parts();
+            if (!trxlog_) {
+                trxlog_ = make_unique<pb::Transaction>();
+            }
+            auto part = trxlog_->add_parts();
             part->set_key(key.data(), key.size());
             part->set_value(data.data(), data.size());
         }
@@ -340,24 +343,24 @@ void RocksDbResource::Transaction::rollback()
 
 void RocksDbResource::Transaction::handleTrxLog()
 {
-    if (trxlog_.parts_size()) {
-        trxlog_.set_node(owner_.config_.node_name);
-        trxlog_.set_uuid(uuid().begin(), uuid().size());
+    if (trxlog_ && trxlog_->parts_size()) {
+        trxlog_->set_node(owner_.config_.node_name);
+        trxlog_->set_uuid(uuid().begin(), uuid().size());
 
         // The ordering may not be exactely right, as we can't control the
         // order of transactions execution without serializing them, but we can assume that
         // no conflicting transactions are committed where the transaxtion-id may
         // be in the wrong order (dirty writes).
         // Holes in the sequence, if a commit failes, are OK.
-        trxlog_.set_id(owner_.nextTrxId());
+        trxlog_->set_id(owner_.nextTrxId());
 
-        const RealKey key{trxlog_.id(), RealKey::Class::TRXID};
+        const RealKey key{trxlog_->id(), RealKey::Class::TRXID};
 
         LOG_TRACE << "RocksDbResource::Transaction::handleTrxLog - Saving transaction "
                   << key;
 
         string val;
-        trxlog_.SerializeToString(&val);
+        trxlog_->SerializeToString(&val);
         write(key, val, false, Category::TRXLOG);
     }
 }
@@ -385,10 +388,6 @@ RocksDbResource::~RocksDbResource()
         for(auto fh : cfh_) {
             if (fh) {
                 LOG_TRACE << "RocksDbResource::~RocksDbResource - ... " << fh->GetName();
-
-//                if (fh->GetName() != "default") {
-//                    db_->DropColumnFamily(fh);
-//                }
                 auto result = db_->DestroyColumnFamilyHandle(fh);
                 if (!result.ok()) {
                     LOG_ERROR << "Failed to destroy ColumnFamilyHandle " << fh->GetName();
@@ -514,7 +513,6 @@ string RocksDbResource::getDbPath() const
 
 void RocksDbResource::loadTrxId()
 {
-
     ReadOptions o;
     auto it = makeUniqueFrom(db_->NewIterator(o, handle(Category::TRXLOG)));
     it->SeekToLast();

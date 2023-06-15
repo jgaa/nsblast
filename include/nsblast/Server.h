@@ -20,6 +20,10 @@ namespace lib {
     class Notifications;
     class AuthMgr;
 
+#ifdef NSBLAST_CLUSTER
+    class Grpc;
+#endif
+
 } // ns lib
 
 /*! Singleton object that owns the vraious components the application using the library depends on
@@ -53,6 +57,10 @@ public:
     void startNotifications();
 
     void startAuth();
+
+#ifdef NSBLAST_CLUSTER
+    void startGrpcService();
+#endif
 
     /*! Thread-safe method to request the services to shut down
      *
@@ -102,6 +110,12 @@ public:
         return *auth_;
     }
 
+#ifdef NSBLAST_CLUSTER
+    auto& grpc() noexcept {
+        return *grpc_;
+    }
+#endif
+
     /*! Get an unused ID for a request */
     uint32_t getNewId();
 
@@ -127,6 +141,9 @@ protected:
     std::shared_ptr<lib::SlaveMgr> slave_;
     std::shared_ptr<lib::DnsEngine> dns_;
     std::shared_ptr<lib::AuthMgr> auth_;
+#ifdef NSBLAST_CLUSTER
+    std::shared_ptr<lib::Grpc> grpc_;
+#endif
 
     const Config& config_;
     boost::unordered_flat_set<uint32_t> current_request_ids_;

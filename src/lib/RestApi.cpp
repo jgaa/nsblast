@@ -15,6 +15,7 @@
 //#include "nsblast/DnsEngine.h"
 #include "nsblast/errors.h"
 #include "google/protobuf/util/json_util.h"
+#include "proto_util.h"
 
 #include "glad/AsyncCache.hpp"
 
@@ -103,31 +104,31 @@ bool fromJson(const std::string& json, T& obj) {
     return true;
 }
 
-template <ProtoMessage T>
-std::string toJson(const T& obj) {
-    string str;
-    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
-    if (!res.ok()) {
-        LOG_DEBUG << "Failed to convert object to json: "
-                  << typeid(T).name() << ": "
-                  << res.ToString();
-        throw std::runtime_error{"Failed to convertt object to json"};
-    }
-    return str;
-}
+//template <ProtoMessage T>
+//std::string toJson(const T& obj) {
+//    string str;
+//    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
+//    if (!res.ok()) {
+//        LOG_DEBUG << "Failed to convert object to json: "
+//                  << typeid(T).name() << ": "
+//                  << res.ToString();
+//        throw std::runtime_error{"Failed to convertt object to json"};
+//    }
+//    return str;
+//}
 
-template <ProtoList T>
-ostream& toJson(ostream& out, const T& list) {
-    out << '[';
-    auto num = 0;
-    for(const auto& message: list) {
-        if (++num > 1) {
-            out << ',';
-        }
-        out << toJson(message);
-    }
-    return out << ']';
-}
+//template <ProtoList T>
+//ostream& toJson(ostream& out, const T& list) {
+//    out << '[';
+//    auto num = 0;
+//    for(const auto& message: list) {
+//        if (++num > 1) {
+//            out << ',';
+//        }
+//        out << toJson(message);
+//    }
+//    return out << ']';
+//}
 
 // Convert a plain email-address from "some.persone.name@example.com" to some\.persons\.name.example.com
 string_view toDnsEmail(string_view email, std::string& buffer) {

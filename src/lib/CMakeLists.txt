@@ -12,6 +12,10 @@ add_custom_command(
 
 ADD_SUBDIRECTORY(proto)
 
+if (NSBLAST_CLUSTER)
+    set(LIB_CLUSTER_FILES Grpc.cpp Grpc.h)
+endif()
+
 add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
@@ -42,6 +46,7 @@ add_library(${PROJECT_NAME}
     swagger_res.cpp
     swagger_res.h
     util.cpp
+    ${LIB_CLUSTER_FILES}
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

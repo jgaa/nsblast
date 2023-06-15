@@ -20,6 +20,10 @@ option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
 option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" OFF)
 option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)
 
+if (NSBLAST_CLUSTER)
+    add_definitions(-DNSBLAST_CLUSTER=1)
+endif()
+
 if (NSBLAST_USE_VALGRIND)
    set (VALDGRIND_ARGS -DBOOST_USE_VALGRIND=1)
 endif()

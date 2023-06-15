@@ -9,6 +9,10 @@
 #include "RocksDbResource.h"
 #include "AuthMgr.h"
 
+#ifdef NSBLAST_CLUSTER
+#   include "Grpc.h"
+#endif
+
 #include "nsblast/Server.h"
 #include "yahat/HttpServer.h"
 
@@ -50,6 +54,8 @@ void Server::start()
 {
     startRocksDb();
     startAuth();
+    // TODO: Only start grpc service when we are master
+    startGrpcService();
     startApi();
     startSlaveMgr();
     startHttpServer();
@@ -158,6 +164,14 @@ void Server::startAuth()
     }
 }
 
+#ifdef NSBLAST_CLUSTER
+void Server::startGrpcService()
+{
+    grpc_ = make_shared<Grpc>(*this);
+    grpc_->start();
+}
+#endif
+
 void Server::stop()
 {
     LOG_DEBUG << "Server::stop() is called.";
@@ -172,9 +186,17 @@ void Server::stop()
             http_->stop();
             LOG_TRACE << "Server::stop(): Done stopping HTTP server.";
         }
+#ifdef NSBLAST_CLUSTER
+        if (grpc_) {
+            LOG_TRACE << "Server::stop(): Stopping gRPC server...";
+            grpc_->stop();
+            LOG_TRACE << "Server::stop(): Done stopping gRPC server.";
+        }
+#endif
+
         LOG_TRACE << "Server::stop(): Stopping Server worker threads ...";
         ctx_.stop();
-        LOG_TRACE << "Server::stop(): Done stopping Server worker threads ...";
+        LOG_TRACE << "Server::stop(): Done stopping Server worker threads .";
     });
 }
 

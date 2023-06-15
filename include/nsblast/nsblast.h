@@ -41,6 +41,14 @@ struct Config {
     std::string node_name = boost::asio::ip::host_name();
     ///@}
 
+    /*! \name Cluster */
+    ///@{
+
+    /// Address (IP ':' port) to the gRPC service used for cluster-sync
+    std::string grpc_server_addr = "0.0.0.0:101234";
+
+    ///@}
+
     /*! \name DNS */
     ///@{
 

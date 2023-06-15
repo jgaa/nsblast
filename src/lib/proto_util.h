@@ -3,6 +3,9 @@
 #include <ranges>
 #include <optional>
 #include "proto/nsblast.pb.h"
+#include "nsblast/logging.h"
+
+#include "google/protobuf/util/json_util.h"
 
 namespace nsblast::lib {
 
@@ -48,5 +51,32 @@ void removeFromList(T *list, const nameT& name) {
         }
     }
 }
+
+template <ProtoMessage T>
+std::string toJson(const T& obj) {
+    std::string str;
+    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
+    if (!res.ok()) {
+        LOG_DEBUG << "Failed to convert object to json: "
+                  << typeid(T).name() << ": "
+                  << res.ToString();
+        throw std::runtime_error{"Failed to convertt object to json"};
+    }
+    return str;
+}
+
+template <ProtoList T>
+std::ostream& toJson(std::ostream& out, const T& list) {
+    out << '[';
+    auto num = 0;
+    for(const auto& message: list) {
+        if (++num > 1) {
+            out << ',';
+        }
+        out << toJson(message);
+    }
+    return out << ']';
+}
+
 
 } // ns
