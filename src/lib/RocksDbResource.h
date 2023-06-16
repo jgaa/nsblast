@@ -114,6 +114,10 @@ public:
     // ResourceIf interface
     std::unique_ptr<TransactionIf> transaction() override;
 
+    auto dbTransaction() {
+        return std::make_unique<Transaction>(*this);
+    }
+
     void init();
 
     auto& db() {

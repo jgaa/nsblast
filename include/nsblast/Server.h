@@ -19,9 +19,11 @@ namespace lib {
     class DnsEngine;
     class Notifications;
     class AuthMgr;
+    class RocksDbResource;
 
 #ifdef NSBLAST_CLUSTER
     class Grpc;
+    class Replication;
 #endif
 
 } // ns lib
@@ -59,6 +61,8 @@ public:
     void startAuth();
 
 #ifdef NSBLAST_CLUSTER
+    void StartReplication();
+
     void startGrpcService();
 #endif
 
@@ -77,6 +81,8 @@ public:
         assert(resource_);
         return *resource_;
     }
+
+    lib::RocksDbResource& db() const noexcept;
 
     auto& notifications() const noexcept {
         assert(notifications_);
@@ -111,6 +117,10 @@ public:
     }
 
 #ifdef NSBLAST_CLUSTER
+    auto& replication() noexcept {
+        return *replication_;
+    }
+
     auto& grpc() noexcept {
         return *grpc_;
     }
@@ -143,6 +153,7 @@ protected:
     std::shared_ptr<lib::AuthMgr> auth_;
 #ifdef NSBLAST_CLUSTER
     std::shared_ptr<lib::Grpc> grpc_;
+    std::shared_ptr<lib::Replication> replication_;
 #endif
 
     const Config& config_;

@@ -10,6 +10,7 @@
 #include "AuthMgr.h"
 
 #ifdef NSBLAST_CLUSTER
+#   include "Replication.h"
 #   include "Grpc.h"
 #endif
 
@@ -54,8 +55,14 @@ void Server::start()
 {
     startRocksDb();
     startAuth();
+
+#ifdef NSBLAST_CLUSTER
+    StartReplication();
+
     // TODO: Only start grpc service when we are master
     startGrpcService();
+#endif
+
     startApi();
     startSlaveMgr();
     startHttpServer();
@@ -165,6 +172,12 @@ void Server::startAuth()
 }
 
 #ifdef NSBLAST_CLUSTER
+void Server::StartReplication()
+{
+    replication_ = make_shared<Replication>(*this);
+    replication_->start();
+}
+
 void Server::startGrpcService()
 {
     grpc_ = make_shared<Grpc>(*this);
@@ -198,6 +211,12 @@ void Server::stop()
         ctx_.stop();
         LOG_TRACE << "Server::stop(): Done stopping Server worker threads .";
     });
+}
+
+RocksDbResource &Server::db() const noexcept
+{
+    assert(resource_);
+    return dynamic_cast<lib::RocksDbResource&>(*resource_);
 }
 
 uint32_t Server::getNewId()

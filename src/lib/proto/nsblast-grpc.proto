@@ -21,6 +21,6 @@ message SyncUpdate {
 }
 
 service NsblastSvc {
-    rpc Sync(SyncRequest) returns (stream SyncUpdate) {}
+    rpc Sync(stream SyncRequest) returns (stream SyncUpdate) {}
 }
 

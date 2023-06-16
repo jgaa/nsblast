@@ -17,21 +17,24 @@ if (NSBLAST_CLUSTER)
 endif()
 
 add_library(${PROJECT_NAME}
+    ${LIB_CLUSTER_FILES}
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
     ${NSBLAST_ROOT}/include/nsblast/Server.h
     ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
+    ${NSBLAST_ROOT}/include/nsblast/errors.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
-    ${NSBLAST_ROOT}/include/nsblast/errors.h
     AuthMgr.cpp
     AuthMgr.h
     DnsEngine.cpp
     DnsMessages.cpp
     Notifications.cpp
     Notifications.h
+    Replication.cpp
+    Replication.h
     ResourceIf.cpp
     RestApi.cpp
     RestApi.h
@@ -46,7 +49,6 @@ add_library(${PROJECT_NAME}
     swagger_res.cpp
     swagger_res.h
     util.cpp
-    ${LIB_CLUSTER_FILES}
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
