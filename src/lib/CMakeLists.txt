@@ -13,7 +13,7 @@ add_custom_command(
 ADD_SUBDIRECTORY(proto)
 
 if (NSBLAST_CLUSTER)
-    set(LIB_CLUSTER_FILES Grpc.cpp Grpc.h)
+    set(LIB_CLUSTER_FILES GrpcPrimary.cpp GrpcPrimary.h GrpcFollow.cpp GrpcFollow.h)
 endif()
 
 add_library(${PROJECT_NAME}

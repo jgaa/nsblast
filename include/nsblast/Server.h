@@ -22,7 +22,8 @@ namespace lib {
     class RocksDbResource;
 
 #ifdef NSBLAST_CLUSTER
-    class Grpc;
+    class GrpcPrimary;
+    class GrpcFollow;
     class Replication;
 #endif
 
@@ -32,6 +33,12 @@ namespace lib {
  */
 class Server {
 public:
+    enum class Role {
+        NONE,
+        CLUSTER_PRIMARY,
+        CLUSTER_FOLLOWER
+    };
+
     Server(const Config& config);
     ~Server();
 
@@ -105,6 +112,10 @@ public:
     }
 
     const auto& config() const noexcept {
+        return *config_;
+    }
+
+    auto configPtr() const noexcept {
         return config_;
     }
 
@@ -121,9 +132,16 @@ public:
         return *replication_;
     }
 
-    auto& grpc() noexcept {
-        return *grpc_;
+    auto& grpcPrimary() noexcept {
+        assert(grpc_primary_);
+        return *grpc_primary_;
     }
+
+    auto& grpcFollow() noexcept {
+        assert(grpc_follow_);
+        return *grpc_follow_;
+    }
+
 #endif
 
     /*! Get an unused ID for a request */
@@ -136,6 +154,14 @@ public:
         return bootstrapped_;
     }
 
+    auto role() const noexcept {
+        return role_;
+    }
+
+    bool isCluster() const noexcept {
+        return role_ != Role::NONE;
+    }
+
 protected:
     void runWorker(const std::string& name);
     void handleSignals();
@@ -143,6 +169,7 @@ protected:
     std::atomic_bool done_{false};
     boost::asio::io_context ctx_;
     std::vector<std::thread> workers_;
+    Role role_ = Role::NONE;
 
     std::shared_ptr<lib::ResourceIf> resource_;
     std::shared_ptr<lib::Notifications> notifications_;
@@ -152,11 +179,12 @@ protected:
     std::shared_ptr<lib::DnsEngine> dns_;
     std::shared_ptr<lib::AuthMgr> auth_;
 #ifdef NSBLAST_CLUSTER
-    std::shared_ptr<lib::Grpc> grpc_;
+    std::shared_ptr<lib::GrpcPrimary> grpc_primary_;
+    std::shared_ptr<lib::GrpcFollow> grpc_follow_;
     std::shared_ptr<lib::Replication> replication_;
 #endif
 
-    const Config& config_;
+    std::shared_ptr<Config> config_;
     boost::unordered_flat_set<uint32_t> current_request_ids_;
     std::mutex ids_mutex_;
     std::once_flag stop_once_;
@@ -167,3 +195,5 @@ protected:
 
 
 } // ns
+
+std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role);

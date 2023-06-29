@@ -5,7 +5,7 @@
 #include <memory>
 #include "nsblast/util.h"
 #include "RocksDbResource.h"
-#include "Grpc.h"
+#include "GrpcPrimary.h"
 #include "proto/nsblast.pb.h"
 
 namespace nsblast {
@@ -28,8 +28,8 @@ public:
             ITERATING_DB,
             STREAMING
         };
-
-        Agent(Replication& parent, Grpc::SyncClient& client, uint64_t fromTrxId);
+        
+        Agent(Replication& parent, GrpcPrimary::SyncClient& client, uint64_t fromTrxId);
 
         /*! Iterate over a number of transactions in the db.
          *
@@ -49,7 +49,7 @@ public:
         State state_ = State::ITERATING_DB;
         uint64_t currentTrx = 0;
         uint64_t lastConfirmedTrx = 0;
-        std::weak_ptr<Grpc::SyncClient> client_;
+        std::weak_ptr<GrpcPrimary::SyncClient> client_;
         std::mutex mutex_;
         Replication& parent_;
     };
@@ -61,8 +61,8 @@ public:
     const auto& server() {
         return server_;
     }
-
-    Grpc::on_trxid_fn_t addAgent(Grpc::SyncClient& client, uint64_t fromTrxId);
+    
+    GrpcPrimary::on_trxid_fn_t addAgent(GrpcPrimary::SyncClient& client, uint64_t fromTrxId);
 
     template <typename T>
     void applyIf(uint64_t trxId, const T& fn) {

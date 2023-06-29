@@ -21,8 +21,10 @@ public:
 };
 
 /*! GRPC service for cluster communication and replication
+ *
+ *  This class handles the server-side
  */
-class Grpc {
+class GrpcPrimary {
 public:
     using update_t = std::shared_ptr<grpc::nsblast::pb::SyncUpdate>;
     using on_trxid_fn_t = std::function<void(uint64_t trxId)>;
@@ -48,7 +50,7 @@ public:
             }
         };
 
-        ClientBase(Grpc& grpc) : grpc_{grpc} {}
+        ClientBase(GrpcPrimary& grpc) : grpc_{grpc} {}
         virtual ~ClientBase() = default;
 
         virtual void start() = 0;
@@ -63,7 +65,7 @@ public:
         Handle read_handle_ {this, Op::READ};
         Handle write_handle_ {this, Op::WRITE};
         Handle disconnect_handle_ {this, Op::DISCONNECT};
-        Grpc& grpc_;
+        GrpcPrimary& grpc_;
         const boost::uuids::uuid uuid_ = newUuid();
         grpc::ServerContext ctx_;
     };
@@ -77,7 +79,7 @@ public:
             FAILED
         };
 
-        SyncClient(Grpc& grpc);
+        SyncClient(GrpcPrimary& grpc);
 
         void start() override;
         void proceed(Op op, bool ok) override;
@@ -110,7 +112,7 @@ public:
         on_trxid_fn_t on_trxid_fn_;
     };
 
-    Grpc(Server& server);
+    GrpcPrimary(Server& server);
 
     void start();
     void stop();
@@ -136,5 +138,5 @@ private:
 
 }
 
-std::ostream &operator <<(std::ostream &out, const nsblast::lib::Grpc::SyncClient::Op op);
-std::ostream& operator << (std::ostream& out, const nsblast::lib::Grpc::SyncClient::State state);
+std::ostream &operator <<(std::ostream &out, const nsblast::lib::GrpcPrimary::SyncClient::Op op);
+std::ostream& operator << (std::ostream& out, const nsblast::lib::GrpcPrimary::SyncClient::State state);

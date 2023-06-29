@@ -20,7 +20,7 @@ Replication::Replication(Server &server)
 
 }
 
-Grpc::on_trxid_fn_t Replication::addAgent(Grpc::SyncClient &client, uint64_t fromTrxId)
+GrpcPrimary::on_trxid_fn_t Replication::addAgent(GrpcPrimary::SyncClient &client, uint64_t fromTrxId)
 {
     lock_guard lock{mutex_};
 
@@ -32,7 +32,7 @@ Grpc::on_trxid_fn_t Replication::addAgent(Grpc::SyncClient &client, uint64_t fro
     };
 }
 
-Replication::Agent::Agent(Replication& parent, Grpc::SyncClient &client, uint64_t fromTrxId)
+Replication::Agent::Agent(Replication& parent, GrpcPrimary::SyncClient &client, uint64_t fromTrxId)
     : currentTrx{fromTrxId}, client_{client.weak_from_this()}, parent_{parent}
 {
 

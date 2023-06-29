@@ -11,7 +11,8 @@
 
 #ifdef NSBLAST_CLUSTER
 #   include "Replication.h"
-#   include "Grpc.h"
+#   include "GrpcPrimary.h"
+#   include "GrpcFollow.h"
 #endif
 
 #include "nsblast/Server.h"
@@ -22,13 +23,25 @@
 using namespace std;
 using namespace std::string_literals;
 
+std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role) {
+    array<string_view, 3> names = {"NONE", "CLUSTER_PRIMARY", "CLUSTER_FOLLOWER"};
+    return out << names.at(static_cast<size_t>(role));
+}
+
 namespace nsblast {
 using namespace ::nsblast::lib;
 using namespace yahat;
 
 Server::Server(const Config &config)
-    : config_{config}
+    : config_{std::make_shared<Config>(config)}
 {
+    if (config_->cluster_role == "primary") {
+        role_ = Role::CLUSTER_PRIMARY;
+    } else if (config_->cluster_role == "follower") {
+        role_ = Role::CLUSTER_FOLLOWER;
+    }
+
+    LOG_INFO << "This instances cluster-role is " << role();
 }
 
 Server::~Server()
@@ -116,15 +129,10 @@ void Server::startHttpServer()
      // TODO: Add actual authentication
     http_ = make_shared<yahat::HttpServer>(config().http, [this](const AuthReq& ar) {
             return auth_->authorize(ar);
-//        LOG_DEBUG << "Authenticating - auth header: " << ar.auth_header;
-//        auth_.authorize(ar.auth_header);
-//        auth.access = true;
-//        auth.account = "nobody";
-//        return auth;
     }, "nsblast "s + NSBLAST_VERSION);
 
     http_->addRoute("/api/v1", api_);
-    if (config_.swagger) {
+    if (config().swagger) {
         const string_view swagger_path = "/api/swagger";
         LOG_INFO << "Enabling Swagger at http/https://<fqdn>[:port]" << swagger_path;
 
@@ -180,8 +188,19 @@ void Server::StartReplication()
 
 void Server::startGrpcService()
 {
-    grpc_ = make_shared<Grpc>(*this);
-    grpc_->start();
+    switch (role()) {
+    case Role::CLUSTER_PRIMARY:
+        grpc_primary_ = make_shared<GrpcPrimary>(*this);
+        grpc_primary_->start();
+        break;
+    case Role::CLUSTER_FOLLOWER:
+        grpc_follow_ = make_shared<GrpcFollow>(*this);
+        grpc_follow_->start();
+        break;
+    case Role::NONE:
+        ;
+        break;
+    }
 }
 #endif
 
@@ -200,9 +219,9 @@ void Server::stop()
             LOG_TRACE << "Server::stop(): Done stopping HTTP server.";
         }
 #ifdef NSBLAST_CLUSTER
-        if (grpc_) {
+        if (grpc_primary_) {
             LOG_TRACE << "Server::stop(): Stopping gRPC server...";
-            grpc_->stop();
+            grpc_primary_->stop();
             LOG_TRACE << "Server::stop(): Done stopping gRPC server.";
         }
 #endif

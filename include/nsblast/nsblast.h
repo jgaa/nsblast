@@ -45,10 +45,23 @@ struct Config {
     ///@{
 
     /// Address (IP ':' port) to the gRPC service used for cluster-sync
-    std::string grpc_server_addr = "0.0.0.0:101234";
+    std::string cluster_server_addr = "0.0.0.0:101234";
 
     /// Max transaction queue size for replication agents (server to slave)
-    size_t repl_agent_max_queue_size = 128;
+    size_t cluster_repl_agent_max_queue_size = 128;
+
+    /*! Role of this server.
+     *
+     *  - none:    This server is not part of a nsblast cluster
+     *
+     *  - primary: The one server that handles changes to the zones and
+     *             is the source of truth.
+     *
+     *  - follower: A server that replicates changes from the primary,
+     *             but don't allow any locally initiated changes. A follower
+     *             is not prepared to act as a fail-over agent.
+     */
+    std::string cluster_role = "none";
 
     ///@}
 

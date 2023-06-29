@@ -73,6 +73,18 @@ int main(int argc, char* argv[]) {
             "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
             "The server will terminate after the changes are made.")
     ;
+    po::options_description cluster("Cluster");
+    cluster.add_options()
+        ("cluster-role",
+            po::value(&config.cluster_role)->default_value(config.cluster_role),
+            "One of: \"primary\", \"follower\", \"none\" (not part of a nsblast cluster)")
+        ("cluster-server-address",
+             po::value(&config.cluster_server_addr)->default_value(config.cluster_server_addr),
+             "Address to the primary server, or (for the primary), the address/port to listen to.")
+        ("cluster-repl-agent-queue-size",
+             po::value(&config.cluster_repl_agent_max_queue_size)->default_value(config.cluster_repl_agent_max_queue_size),
+             "The number of transactions that can be queued for a follower before the follower is regarded as not being up to date.")
+        ;
     po::options_description http("HTTP/API server");
     http.add_options()
         ("http-endpoint,H",
@@ -129,7 +141,7 @@ int main(int argc, char* argv[]) {
         ;
 
     po::options_description cmdline_options;
-    cmdline_options.add(general).add(odns).add(http).add(rocksdb);
+    cmdline_options.add(general).add(cluster).add(odns).add(http).add(rocksdb);
     po::positional_options_description kfo;
     kfo.add("kubeconfig", -1);
     po::variables_map vm;
@@ -179,4 +191,4 @@ int main(int argc, char* argv[]) {
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception from Server: " << ex.what();
     }
-} // mail
+} // main
