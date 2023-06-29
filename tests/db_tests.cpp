@@ -22,7 +22,7 @@ TEST(DbWriteZone, newZone) {
 
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
     }
@@ -40,15 +40,15 @@ TEST(DbWriteZone, newZoneOnExisting) {
 
         {
             auto tx = db->transaction();
-            EXPECT_FALSE(tx->keyExists({fqdn}));
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_FALSE(tx->keyExists({fqdn, key_class_t::ENTRY}));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
 
         {
             auto tx = db->transaction();
-            EXPECT_TRUE(tx->keyExists({fqdn}));
-            EXPECT_THROW(tx->write({fqdn}, sb.buffer(), true), AlreadyExistException);
+            EXPECT_TRUE(tx->keyExists({fqdn, key_class_t::ENTRY}));
+            EXPECT_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true), AlreadyExistException);
             tx->commit();
         }
     }
@@ -65,12 +65,12 @@ TEST(DbDeleteZone, existing) {
 
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->remove({fqdn}));
+            EXPECT_NO_THROW(tx->remove({fqdn, key_class_t::ENTRY}));
             EXPECT_NO_THROW(tx->commit());
         }
     }
@@ -87,12 +87,12 @@ TEST(DbDeleteZone, existingRecursive) {
 
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->remove({fqdn}, true));
+            EXPECT_NO_THROW(tx->remove({fqdn, key_class_t::ENTRY}, true));
             EXPECT_NO_THROW(tx->commit());
         }
     }
@@ -104,7 +104,7 @@ TEST(DbDeleteZone, nonexisting) {
         const string_view fqdn = "example.com";
 
         auto tx = db->transaction();
-        EXPECT_NO_THROW(tx->remove({fqdn}));
+        EXPECT_NO_THROW(tx->remove({fqdn, key_class_t::ENTRY}));
         tx->commit();
     }
 }
@@ -120,13 +120,13 @@ TEST(DbReadZone, exists) {
 
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
 
         {
             auto tx = db->transaction();
-            EXPECT_TRUE(tx->keyExists({fqdn}));
+            EXPECT_TRUE(tx->keyExists({fqdn, key_class_t::ENTRY}));
             EXPECT_TRUE(tx->zoneExists(fqdn));
         }
     }
@@ -153,13 +153,13 @@ TEST(DbReadZone, read) {
 
         {
             auto tx = db->transaction();
-            EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+            EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
             EXPECT_NO_THROW(tx->commit());
         }
 
         {
             auto tx = db->transaction();
-            auto b = tx->read({fqdn});
+            auto b = tx->read({fqdn, key_class_t::ENTRY});
             EXPECT_TRUE(b);
 
             Entry entry{b->data()};
@@ -190,7 +190,7 @@ TEST(DbReadZone, readNoExist) {
 
         {
             auto tx = db->transaction();
-            EXPECT_THROW(tx->read({fqdn}), NotFoundException);
+            EXPECT_THROW(tx->read({fqdn, key_class_t::ENTRY}), NotFoundException);
         }
     }
 }
@@ -209,7 +209,7 @@ TEST(DbLookup, ok) {
 
         {
             auto tx = db->transaction();
-            tx->write({fqdn}, sb.buffer(), true);
+            tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -239,7 +239,7 @@ TEST(DbLookup, notFound) {
 
         {
             auto tx = db->transaction();
-            tx->write({fqdn}, sb.buffer(), true);
+            tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -268,7 +268,7 @@ TEST(lookupEntryAndSoa, sameOk) {
             sb.finish();
 
             auto tx = db->transaction();
-            tx->write({fqdn}, sb.buffer(), true);
+            tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -305,7 +305,7 @@ TEST(lookupEntryAndSoa, notSameOk) {
             sb.finish();
 
             auto tx = db->transaction();
-            tx->write({fqdn}, sb.buffer(), true);
+            tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -316,7 +316,7 @@ TEST(lookupEntryAndSoa, notSameOk) {
             sb.finish();
 
             auto tx = db->transaction();
-            tx->write({www}, sb.buffer(), true);
+            tx->write({www, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -355,7 +355,7 @@ TEST(lookupEntryAndSoa, noRrOk) {
             sb.finish();
 
             auto tx = db->transaction();
-            tx->write({fqdn}, sb.buffer(), true);
+            tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
             tx->commit();
         }
 
@@ -391,14 +391,14 @@ TEST(Rocksdb, canReload) {
 
     {
         auto tx = db->transaction();
-        EXPECT_FALSE(tx->keyExists({fqdn}));
-        EXPECT_NO_THROW(tx->write({fqdn}, sb.buffer(), true));
+        EXPECT_FALSE(tx->keyExists({fqdn, key_class_t::ENTRY}));
+        EXPECT_NO_THROW(tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true));
         EXPECT_NO_THROW(tx->commit());
     }
 
     {
         auto tx = db->transaction();
-        EXPECT_TRUE(tx->keyExists({fqdn}));
+        EXPECT_TRUE(tx->keyExists({fqdn, key_class_t::ENTRY}));
     }
 
     EXPECT_NO_THROW(db.reload());
@@ -406,7 +406,7 @@ TEST(Rocksdb, canReload) {
 
     {
         auto tx = db->transaction();
-        EXPECT_TRUE(tx->keyExists({fqdn}));
+        EXPECT_TRUE(tx->keyExists({fqdn, key_class_t::ENTRY}));
         EXPECT_TRUE(db->currentTrxId() > 0);
     }
 }

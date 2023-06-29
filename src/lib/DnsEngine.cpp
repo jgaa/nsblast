@@ -1065,11 +1065,11 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
         auto key = labelsToFqdnKey(orig_fqdn);
 
         if (qtype == QTYPE_AXFR) {
-            return doAxfr(request, send, message, mb, {key}, *trx);
+            return doAxfr(request, send, message, mb, {key, key_class_t::ENTRY}, *trx);
         }
 
         if (qtype == QTYPE_IXFR) {
-            return doIxfr(request, send, message, mb, {key}, *trx);
+            return doIxfr(request, send, message, mb, {key, key_class_t::ENTRY}, *trx);
         }
 
 again:

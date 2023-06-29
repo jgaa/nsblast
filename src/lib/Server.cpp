@@ -33,11 +33,11 @@ using namespace ::nsblast::lib;
 using namespace yahat;
 
 Server::Server(const Config &config)
-    : config_{std::make_shared<Config>(config)}
+    : config_{config}
 {
-    if (config_->cluster_role == "primary") {
+    if (config_.cluster_role == "primary") {
         role_ = Role::CLUSTER_PRIMARY;
-    } else if (config_->cluster_role == "follower") {
+    } else if (config_.cluster_role == "follower") {
         role_ = Role::CLUSTER_FOLLOWER;
     }
 
@@ -70,10 +70,25 @@ void Server::start()
     startAuth();
 
 #ifdef NSBLAST_CLUSTER
-    StartReplication();
+    if (role() == Role::CLUSTER_FOLLOWER) {
+        // work-around for cluster functional test.
+        // As of now, if a follower starts sync before the primary is ready,
+        // the sync fails.
+        // TODO: Add re-try loop in replication.
+        std::this_thread::sleep_for(chrono::seconds(4));
 
-    // TODO: Only start grpc service when we are master
-    startGrpcService();
+        grpc_follow_ = make_shared<GrpcFollow>(*this);
+        grpc_follow_->start();
+        StartReplication();
+    }
+
+
+
+    if (role() == Role::CLUSTER_PRIMARY) {
+        StartReplication();
+        grpc_primary_ = make_shared<GrpcPrimary>(*this);
+        grpc_primary_->start();
+    }
 #endif
 
     startApi();

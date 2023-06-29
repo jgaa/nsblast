@@ -112,12 +112,12 @@ public:
     }
 
     const auto& config() const noexcept {
-        return *config_;
-    }
-
-    auto configPtr() const noexcept {
         return config_;
     }
+
+//    auto configPtr() const noexcept {
+//        return config_;
+//    }
 
     auto& ctx() noexcept {
         return ctx_;
@@ -184,7 +184,8 @@ protected:
     std::shared_ptr<lib::Replication> replication_;
 #endif
 
-    std::shared_ptr<Config> config_;
+    //std::shared_ptr<Config> config_;
+    const Config& config_;
     boost::unordered_flat_set<uint32_t> current_request_ids_;
     std::mutex ids_mutex_;
     std::once_flag stop_once_;

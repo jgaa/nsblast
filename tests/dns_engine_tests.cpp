@@ -351,6 +351,6 @@ int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::INFO));
+                make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::TRACE));
     return RUN_ALL_TESTS();
 }

@@ -154,9 +154,9 @@ public:
         }
 
         if (data.empty()) {
-            trx.remove({fqdn});
+            trx.remove({fqdn, key_class_t::ENTRY});
         } else {
-            trx.write({fqdn}, data, false);
+            trx.write({fqdn, key_class_t::ENTRY}, data, false);
         }
     }
 
@@ -513,7 +513,7 @@ void Slave::doAxfr(boost::asio::ip::tcp::socket &socket, Slave::yield_t &yield)
     sendQuestion(socket, QTYPE_AXFR, 0, yield);
 
     auto trx = mgr_.db().transaction();
-    trx->remove({fqdn_}, true);
+    trx->remove({fqdn_, key_class_t::ENTRY}, true);
     handleIxfrPayloads(*trx, socket, 0, yield);
 }
 
@@ -681,7 +681,7 @@ add:
 
                         isIxfr = false;
                         merger.emplace(trx, fqdn_, false);
-                        trx.remove({fqdn_}, true);
+                        trx.remove({fqdn_, key_class_t::ENTRY}, true);
                     }
 
                     // Not pretty, but avoiding passing trough two if's for the same operation

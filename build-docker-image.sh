@@ -21,6 +21,8 @@ scriptname=`basename "$0"`
 
 if [ -z ${BUILD_DIR+x} ]; then
     BUILD_DIR="${HOME}/${project}-build-image"
+else
+    BUILD_DIR="${BUILD_DIR}/${project}-docker-build"
 fi
 
 usage() {

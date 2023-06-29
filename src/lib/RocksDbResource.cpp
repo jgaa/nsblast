@@ -108,7 +108,7 @@ ResourceIf::TransactionIf::EntryWithBuffer
 RocksDbResource::Transaction::lookup(std::string_view fqdn)
 {
     try {
-        auto buffer = read(key_t{fqdn});
+        auto buffer = read(RealKey{fqdn, key_class_t::ENTRY});
         return {std::move(buffer)};
     }  catch (const NotFoundException&) {
         ;
@@ -146,7 +146,7 @@ bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t ke
 bool RocksDbResource::Transaction::exists(string_view fqdn, uint16_t type)
 {
     try {
-        auto b = read(key_t{fqdn});
+        auto b = read(key_t{fqdn, key_class_t::ENTRY});
         Entry entry{b->data()};
 
         if (type == TYPE_SOA) {
@@ -187,7 +187,7 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
         throw AlreadyExistException{"Key exists"};
     }
 
-    if (owner_.config_.db_log_transactions) {
+    if (!disable_trxlog_ && owner_.config_.db_log_transactions) {
         if (category == Category::ENTRY) {
             if (!trxlog_) {
                 trxlog_ = make_unique<pb::Transaction>();
@@ -444,6 +444,23 @@ void RocksDbResource::init()
     }
 }
 
+uint64_t RocksDbResource::getLastCommittedTransactionId()
+{
+    ReadOptions o;
+    auto it = makeUniqueFrom(db_->NewIterator(o, handle(Category::TRXLOG)));
+    it->SeekToLast();
+    if (it->Valid()) {
+        span_t key = it->key();
+        const RealKey kkey{key, key_class_t::ENTRY};
+        auto txid = getValueAt<uint64_t>(key, 1);
+        LOG_DEBUG << "RocksDbResource::loadTrxId - Last committed TRANSACTION-log: " << kkey
+                  << ". trx-id is " << txid;
+        return txid;
+    }
+
+    return 0;
+}
+
 rocksdb::ColumnFamilyHandle *RocksDbResource::handle(const ResourceIf::Category category) {
     const auto ix = static_cast<size_t>(category);
     assert(ix <= cfh_.size());
@@ -513,16 +530,8 @@ string RocksDbResource::getDbPath() const
 
 void RocksDbResource::loadTrxId()
 {
-    ReadOptions o;
-    auto it = makeUniqueFrom(db_->NewIterator(o, handle(Category::TRXLOG)));
-    it->SeekToLast();
-    if (it->Valid()) {
-        span_t key = it->key();
-        const RealKey kkey{key, RealKey::Class::TRXID, true};
-        trx_id_ = getValueAt<uint64_t>(key, 1);
-        LOG_DEBUG << "RocksDbResource::loadTrxId - Last committed TRANSACTION-log: " << kkey
-                  << ". trx_id is set to " << trx_id_;
-    }
+    trx_id_ = getLastCommittedTransactionId();
+    LOG_DEBUG << "RocksDbResource::loadTrxId - trx_id is set to " << trx_id_;
 }
 
 

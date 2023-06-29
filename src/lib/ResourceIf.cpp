@@ -32,12 +32,12 @@ namespace {
     }
 }
 
-ResourceIf::RealKey::RealKey(span_t key,
-                             ResourceIf::RealKey::Class kclass,
-                             bool binary)
-    : bytes_{binary ? string{key.begin(), key.end()} : init(key, kclass, {})}
-{
-}
+//ResourceIf::RealKey::RealKey(span_t key,
+//                             ResourceIf::RealKey::Class kclass,
+//                             bool binary)
+//    : bytes_{binary ? string{key.begin(), key.end()} : init(key, kclass, {})}
+//{
+//}
 
 ResourceIf::RealKey::RealKey(span_t key,
                              uint32_t version,
@@ -51,9 +51,32 @@ ResourceIf::RealKey::RealKey(span_t key, span_t postfix, Class kclass)
 {
 }
 
+ResourceIf::RealKey::RealKey(const Binary& key)
+    : bytes_{key.string()}
+{
+#ifndef NDEBUG
+    toClass(bytes_.front());
+#endif
+}
+
+ResourceIf::RealKey::RealKey(span_t key, Class kclass)
+    : bytes_{init(key, kclass, {})}
+{
+
+}
+
 ResourceIf::RealKey::RealKey(uint64_t num, Class kclass)
     : bytes_{init(num, kclass)}
 {
+}
+
+ResourceIf::RealKey::Class ResourceIf::RealKey::toClass(uint8_t val)
+{
+    if (val >= static_cast<uint8_t>(Class::UNKNOWN_)) {
+        throw std::runtime_error("Unknown RealKey::Class value");
+    }
+
+    return static_cast<Class>(val);
 }
 
 span_t ResourceIf::RealKey::key() const noexcept {

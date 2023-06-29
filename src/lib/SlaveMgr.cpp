@@ -22,7 +22,7 @@ void SlaveMgr::getZone(string_view fqdn, pb::SlaveZone &zone)
     auto trx = db().transaction();
 
     string buffer;
-    trx->read({fqdn}, buffer, ResourceIf::Category::MASTER_ZONE);
+    trx->read({fqdn, key_class_t::ENTRY}, buffer, ResourceIf::Category::MASTER_ZONE);
     zone.ParseFromString(buffer);
 }
 
@@ -32,7 +32,7 @@ void SlaveMgr::addZone(string_view fqdn, const pb::SlaveZone& zone)
     zone.SerializeToString(&r);
 
     auto trx = db().transaction();
-    trx->write({fqdn}, r, true, ResourceIf::Category::MASTER_ZONE);
+    trx->write({fqdn, key_class_t::ENTRY}, r, true, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -43,7 +43,7 @@ void SlaveMgr::replaceZone(string_view fqdn, const pb::SlaveZone& zone)
     zone.SerializeToString(&r);
 
     auto trx = db().transaction();
-    trx->write({fqdn}, r, false, ResourceIf::Category::MASTER_ZONE);
+    trx->write({fqdn, key_class_t::ENTRY}, r, false, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -56,7 +56,7 @@ void SlaveMgr::mergeZone(string_view  /*fqdn*/, const pb::SlaveZone&  /*zone*/)
 void SlaveMgr::deleteZone(string_view fqdn)
 {
     auto trx = db().transaction();
-    trx->remove({fqdn}, false, ResourceIf::Category::MASTER_ZONE);
+    trx->remove({fqdn, key_class_t::ENTRY}, false, ResourceIf::Category::MASTER_ZONE);
     trx->commit();
     reload(fqdn);
 }
@@ -67,7 +67,7 @@ void SlaveMgr::init()
     //       create Slave objects and set timers.
 
     auto trx = db().transaction();
-    trx->iterate({""}, [this](ResourceIf::TransactionIf::key_t key, span_t value) {
+    trx->iterate({"", key_class_t::ENTRY}, [this](ResourceIf::TransactionIf::key_t key, span_t value) {
 
         pb::SlaveZone z;
         if (z.ParseFromArray(value.data(), value.size())) {

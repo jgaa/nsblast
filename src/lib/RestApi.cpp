@@ -1132,7 +1132,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         build(parsed.target, ttl, sb, json);
 
         try {
-            trx->write({lowercaseFqdn}, sb.buffer(), true);
+            trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), true);
         } catch(const AlreadyExistException&) {
             return {409, "The zone already exists"};
         }
@@ -1148,7 +1148,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
             return {404, "The zone don't exist"};
         }
         try {
-            trx->remove({lowercaseFqdn}, true);
+            trx->remove({lowercaseFqdn, key_class_t::ENTRY}, true);
         } catch(const NotFoundException&) {
             return {404, "The zone don't exist"};
         }
@@ -1221,7 +1221,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         assert(!existing.isSame());
 
         try {
-            trx->write({lowercaseFqdn}, sb.buffer(), true);
+            trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), true);
 
             if (config_.dns_enable_ixfr) {
                 newData = {sb.buffer()};
@@ -1244,7 +1244,7 @@ put:
         } else {
             need_version_increment = true;
         }
-        trx->write({lowercaseFqdn}, sb.buffer(), false);
+        trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), false);
 
         if (config_.dns_enable_ixfr) {
             newData = {sb.buffer()};
@@ -1290,7 +1290,7 @@ put:
 
         merged.finish();
 
-        trx->write({lowercaseFqdn}, merged.buffer(), false);
+        trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged.buffer(), false);
 
         if (config_.dns_enable_ixfr) {
             newData = {merged.buffer()};
@@ -1305,7 +1305,7 @@ put:
             return {404, "The rr don't exist"};
         }
         try {
-            trx->remove({lowercaseFqdn}, false);
+            trx->remove({lowercaseFqdn, key_class_t::ENTRY}, false);
             need_version_increment = true;
         } catch(const NotFoundException&) {
             return {404, "The rr don't exist"};
@@ -1331,7 +1331,7 @@ put:
 
         lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
         LOG_TRACE << "Incrementing soa version for " << lowercaseSoaFqdn;
-        trx->write({lowercaseSoaFqdn}, soaSb.buffer(), false);
+        trx->write({lowercaseSoaFqdn, key_class_t::ENTRY}, soaSb.buffer(), false);
         newSoa = soaSb.soa();
     }
 
@@ -1516,11 +1516,11 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
 
     if (auto it = req.arguments.find("from"); it != req.arguments.end()) {
         // From last key
-        ResourceIf::TransactionIf::key_t key{it->second, ResourceIf::RealKey::Class::TENANT};
+        ResourceIf::RealKey key{it->second, key_class_t::TENANT};
         trx.iterateFromPrevT(key, ResourceIf::Category::ACCOUNT, on_tenant);
     } else {
         // From start
-        ResourceIf::TransactionIf::key_t key{"", ResourceIf::RealKey::Class::TENANT};
+        ResourceIf::RealKey key{"", key_class_t::TENANT};
         trx.iterateT(key, ResourceIf::Category::ACCOUNT, on_tenant);
     }
 

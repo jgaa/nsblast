@@ -50,6 +50,10 @@ struct Config {
     /// Max transaction queue size for replication agents (server to slave)
     size_t cluster_repl_agent_max_queue_size = 128;
 
+    /// Milliseconds delay from a follower commits a transaction until it notifies the primary
+    size_t cluster_followers_update_delay_ = 200;
+
+
     /*! Role of this server.
      *
      *  - none:    This server is not part of a nsblast cluster

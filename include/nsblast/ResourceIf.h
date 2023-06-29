@@ -39,13 +39,34 @@ public:
             ROLE,       // unused
             ZONE,       // class reversed-fqdn
             TZONE,      // class tenant-id / fqdn
-            TRXID       // class uint64-trxid
+            TRXID,      // class uint64-trxid
+            UNKNOWN_    // Not used as a Class
         };
 
-        RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
+        struct Binary {
+
+            Binary(span_t span) : span_{span} {}
+
+            std::string string() const
+            {
+                if (span_.empty()) [[unlikely]] {
+                    throw std::runtime_error{":RealKey::Binary::string - key cannot be totally empty"};
+                }
+                return {span_.data(), span_.size()};
+            }
+
+        private:
+            span_t span_;
+        };
+
+        RealKey(const Binary& key); // Raw copy
+        //RealKey(span_t key, Class kclass = Class::ENTRY, bool binary = false);
+        RealKey(span_t key, Class kclass);
         RealKey(span_t key, uint32_t version, Class kclass = Class::DIFF);
         RealKey(span_t key, span_t postfix, Class kclass);
         RealKey(uint64_t num, Class kclass);
+
+        static Class toClass(uint8_t);
 
         span_t key() const noexcept;
 
@@ -307,6 +328,7 @@ public:
 };
 
 using trx_t = ResourceIf::TransactionIf;
+using key_class_t = ResourceIf::RealKey::Class;
 
 } // ns
 

@@ -106,7 +106,7 @@ public:
         sb.finish();
 
         auto tx = resource().transaction();
-        tx->write({fqdn}, sb.buffer(), true);
+        tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -127,7 +127,7 @@ public:
         sb.finish();
 
         auto tx = resource().transaction();
-        tx->write({fqdn}, sb.buffer(), true);
+        tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
         tx->commit();
     }
 
@@ -140,7 +140,7 @@ public:
         sb.finish();
 
         auto tx = resource().transaction();
-        tx->write({fqdn}, sb.buffer(), true);
+        tx->write({fqdn, key_class_t::ENTRY}, sb.buffer(), true);
         tx->commit();
     }
 

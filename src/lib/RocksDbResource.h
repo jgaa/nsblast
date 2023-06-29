@@ -58,7 +58,7 @@ public:
                     return;
                 }
 
-                if (!fn({k, key.kClass(), true}, it->value())) {
+                if (!fn({RealKey::Binary{k}}, it->value())) {
                     return;
                 }
             }
@@ -73,7 +73,7 @@ public:
                 if (!key.isSameKeyClass(k)) [[unlikely]] {
                     return;
                 }
-                if (!fn({k, key.kClass(), true}, it->value())) {
+                if (!fn({RealKey::Binary{k}}, it->value())) {
                     return;
                 }
             }
@@ -95,6 +95,10 @@ public:
             return  rocksdb::Slice{v.data(), v.size()};
         }
 
+        void disableTrxlog() {
+            disable_trxlog_ = true;
+        }
+
     private:
         void handleTrxLog();
 
@@ -102,6 +106,7 @@ public:
         std::once_flag once_;
         std::unique_ptr<ROCKSDB_NAMESPACE::Transaction> trx_;
         bool dirty_ = false;
+        bool disable_trxlog_ = false;
         std::unique_ptr<pb::Transaction> trxlog_;
 
         // TransactionIf interface
@@ -140,6 +145,8 @@ public:
     uint64_t currentTrxId() const noexcept {
         return trx_id_;
     }
+
+    uint64_t getLastCommittedTransactionId();
 
 private:
     static constexpr size_t DEFAULT = 0;
