@@ -157,11 +157,9 @@ int main(int argc, char* argv[]) {
     const auto appname = filesystem::path(argv[0]).stem().string();
     po::options_description cmdline_options;
     cmdline_options.add(general).add(cluster).add(odns).add(http).add(rocksdb);
-    po::positional_options_description kfo;
-    kfo.add("kubeconfig", -1);
     po::variables_map vm;
     try {
-        po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(kfo).run(), vm);
+        po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
         po::notify(vm);
     } catch (const std::exception& ex) {
         cerr << appname

@@ -11,15 +11,6 @@
 
 namespace nsblast::lib {
 
-class NsblastSvcImpl : public grpc::nsblast::pb::NsblastSvc::AsyncService {
-
-
-    // Service interface
-public:
-    NsblastSvcImpl() = default;
-
-};
-
 /*! GRPC service for cluster communication and replication
  *
  *  This class handles the server-side
@@ -28,62 +19,14 @@ class GrpcPrimary {
 public:
     using update_t = std::shared_ptr<grpc::nsblast::pb::SyncUpdate>;
     using on_trxid_fn_t = std::function<void(uint64_t trxId)>;
+    using bidi_sync_stream_t = ::grpc::ServerBidiReactor< ::grpc::nsblast::pb::SyncRequest, ::grpc::nsblast::pb::SyncUpdate>;
 
-    class ClientBase {
+    class SyncClient
+        : public std::enable_shared_from_this<SyncClient>
+        , public bidi_sync_stream_t {
     public:
-        enum class Op {
-            CHANNEL,
-            READ,
-            WRITE,
-            DISCONNECT
-        };
 
-        // gRPC can't tell us if an async event was in response to a write
-        // or read operation. We use the Handle to keep this state ourself.
-        struct Handle {
-            ClientBase *self_ = {};
-            Op op_;
-
-            void proceed(bool ok) {
-                assert(self_);
-                self_->proceed(op_, ok);
-            }
-        };
-
-        ClientBase(GrpcPrimary& grpc) : grpc_{grpc} {}
-        virtual ~ClientBase() = default;
-
-        virtual void start() = 0;
-        virtual void proceed(Op op, bool ok) = 0;
-
-        const auto& uuid() const noexcept {
-            return uuid_;
-        }
-
-    protected:
-        Handle channel_handle_ {this, Op::CHANNEL};
-        Handle read_handle_ {this, Op::READ};
-        Handle write_handle_ {this, Op::WRITE};
-        Handle disconnect_handle_ {this, Op::DISCONNECT};
-        GrpcPrimary& grpc_;
-        const boost::uuids::uuid uuid_ = newUuid();
-        grpc::ServerContext ctx_;
-    };
-
-    class SyncClient : public std::enable_shared_from_this<SyncClient>, public ClientBase {
-    public:
-        enum class State {
-            CREATED,
-            WAITING,
-            ACTIVE,
-            FAILED
-        };
-
-        SyncClient(GrpcPrimary& grpc);
-
-        void start() override;
-        void proceed(Op op, bool ok) override;
-
+        SyncClient(GrpcPrimary& grpc, ::grpc::CallbackServerContext& context);
 
         /*! Add one update to the queue.
          *
@@ -95,21 +38,53 @@ public:
          */
         bool enqueue(update_t &&update);
 
+        auto uuid() const noexcept {
+            return uuid_;
+        }
+
         void onTrxId(uint64_t trxId);
 
-        auto state() const noexcept {
-            return state_;
+        bool isWriting() const noexcept {
+            std::lock_guard lock{mutex_};
+            return current_ != nullptr;
         }
 
     private:
+        /*! Callback event when the RPC is complete */
+        void OnDone() override;
+
+        /*! Callback event when a read operation is complete */
+        void OnReadDone(bool ok) override;
+
+        /*! Callback event when a write operation is complete */
+        void OnWriteDone(bool ok) override ;
+
         void flush();
-        State state_ = State::CREATED;
-        std::mutex mutex_;
-        ::grpc::ServerAsyncReaderWriter< ::grpc::nsblast::pb::SyncUpdate, ::grpc::nsblast::pb::SyncRequest> io_{&ctx_};
+
+        const boost::uuids::uuid uuid_ = newUuid();
+        GrpcPrimary& grpc_;
+
+        bool is_done_ = false;
+
+        mutable std::mutex mutex_;
         ::grpc::nsblast::pb::SyncRequest req_;
         std::queue<update_t> pending_;
         update_t current_;
         on_trxid_fn_t on_trxid_fn_;
+        ::grpc::CallbackServerContext& context_;
+    };
+
+    class NsblastSvcImpl: public grpc::nsblast::pb::NsblastSvc::CallbackService {
+    public:
+        NsblastSvcImpl(GrpcPrimary& grpc)
+            : grpc_{grpc} {}
+
+    private:
+        // Override of the gRPC callback to hande a new incoming RPC
+        bidi_sync_stream_t* Sync(
+            ::grpc::CallbackServerContext* context) override;
+
+        GrpcPrimary& grpc_;
     };
 
     GrpcPrimary(Server& server);
@@ -117,26 +92,20 @@ public:
     void start();
     void stop();
 
-    void done(const boost::uuids::uuid& uuid);
+    std::shared_ptr<SyncClient> get(const boost::uuids::uuid& uuid);
+    void done(SyncClient& client);
 
-    std::shared_ptr<ClientBase> get(const boost::uuids::uuid& uuid);
-    void done(ClientBase& client);
+    bidi_sync_stream_t *createSyncClient(::grpc::CallbackServerContext* context);
 
-    void init();
 private:
-    void process();
-    void addSyncClient();
+    void init();
 
     Server& owner_;
-    std::unique_ptr<grpc::ServerCompletionQueue> cq_;
     std::unique_ptr<NsblastSvcImpl> impl_;
     std::unique_ptr<grpc::Server> svc_;
-    std::optional<std::thread> grpc_not_so_async_thread_;
-    std::map<boost::uuids::uuid, std::shared_ptr<ClientBase>> clients_;
+    std::map<boost::uuids::uuid, std::shared_ptr<SyncClient>> clients_;
     std::mutex mutex_;
 };
 
-}
+} // ns
 
-std::ostream &operator <<(std::ostream &out, const nsblast::lib::GrpcPrimary::SyncClient::Op op);
-std::ostream& operator << (std::ostream& out, const nsblast::lib::GrpcPrimary::SyncClient::State state);

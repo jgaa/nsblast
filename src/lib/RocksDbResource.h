@@ -99,6 +99,8 @@ public:
             disable_trxlog_ = true;
         }
 
+        static std::string getRocksdbVersion();
+
     private:
         void handleTrxLog();
 

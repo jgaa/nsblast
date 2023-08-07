@@ -9,28 +9,10 @@
 #include "GrpcPrimary.h"
 #include "Replication.h"
 #include "nsblast/logging.h"
-#include "nsblast/util.h"
 
 using namespace std;
 using namespace std::string_literals;
 using namespace std::chrono_literals;
-
-ostream &operator <<(std::ostream &out, const nsblast::lib::GrpcPrimary::SyncClient::State state) {
-    static const std::array<std::string_view, 4> names = {
-        "CREATED", "WAITING", "ACTIVE", "FAILED"
-    };
-
-    return out << names.at(static_cast<size_t>(state));
-}
-
-ostream &operator <<(std::ostream &out, const nsblast::lib::GrpcPrimary::SyncClient::Op op) {
-    static const std::array<std::string_view, 4> names = {
-        "CHANNEL", "READ", "WRITE", "DISCONNECT"
-    };
-
-    return out << names.at(static_cast<size_t>(op));
-}
-
 
 namespace nsblast::lib {
 
@@ -47,22 +29,13 @@ GrpcPrimary::GrpcPrimary(Server &server)
 void GrpcPrimary::start()
 {
     auto server_address = owner_.config().cluster_server_addr;
-    impl_ = make_unique<NsblastSvcImpl>();
+    impl_ = make_unique<NsblastSvcImpl>(*this);
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(impl_.get());
-    cq_= builder.AddCompletionQueue();
     svc_ = builder.BuildAndStart();
     LOG_INFO << "gRPC (cluster) Server listening on " << server_address;
-
-    grpc_not_so_async_thread_.emplace([this]{
-        try {
-            process();
-        } catch(const exception& ex) {
-            LOG_ERROR << "Caught exception in grpc thread: " << ex.what();
-        }
-    });
 }
 
 void GrpcPrimary::stop()
@@ -70,6 +43,10 @@ void GrpcPrimary::stop()
     if (svc_) {
         LOG_INFO << "Grpc::stop - Shutting down gRPC service.";
         svc_->Shutdown();
+
+        LOG_DEBUG << "Waiting for gRPC to stop...";
+        svc_->Wait();
+        LOG_DEBUG << "gRPC has stopped.";
         svc_.reset();
     }
 
@@ -79,13 +56,7 @@ void GrpcPrimary::stop()
     }
 }
 
-void GrpcPrimary::done(const boost::uuids::uuid &uuid)
-{
-    lock_guard lock{mutex_};
-    clients_.erase(uuid);
-}
-
-std::shared_ptr<GrpcPrimary::ClientBase> GrpcPrimary::get(const boost::uuids::uuid &uuid)
+std::shared_ptr<GrpcPrimary::SyncClient> GrpcPrimary::get(const boost::uuids::uuid &uuid)
 {
     lock_guard lock{mutex_};
     if (auto it = clients_.find(uuid); it != clients_.end()) {
@@ -95,128 +66,40 @@ std::shared_ptr<GrpcPrimary::ClientBase> GrpcPrimary::get(const boost::uuids::uu
     return {};
 }
 
-void GrpcPrimary::done(ClientBase &client)
+void GrpcPrimary::done(SyncClient &client)
 {
     LOG_TRACE << "Grpc::done - Removing client " << client.uuid();
     lock_guard lock{mutex_};
     clients_.erase(client.uuid());
 }
 
-void GrpcPrimary::process()
+GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::createSyncClient(grpc::CallbackServerContext *context)
 {
-    addSyncClient();
+    auto client = make_shared<SyncClient>(*this, *context);
+    LOG_INFO << "Grpc::addSyncClient() - Created gRPC Sync client instance "
+             << client->uuid()
+             << " for RPC from peer " << context->peer();
 
-    while(svc_) {
-        LOG_TRACE << "Grpc::process() - On top of event-loop";
-        bool ok = true;
-        void *cptr = {};
-        cq_->Next(&cptr, &ok);
-        if (cptr) {
-            auto handle = static_cast<SyncClient::Handle *>(cptr);
-            handle->proceed(ok);
-        } // TODO: what do we do if not ok?
-    }
-}
-
-void GrpcPrimary::addSyncClient()
-{
-    auto client = make_shared<SyncClient>(*this);
-    LOG_TRACE << "Grpc::addSyncClient() - Created gRPC Sync client instance " << client->uuid();
     {
         lock_guard lock{mutex_};
         clients_[client->uuid()] = client;
     }
-    client->start();
+
+    return client.get();
 }
 
-GrpcPrimary::SyncClient::SyncClient(GrpcPrimary &grpc)
-    : ClientBase(grpc)
+GrpcPrimary::SyncClient::SyncClient(GrpcPrimary &grpc, grpc::CallbackServerContext &context)
+    : grpc_{grpc}, context_{context}
 {
-    LOG_TRACE << "Grpc::Client::Client new instance:" << uuid();
-}
-
-void GrpcPrimary::SyncClient::start()
-{
-    // In our case, we need a message from the client before we do anything else.
-    grpc_.impl_->RequestSync(&ctx_, &io_, grpc_.cq_.get(), grpc_.cq_.get(), &channel_handle_);
-    state_ = State::WAITING;
-    ctx_.AsyncNotifyWhenDone(&disconnect_handle_);
-}
-
-void GrpcPrimary::SyncClient::proceed(Op op, bool ok)
-{
-    // Process request
-    LOG_TRACE << "Grpc::Client::process - Client "
-              << uuid() << " [" << state() << "] "
-              << (ok ? "" : " FAILED ")
-              <<  op << " peer: " << ctx_.peer();
-
-    if (logfault::LogManager::Instance().GetLoglevel() == logfault::LogLevel::TRACE) {
-        const auto meta = ctx_.client_metadata();
-        LOG_TRACE << "Metadata:";
-        for(auto& [key, value] : meta) {
-            LOG_TRACE << "  --> " << key << '=' << value;
-        }
-    }
-
-    if (op == Op::DISCONNECT) {
-        LOG_INFO << "gRPC Sync client " << uuid() << " disconnected (done).";
-        grpc_.done(*this);
-        return;
-    }
-
-    switch (state()) {
-    case State::WAITING:
-        assert(op == Op::CHANNEL);
-        grpc_.addSyncClient();
-        if (ok) {
-            state_ = State::ACTIVE;
-            on_trxid_fn_ = grpc_.owner_.replication().addAgent(*this, req_.startafter());
-            io_.Read(&req_, &read_handle_);
-            LOG_INFO << "gRPC Sync client connected: " << uuid()
-                      << ' ' << ctx_.peer();
-        } else {
-            state_ = State::FAILED;
-        }
-        break;
-    case State::ACTIVE:
-        if (op == Op::READ) {
-            if (ok) {
-                LOG_TRACE << "Grpc::SyncClient::proceed(READ) - request: " << toJson(req_);
-                onTrxId(req_.startafter());
-                io_.Read(&req_, &read_handle_);
-            } else {
-                LOG_DEBUG << "Grpc::SyncClient::proceed(READ) - request failed.";
-            }
-        } else if (op == Op::WRITE) {
-            if (ok) {
-                lock_guard lock{mutex_};
-                current_.reset();
-                flush();
-            } else {
-                LOG_DEBUG << "Grpc::SyncClient::proceed(WRITE) - request failed.";
-            }
-        } else if (op == Op::CHANNEL){
-            LOG_DEBUG << "Grpc::SyncClient::proceed - CHANNEL";
-        } else {
-            LOG_ERROR << "Grpc::SyncClient::proceed - ***UNKNOWN";
-            assert(false);
-        }
-        break;
-    case State::CREATED:
-        assert(false);
-    case State::FAILED:
-        assert(false);
-    }
+    StartRead(&req_);
 }
 
 bool GrpcPrimary::SyncClient::enqueue(update_t &&update)
 {
     lock_guard lock{mutex_};
-    if (state_ != State::ACTIVE) {
+    if (is_done_) {
         LOG_TRACE << "Grpc::Client::enqueue = - Client " << uuid()
-                  << " is in state " << state()
-                  << " and cannot add updates at this time.";
+                  << " is inactive and cannot add updates at this time.";
         return false;
     }
 
@@ -240,13 +123,56 @@ void GrpcPrimary::SyncClient::onTrxId(uint64_t trxId)
     }
 }
 
+void GrpcPrimary::SyncClient::OnDone()
+{
+    LOG_DEBUG << "GrpcPrimary::SyncClient::OnDone: RPC request "
+              << uuid() << " is done.";
+    grpc_.done(*this);
+}
+
+void GrpcPrimary::SyncClient::OnReadDone(bool ok)
+{
+    if (!ok) [[unlikely]] {
+        LOG_DEBUG << "SyncClient::OnReadDone RPC read failed for " << uuid()
+                  << ". This RPC request is done.";
+
+        std::lock_guard lock{mutex_};
+        is_done_ = true;
+        return;
+    }
+
+    // I don';t think we need a lock here, because we should not be called into again
+    // until after we start a new read.
+    if (on_trxid_fn_) {
+        on_trxid_fn_(req_.startafter());
+    } else {
+        // The first read sets up the link with replication
+        on_trxid_fn_ = grpc_.owner_.replication().addAgent(*this, req_.startafter());
+    }
+
+    req_.Clear();
+    StartRead(&req_);
+}
+
+void GrpcPrimary::SyncClient::OnWriteDone(bool ok)
+{
+    lock_guard lock{mutex_};
+    current_.reset();
+    flush();
+}
+
 void GrpcPrimary::SyncClient::flush()
 {
     if (!current_ && !pending_.empty()) {
         current_ = std::move(pending_.front());
         pending_.pop();
-        io_.Write(*current_, &write_handle_);
+        StartWrite(current_.get());
     }
+}
+
+GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::NsblastSvcImpl::Sync(grpc::CallbackServerContext *context)
+{
+    return grpc_.createSyncClient(context);
 }
 
 

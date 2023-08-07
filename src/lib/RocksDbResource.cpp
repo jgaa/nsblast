@@ -341,6 +341,11 @@ void RocksDbResource::Transaction::rollback()
     });
 }
 
+string RocksDbResource::Transaction::getRocksdbVersion()
+{
+    return rocksdb::GetRocksVersionAsString();
+}
+
 void RocksDbResource::Transaction::handleTrxLog()
 {
     if (trxlog_ && trxlog_->parts_size()) {

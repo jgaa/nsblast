@@ -21,7 +21,7 @@ void Replication::start()
 Replication::Replication(Server &server)
     : server_{server}
 {
-
+    startTimer();
 }
 
 GrpcPrimary::on_trxid_fn_t Replication::addAgent(GrpcPrimary::SyncClient &client, uint64_t fromTrxId)
@@ -34,6 +34,41 @@ GrpcPrimary::on_trxid_fn_t Replication::addAgent(GrpcPrimary::SyncClient &client
     return [agent](uint64_t trxId) {
         agent->onTrxId(trxId);
     };
+}
+
+void Replication::startTimer()
+{
+    timer_.expires_from_now(boost::posix_time::seconds{server_.config().cluster_replication_housekeeping_timer_});
+    timer_.async_wait([this](const auto ec) {
+        if (ec) {
+            if (ec == boost::asio::error::operation_aborted) {
+                LOG_TRACE << "Replication housekeeping timer aborted.";
+                return;
+            }
+            LOG_WARN << "Replication housekeeping timer unexpected error: " << ec;
+        } else {
+            try {
+                housekeeping();
+            } catch (const exception& ex) {
+                LOG_ERROR << "Replication housekeeping timer: exception from housekeeping(): "
+                          << ex.what();
+            }
+        }
+
+        startTimer();
+    });
+}
+
+void Replication::housekeeping()
+{
+    std::lock_guard lock{mutex_};
+
+    LOG_TRACE << "Replication::housekeeping() - "
+              "Deleting zombie agents where the RPC request/stream is done with.";
+    erase_if(follower_agents_, [](auto& item) {
+        return item.second->expired();
+    });
+
 }
 
 Replication::FollowerAgent::FollowerAgent(Replication& parent, GrpcPrimary::SyncClient &client, uint64_t fromTrxId)

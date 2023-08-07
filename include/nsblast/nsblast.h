@@ -53,6 +53,9 @@ struct Config {
     /// Milliseconds delay from a follower commits a transaction until it notifies the primary
     size_t cluster_followers_update_delay_ = 200;
 
+    /// Milliseconds housekeeping interval in the replication engine.
+    size_t cluster_replication_housekeeping_timer_ = 1000;
+
 
     /*! Role of this server.
      *

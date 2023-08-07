@@ -46,6 +46,10 @@ public:
 
         boost::uuids::uuid uuid() const noexcept;
 
+        bool expired() const {
+            return client_.expired();
+        }
+
     private:
         State state_ = State::ITERATING_DB;
         uint64_t currentTrx = 0;
@@ -101,10 +105,14 @@ public:
     }
 
 private:
+    void startTimer();
+    void housekeeping();
+
     Server& server_;
     uint64_t minTrxIdForAllStreamingAgents_ = 0;
     std::map<boost::uuids::uuid, std::shared_ptr<FollowerAgent>> follower_agents_;
     std::shared_ptr<PrimaryAgent> primary_agent_;
+    boost::asio::deadline_timer timer_{server_.ctx()};
     mutable std::mutex mutex_;
 };
 
