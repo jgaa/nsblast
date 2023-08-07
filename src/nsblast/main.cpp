@@ -2,6 +2,9 @@
 #include <iostream>
 #include <filesystem>
 #include <boost/program_options.hpp>
+#include <boost/version.hpp>
+
+#include "rocksdb/db.h"
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
@@ -11,6 +14,17 @@ using namespace std;
 using namespace nsblast;
 
 namespace {
+
+string_view cppStrandard() {
+    if constexpr (__cplusplus == 202101L)
+        return "C++23";
+    if constexpr (__cplusplus == 202002L)
+        return "C++20";
+    if constexpr (__cplusplus == 201703L)
+        return "C++17";
+
+    return "unknown";
+}
 
 optional<logfault::LogLevel> toLogLevel(string_view name) {
     if (name.empty() || name == "off" || name == "false") {
@@ -59,7 +73,7 @@ int main(int argc, char* argv[]) {
             "Definition file to deploy")
         ("log-to-console,C",
              po::value<string>(&log_level_console)->default_value(log_level_console),
-             "Log-level to the consolee; one of 'info', 'debug', 'trace'. Empty string to disable.")
+             "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
         ("log-level,l",
             po::value<string>(&log_level)->default_value(log_level),
             "Log-level; one of 'info', 'debug', 'trace'.")
@@ -140,6 +154,7 @@ int main(int argc, char* argv[]) {
          "Number of threads for flush and compaction. 0 == use default.")
         ;
 
+    const auto appname = filesystem::path(argv[0]).stem().string();
     po::options_description cmdline_options;
     cmdline_options.add(general).add(cluster).add(odns).add(http).add(rocksdb);
     po::positional_options_description kfo;
@@ -149,19 +164,25 @@ int main(int argc, char* argv[]) {
         po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(kfo).run(), vm);
         po::notify(vm);
     } catch (const std::exception& ex) {
-        cerr << filesystem::path(argv[0]).stem().string()
+        cerr << appname
              << " Failed to parse command-line arguments: " << ex.what() << endl;
         return -1;
     }
 
     if (vm.count("help")) {
-        std::cout << filesystem::path(argv[0]).stem().string() << " [options]";
+        std::cout << appname << " [options]";
         std::cout << cmdline_options << std::endl;
         return -2;
     }
 
     if (vm.count("version")) {
-        std::cout << filesystem::path(argv[0]).stem().string() << ' '  << NSBLAST_VERSION << endl;
+        std::cout << appname << ' '  << NSBLAST_VERSION << endl
+                  << "Boost " << BOOST_LIB_VERSION << endl
+                  << "Rocksdb " << rocksdb::GetRocksVersionAsString() << endl
+                  << "Using C++ standard " << cppStrandard() << endl
+                  << "Platform " << BOOST_PLATFORM << endl
+                  << "Compiler " << BOOST_COMPILER << endl
+                  << "Build date " << __DATE__ << endl;
         return -3;
     }
 
@@ -177,7 +198,7 @@ int main(int argc, char* argv[]) {
                 make_unique<logfault::StreamHandler>(clog, *level));
     }
 
-    LOG_INFO << filesystem::path(argv[0]).stem().string() << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
+    LOG_INFO << appname << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
 
     try {        
         Server server{config};
