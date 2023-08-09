@@ -18,19 +18,23 @@ namespace lib {
 
 class Replication {
 public:
+    using transaction_t = std::unique_ptr<nsblast::pb::Transaction>;
 
     /*! Replication agent.
      *
      *  This represent a nsblast follower-server that needs to be in sync with us
      */
-    class FollowerAgent {
+    class FollowerAgent
+        : public std::enable_shared_from_this<FollowerAgent>
+        , public GrpcPrimary::ReplicationInterface {
     public:
         enum State {
             ITERATING_DB,
-            STREAMING
+            STREAMING,
+            DONE
         };
         
-        FollowerAgent(Replication& parent, GrpcPrimary::SyncClient& client, uint64_t fromTrxId);
+        FollowerAgent(Replication& parent, GrpcPrimary::SyncClient& client);
 
         /*! Iterate over a number of transactions in the db.
          *
@@ -38,11 +42,18 @@ public:
          */
         void iterateDb();
 
-        auto state() const noexcept {
+        State state() const noexcept {
             return state_;
         }
 
-        void onTrxId(uint64_t trxId);
+        /*! Change the state
+         *
+         *  If the state is `State::DONE`, the new state will be ignored.
+         *
+         *  \param state State to change to.
+         *  \param doLock false if we already hold the lock when we call this method.
+         */
+        void setState(State state, bool doLock = true);
 
         boost::uuids::uuid uuid() const noexcept;
 
@@ -50,13 +61,34 @@ public:
             return client_.expired();
         }
 
+        bool isStreaming() const noexcept {
+            return state() == State::STREAMING;
+        }
+
+        /*! Notification about a new db transaction
+         *
+         *  If the client is in streaming mode and prevTrxId equals the clients
+         *  prev trxid, the client will try to enqueue the transaction.
+         */
+        void onTransaction(uint64_t prevTrxId, const GrpcPrimary::update_t& update);
+
     private:
-        State state_ = State::ITERATING_DB;
-        uint64_t currentTrx = 0;
-        uint64_t lastConfirmedTrx = 0;
+        // ReplicationInterface interface
+        void onTrxId(uint64_t trxId) override ;
+        void onQueueIsEmpty() override;
+        void onDone() override;
+
+        // Expects lock to be held
+        void syncLater();
+
+        const boost::uuids::uuid uuid_;
         std::weak_ptr<GrpcPrimary::SyncClient> client_;
-        std::mutex mutex_;
         Replication& parent_;
+
+        std::atomic<State> state_{State::ITERATING_DB};
+        std::atomic_uint64_t last_enqueued_trxid_{0};
+        std::atomic_uint64_t last_confirmed_trx_{0};
+        std::mutex mutex_;
     };
 
     /*! Follower client
@@ -94,15 +126,21 @@ public:
         return server_;
     }
     
-    GrpcPrimary::on_trxid_fn_t addAgent(GrpcPrimary::SyncClient& client, uint64_t fromTrxId);
+    /*! Add an internal representation of a replication agent for a replica server
+     *
+     *  This method initiates a remotes server replication with a primary.
+     *
+     *  The internal agent will re-use the uuid from the the SyncClient (RPC handler)
+     *  so that the replication work-flow using these instacnes of the RPC
+     *  handler and the replicaion agent are identified by one uuid.
+     */
+    GrpcPrimary::ReplicationInterface *addAgent(GrpcPrimary::SyncClient& client);
 
-    template <typename T>
-    void applyIf(uint64_t trxId, const T& fn) {
-        std::lock_guard lock{mutex_};
-        if (server_.db().nextTrxId() == trxId) {
-            fn();
-        }
-    }
+    /*! Notification about a new db transaction
+     *
+     * Called after a transaction with replication has been committed to the database.
+     */
+    void onTransaction(transaction_t&& transaction);
 
 private:
     void startTimer();
@@ -110,6 +148,7 @@ private:
 
     Server& server_;
     uint64_t minTrxIdForAllStreamingAgents_ = 0;
+    uint64_t last_trxid_ = 0;
     std::map<boost::uuids::uuid, std::shared_ptr<FollowerAgent>> follower_agents_;
     std::shared_ptr<PrimaryAgent> primary_agent_;
     boost::asio::deadline_timer timer_{server_.ctx()};
@@ -117,3 +156,7 @@ private:
 };
 
 }} // ns
+
+std::ostream& operator <<(std::ostream& out, const nsblast::lib::Replication::FollowerAgent& agent);
+std::ostream& operator <<(std::ostream& out, const nsblast::lib::Replication::FollowerAgent::State& state);
+

@@ -1,4 +1,6 @@
 
+#include <chrono>
+
 #include "RocksDbResource.h"
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
@@ -322,6 +324,17 @@ void RocksDbResource::Transaction::commit()
             LOG_ERROR << "Transaction " << uuid() << " failed: " << status.ToString();
             throw runtime_error{"Failed to commit transaction"};
         }
+
+        if (trxlog_ && owner_.on_trx_cb_) {
+            try {
+                owner_.on_trx_cb_(std::move(trxlog_));
+            } catch(const exception& ex) {
+                LOG_ERROR
+                    << "RocksDbResource::Transaction::commit: "
+                    << "Caught exception from transaction callback: "
+                    << ex.what();
+            }
+        }
     });
 }
 
@@ -351,13 +364,15 @@ void RocksDbResource::Transaction::handleTrxLog()
     if (trxlog_ && trxlog_->parts_size()) {
         trxlog_->set_node(owner_.config_.node_name);
         trxlog_->set_uuid(uuid().begin(), uuid().size());
+        trxlog_->set_time(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::utc_clock::now().time_since_epoch()).count());
 
         // The ordering may not be exactely right, as we can't control the
         // order of transactions execution without serializing them, but we can assume that
         // no conflicting transactions are committed where the transaxtion-id may
         // be in the wrong order (dirty writes).
         // Holes in the sequence, if a commit failes, are OK.
-        trxlog_->set_id(owner_.nextTrxId());
+        trxlog_->set_id(owner_.createNewTrxId());
 
         const RealKey key{trxlog_->id(), RealKey::Class::TRXID};
 
@@ -367,6 +382,9 @@ void RocksDbResource::Transaction::handleTrxLog()
         string val;
         trxlog_->SerializeToString(&val);
         write(key, val, false, Category::TRXLOG);
+    } else if (trxlog_) {
+        // We have an object, but it is empty.
+        trxlog_.reset();
     }
 }
 

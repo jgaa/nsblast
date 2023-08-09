@@ -82,12 +82,16 @@ void Server::start()
         StartReplication();
     }
 
-
-
     if (role() == Role::CLUSTER_PRIMARY) {
         StartReplication();
         grpc_primary_ = make_shared<GrpcPrimary>(*this);
         grpc_primary_->start();
+
+        // In the primary, we enable the transaction callback for the database
+        // and link committed transactions to the replication framework.
+        db().setTransactionCallback([this](Replication::transaction_t && trx) {
+            replication().onTransaction(std::move(trx));
+        });
     }
 #endif
 

@@ -94,7 +94,7 @@ GrpcPrimary::SyncClient::SyncClient(GrpcPrimary &grpc, grpc::CallbackServerConte
     StartRead(&req_);
 }
 
-bool GrpcPrimary::SyncClient::enqueue(update_t &&update)
+bool GrpcPrimary::SyncClient::enqueue(update_t update)
 {
     lock_guard lock{mutex_};
     if (is_done_) {
@@ -116,17 +116,15 @@ bool GrpcPrimary::SyncClient::enqueue(update_t &&update)
     return true;
 }
 
-void GrpcPrimary::SyncClient::onTrxId(uint64_t trxId)
-{
-    if (on_trxid_fn_) {
-        on_trxid_fn_(trxId);
-    }
-}
-
 void GrpcPrimary::SyncClient::OnDone()
 {
     LOG_DEBUG << "GrpcPrimary::SyncClient::OnDone: RPC request "
               << uuid() << " is done.";
+
+    if (replication_) {
+        replication_->onDone();
+    }
+
     grpc_.done(*this);
 }
 
@@ -141,14 +139,15 @@ void GrpcPrimary::SyncClient::OnReadDone(bool ok)
         return;
     }
 
-    // I don';t think we need a lock here, because we should not be called into again
+    // I don't think we need a lock here, because we should not be called into again
     // until after we start a new read.
-    if (on_trxid_fn_) {
-        on_trxid_fn_(req_.startafter());
-    } else {
+    if (!replication_) [[unlikely]] {
         // The first read sets up the link with replication
-        on_trxid_fn_ = grpc_.owner_.replication().addAgent(*this, req_.startafter());
+        replication_ = grpc_.owner_.replication().addAgent(*this);
     }
+
+    assert(replication_);
+    replication_->onTrxId(req_.startafter());
 
     req_.Clear();
     StartRead(&req_);
@@ -164,9 +163,16 @@ void GrpcPrimary::SyncClient::OnWriteDone(bool ok)
 void GrpcPrimary::SyncClient::flush()
 {
     if (!current_ && !pending_.empty()) {
+        has_written_after_empty_queue_ = true;
         current_ = std::move(pending_.front());
         pending_.pop();
-        StartWrite(current_.get());
+        return StartWrite(current_.get());
+    }
+
+    // The queue is empty. Nothing to write.
+    if (replication_ && has_written_after_empty_queue_) {
+        replication_->onQueueIsEmpty();
+        has_written_after_empty_queue_ = false;
     }
 }
 

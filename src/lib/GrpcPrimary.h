@@ -18,8 +18,37 @@ namespace nsblast::lib {
 class GrpcPrimary {
 public:
     using update_t = std::shared_ptr<grpc::nsblast::pb::SyncUpdate>;
-    using on_trxid_fn_t = std::function<void(uint64_t trxId)>;
     using bidi_sync_stream_t = ::grpc::ServerBidiReactor< ::grpc::nsblast::pb::SyncRequest, ::grpc::nsblast::pb::SyncUpdate>;
+
+    /*! Interface to the replication agent to allow passing events to it
+     *
+     * The event-methods must return immediately. If they need to do some work,
+     * they myst schedule that on a worker-thread.
+     *
+     * Ownership: The Replication class(es) own an instance. The instance
+     *      will not be deleted until after onDone() is called (but potentially
+     *      in onDone()).
+     *
+     * Guarantee: onDone() will always be called once, unless the server crash.
+     *      After onDone() is called, an instance will never be used by GrpcPrimary.
+     */
+    class ReplicationInterface {
+    public:
+        virtual ~ReplicationInterface() = default;
+
+        /*! The replica server confirmes that it as committed transactions up to `trxId` */
+        virtual void onTrxId(uint64_t trxId) = 0;
+
+        /*! The sending queue for the replica server is empty.
+         *
+         *  If the replicatin is catching up, the replication agnet should read events from the
+         *  database and fill the queue.
+         */
+        virtual void onQueueIsEmpty() = 0;
+
+        /*! The syncronization stream with the replica server serverf is shut down. */
+        virtual void onDone() = 0;
+    };
 
     class SyncClient
         : public std::enable_shared_from_this<SyncClient>
@@ -36,13 +65,11 @@ public:
          *  \return True if the update was enqueued.
          *      False if the queue is full or if the client is disconnected.
          */
-        bool enqueue(update_t &&update);
+        bool enqueue(update_t update);
 
         auto uuid() const noexcept {
             return uuid_;
         }
-
-        void onTrxId(uint64_t trxId);
 
         bool isWriting() const noexcept {
             std::lock_guard lock{mutex_};
@@ -59,19 +86,26 @@ public:
         /*! Callback event when a write operation is complete */
         void OnWriteDone(bool ok) override ;
 
+        /*! Send the next queued transaction
+         *
+         *  Signals the replication agent if the queue is empty
+         */
         void flush();
 
         const boost::uuids::uuid uuid_ = newUuid();
         GrpcPrimary& grpc_;
-
         bool is_done_ = false;
 
-        mutable std::mutex mutex_;
+        // optimization to not call the empty queue callback if it has already been called
+        // since the last write operation was initiated.
+        bool has_written_after_empty_queue_ = true;
+
         ::grpc::nsblast::pb::SyncRequest req_;
         std::queue<update_t> pending_;
         update_t current_;
-        on_trxid_fn_t on_trxid_fn_;
+        ReplicationInterface *replication_ = {};
         ::grpc::CallbackServerContext& context_;
+        mutable std::mutex mutex_;
     };
 
     class NsblastSvcImpl: public grpc::nsblast::pb::NsblastSvc::CallbackService {
@@ -101,9 +135,10 @@ private:
     void init();
 
     Server& owner_;
+    std::map<boost::uuids::uuid, std::shared_ptr<SyncClient>> clients_;
     std::unique_ptr<NsblastSvcImpl> impl_;
     std::unique_ptr<grpc::Server> svc_;
-    std::map<boost::uuids::uuid, std::shared_ptr<SyncClient>> clients_;
+
     std::mutex mutex_;
 };
 

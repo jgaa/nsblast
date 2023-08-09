@@ -12,6 +12,8 @@ namespace nsblast::lib {
 
 class RocksDbResource : public ResourceIf {
 public:
+    using on_trx_cb_t = std::function<void(std::unique_ptr<nsblast::pb::Transaction>)>;
+
     class Transaction : public ResourceIf::TransactionIf {
     public:
         struct BufferImpl : public BufferBase {
@@ -43,6 +45,11 @@ public:
             return trx_.get();
         }
 
+        /*! Iterate from the item following `key`.
+         *
+         *  The iteration starts at the first object that logically follows after
+         *  key.
+         */
         template <typename fnT>
         void iterateFromPrevT(key_t& key,  Category category, fnT& fn) {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
@@ -140,7 +147,7 @@ public:
         return config_;
     }
 
-    uint64_t nextTrxId() noexcept {
+    uint64_t createNewTrxId() noexcept {
         return ++trx_id_;
     }
 
@@ -149,6 +156,11 @@ public:
     }
 
     uint64_t getLastCommittedTransactionId();
+
+    void setTransactionCallback(on_trx_cb_t && cb) {
+        assert(!on_trx_cb_);
+        on_trx_cb_ = std::move(cb);
+    }
 
 private:
     static constexpr size_t DEFAULT = 0;
@@ -175,6 +187,7 @@ private:
     std::atomic_int transaction_count_{0};
     rocksdb::Options rocksdb_options_;
     std::atomic_uint64_t trx_id_{0};
+    on_trx_cb_t on_trx_cb_;
 };
 
 } // ns
