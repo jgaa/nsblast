@@ -71,6 +71,8 @@ public:
     void StartReplication();
 
     void startGrpcService();
+
+    void startReplicationAndRpc();
 #endif
 
     /*! Thread-safe method to request the services to shut down

@@ -70,29 +70,7 @@ void Server::start()
     startAuth();
 
 #ifdef NSBLAST_CLUSTER
-    if (role() == Role::CLUSTER_FOLLOWER) {
-        // work-around for cluster functional test.
-        // As of now, if a follower starts sync before the primary is ready,
-        // the sync fails.
-        // TODO: Add re-try loop in replication.
-        std::this_thread::sleep_for(chrono::seconds(4));
-
-        grpc_follow_ = make_shared<GrpcFollow>(*this);
-        grpc_follow_->start();
-        StartReplication();
-    }
-
-    if (role() == Role::CLUSTER_PRIMARY) {
-        StartReplication();
-        grpc_primary_ = make_shared<GrpcPrimary>(*this);
-        grpc_primary_->start();
-
-        // In the primary, we enable the transaction callback for the database
-        // and link committed transactions to the replication framework.
-        db().setTransactionCallback([this](Replication::transaction_t && trx) {
-            replication().onTransaction(std::move(trx));
-        });
-    }
+    startReplicationAndRpc();
 #endif
 
     startApi();
@@ -221,7 +199,35 @@ void Server::startGrpcService()
         break;
     }
 }
-#endif
+
+void Server::startReplicationAndRpc()
+{
+    if (role() == Role::CLUSTER_FOLLOWER) {
+        // work-around for cluster functional test.
+        // As of now, if a follower starts sync before the primary is ready,
+        // the sync fails.
+        // TODO: Add re-try loop in replication.
+        std::this_thread::sleep_for(chrono::seconds(4));
+
+        grpc_follow_ = make_shared<GrpcFollow>(*this);
+        grpc_follow_->start();
+        StartReplication();
+    }
+
+    if (role() == Role::CLUSTER_PRIMARY) {
+        StartReplication();
+        grpc_primary_ = make_shared<GrpcPrimary>(*this);
+        grpc_primary_->start();
+
+        // In the primary, we enable the transaction callback for the database
+        // and link committed transactions to the replication framework.
+        db().setTransactionCallback([this](Replication::transaction_t && trx) {
+            replication().onTransaction(std::move(trx));
+        });
+    }
+}
+
+#endif // NSBLAST_CLUSTER
 
 void Server::stop()
 {

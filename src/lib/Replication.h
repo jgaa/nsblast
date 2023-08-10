@@ -34,7 +34,8 @@ public:
             DONE
         };
         
-        FollowerAgent(Replication& parent, GrpcPrimary::SyncClient& client);
+        FollowerAgent(Replication& parent,
+                       const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client);
 
         /*! Iterate over a number of transactions in the db.
          *
@@ -61,10 +62,6 @@ public:
             return client_.expired();
         }
 
-        bool isStreaming() const noexcept {
-            return state() == State::STREAMING;
-        }
-
         /*! Notification about a new db transaction
          *
          *  If the client is in streaming mode and prevTrxId equals the clients
@@ -72,23 +69,44 @@ public:
          */
         void onTransaction(uint64_t prevTrxId, const GrpcPrimary::update_t& update);
 
+        /*! Return a future that will be signaled when the agent is idle (streaming or done)
+         */
+        auto getTestFuture() {
+            std::lock_guard lock{mutex_};
+            return test_promises_.emplace().get_future();
+        }
+
     private:
         // ReplicationInterface interface
         void onTrxId(uint64_t trxId) override ;
         void onQueueIsEmpty() override;
         void onDone() override;
 
+        bool isStreaming() const noexcept override {
+            return state() == State::STREAMING;
+        }
+
+        virtual bool isCatchingUp() const noexcept override {
+            return state() == State::ITERATING_DB;
+        }
+
+        virtual bool isDone() const noexcept override {
+            return state() == State::DONE;
+        }
+
         // Expects lock to be held
         void syncLater();
 
         const boost::uuids::uuid uuid_;
-        std::weak_ptr<GrpcPrimary::SyncClient> client_;
+        std::weak_ptr<GrpcPrimary::SyncClientInterface> client_;
         Replication& parent_;
+        bool is_syncing_ = false;
 
         std::atomic<State> state_{State::ITERATING_DB};
         std::atomic_uint64_t last_enqueued_trxid_{0};
         std::atomic_uint64_t last_confirmed_trx_{0};
         std::mutex mutex_;
+        std::queue<std::promise<void>> test_promises_;
     };
 
     /*! Follower client
@@ -134,7 +152,8 @@ public:
      *  so that the replication work-flow using these instacnes of the RPC
      *  handler and the replicaion agent are identified by one uuid.
      */
-    GrpcPrimary::ReplicationInterface *addAgent(GrpcPrimary::SyncClient& client);
+    GrpcPrimary::ReplicationInterface *addAgent(
+        const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client);
 
     /*! Notification about a new db transaction
      *

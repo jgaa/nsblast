@@ -35,12 +35,13 @@ Replication::Replication(Server &server)
     startTimer();
 }
 
-GrpcPrimary::ReplicationInterface *Replication::addAgent(GrpcPrimary::SyncClient &client)
+GrpcPrimary::ReplicationInterface *Replication::addAgent(
+    const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client)
 {
     lock_guard lock{mutex_};
 
     auto agent = make_shared<FollowerAgent>(*this, client);
-    follower_agents_[client.uuid()] = agent;
+    follower_agents_[client->uuid()] = agent;
 
     return agent.get();
 }
@@ -54,6 +55,7 @@ void Replication::onTransaction(transaction_t && transaction)
     lock_guard lock{mutex_};
     const auto prev_trxid = last_trxid_;
     last_trxid_ = update->trx().id();
+
     if (prev_trxid >= last_trxid_) {
         LOG_ERROR << "New transaction has old trxid! prev_id=" << prev_trxid
                   << ", new_id=" << last_trxid_
@@ -63,6 +65,10 @@ void Replication::onTransaction(transaction_t && transaction)
         last_trxid_ = prev_trxid;
         return;
     }
+
+    LOG_TRACE << "Replicating transacion #" << last_trxid_
+              << " to " << follower_agents_.size()
+              << " follower agents.";
 
     // Notify replication agents
     for(auto& [_, agent] : follower_agents_) {
@@ -106,9 +112,9 @@ void Replication::housekeeping()
 }
 
 Replication::FollowerAgent::FollowerAgent(Replication& parent,
-                                          GrpcPrimary::SyncClient &client)
-    : uuid_{client.uuid()}
-    , client_{client.weak_from_this()}, parent_{parent}
+                                          const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client)
+    : uuid_{client->uuid()}
+    , client_{client}, parent_{parent}
 {
 
 }
@@ -170,6 +176,17 @@ void Replication::FollowerAgent::setState(State state, bool doLock)
 
         old = state_;
         state_ = state;
+
+        if (state == State::DONE || state == State::STREAMING) {
+
+            // Notify callers that we are idle.
+            // This is primarily for unit-tests to avoid abritrary timouts
+            // to wait for the agent to catch up.
+            while(!test_promises_.empty()) {
+                test_promises_.front().set_value();
+                test_promises_.pop();
+            }
+        }
     }
     LOG_DEBUG << *this << " setState Changed state from "
               << old << " to " << state;
@@ -177,7 +194,9 @@ void Replication::FollowerAgent::setState(State state, bool doLock)
 
 void Replication::FollowerAgent::onTrxId(uint64_t trxId)
 {
+    lock_guard lock{mutex_};
     last_confirmed_trx_ = trxId;
+    syncLater();
 }
 
 void Replication::FollowerAgent::onQueueIsEmpty()
@@ -199,7 +218,8 @@ void Replication::FollowerAgent::syncLater()
 {
     assert(!mutex_.try_lock() && "The lock must me held");
 
-    if (state_ == State::ITERATING_DB) {
+    if (state_ == State::ITERATING_DB && !is_syncing_) {
+        is_syncing_ = true;
 
         // We must return immediately, so schedule a follow-up
         // on a worker-thread.
@@ -207,6 +227,9 @@ void Replication::FollowerAgent::syncLater()
             if (auto self = w.lock()) {
                 try {
                     self->iterateDb();
+
+                    lock_guard lock{self->mutex_};
+                    self->is_syncing_ = false;
                 } catch (const exception& ex) {
                     LOG_ERROR << "Replication::FollowerAgent::sync "
                               << " caught exception from iterateDb() on "

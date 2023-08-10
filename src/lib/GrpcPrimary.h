@@ -48,15 +48,14 @@ public:
 
         /*! The syncronization stream with the replica server serverf is shut down. */
         virtual void onDone() = 0;
+
+        virtual bool isStreaming() const noexcept = 0;
+        virtual bool isCatchingUp() const noexcept = 0;
+        virtual bool isDone() const noexcept = 0;
     };
 
-    class SyncClient
-        : public std::enable_shared_from_this<SyncClient>
-        , public bidi_sync_stream_t {
+    class SyncClientInterface {
     public:
-
-        SyncClient(GrpcPrimary& grpc, ::grpc::CallbackServerContext& context);
-
         /*! Add one update to the queue.
          *
          *  This method is thread-safe.
@@ -65,9 +64,23 @@ public:
          *  \return True if the update was enqueued.
          *      False if the queue is full or if the client is disconnected.
          */
-        bool enqueue(update_t update);
+        virtual bool enqueue(update_t update) = 0;
 
-        auto uuid() const noexcept {
+        /*! Unique identifier */
+        virtual boost::uuids::uuid uuid() const noexcept = 0;
+    };
+
+    class SyncClient
+        : public std::enable_shared_from_this<SyncClient>
+        , public SyncClientInterface
+        , public bidi_sync_stream_t {
+    public:
+
+        SyncClient(GrpcPrimary& grpc, ::grpc::CallbackServerContext& context);
+
+        bool enqueue(update_t update) override;
+
+        boost::uuids::uuid uuid() const noexcept override {
             return uuid_;
         }
 

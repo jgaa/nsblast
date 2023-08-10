@@ -143,7 +143,7 @@ void GrpcPrimary::SyncClient::OnReadDone(bool ok)
     // until after we start a new read.
     if (!replication_) [[unlikely]] {
         // The first read sets up the link with replication
-        replication_ = grpc_.owner_.replication().addAgent(*this);
+        replication_ = grpc_.owner_.replication().addAgent(shared_from_this());
     }
 
     assert(replication_);

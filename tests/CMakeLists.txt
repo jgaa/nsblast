@@ -221,7 +221,47 @@ target_link_libraries(auth_tests
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-add_test(NAME auth_tests COMMAND auth_tests)
+####### replication_tests
+
+add_executable(replication_tests
+    replication_tests.cpp
+    TmpDb.h
+    test_res.cpp test_res.h
+    )
+
+set_property(TARGET replication_tests PROPERTY CXX_STANDARD 20)
+
+add_dependencies(replication_tests
+    nsblastlib
+     ${DEPENDS_GTEST}
+    )
+
+target_include_directories(replication_tests
+    PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/include
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+target_link_libraries(replication_tests
+    ${GTEST_LIBRARIES}
+    nsblastlib
+    yahat
+    ${Protobuf_LIBRARIES}
+    ${SNAPPY_LIBRARIES} # Not working
+    ${ROCKSDB_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    stdc++fs
+    lz4
+    snappy
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
+add_test(NAME replication_tests COMMAND replication_tests)
 
 ########## Run the tests
 
