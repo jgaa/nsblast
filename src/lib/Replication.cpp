@@ -49,6 +49,7 @@ GrpcPrimary::ReplicationInterface *Replication::addAgent(
 void Replication::onTransaction(transaction_t && transaction)
 {
     auto update = make_shared<grpc::nsblast::pb::SyncUpdate>();
+    update->set_isinsync(true); // Only streaming client gets this
     update->mutable_trx()->Swap(transaction.get());
     transaction.reset();
 
