@@ -1,4 +1,4 @@
-#include "Replication.h"
+#include "PrimaryReplication.h"
 
 #include "nsblast/logging.h"
 #include "proto_util.h"
@@ -6,13 +6,13 @@
 using namespace std;
 using namespace std::string_literals;
 
-ostream& operator <<(ostream& out, const nsblast::lib::Replication::FollowerAgent& agent) {
-    return out << "Replication::FollowerAgent{" << agent.uuid() << '}';
+ostream& operator <<(ostream& out, const nsblast::lib::PrimaryReplication::Agent& agent) {
+    return out << "PrimaryReplication::FollowerAgent{" << agent.uuid() << '}';
 }
 
 ostream &
 operator<<(ostream &out,
-           const nsblast::lib::Replication::FollowerAgent::State &state) {
+           const nsblast::lib::PrimaryReplication::Agent::State &state) {
     array<string_view, 3> names = {"ITERATING_DB", "STREAMING", "DONE"};
 
     return out << names.at(static_cast<size_t>(state));
@@ -20,33 +20,28 @@ operator<<(ostream &out,
 
 namespace nsblast::lib {
 
-void Replication::start()
-{
-    if (server().role() == Server::Role::CLUSTER_FOLLOWER) {
-        // We must sync up...
-        primary_agent_ = make_shared<PrimaryAgent>(*this);
-        primary_agent_->init();
-    }
-}
-
-Replication::Replication(Server &server)
-    : server_{server}
+void PrimaryReplication::start()
 {
     startTimer();
 }
 
-GrpcPrimary::ReplicationInterface *Replication::addAgent(
+PrimaryReplication::PrimaryReplication(Server &server)
+    : server_{server}
+{
+}
+
+GrpcPrimary::ReplicationInterface *PrimaryReplication::addAgent(
     const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client)
 {
     lock_guard lock{mutex_};
 
-    auto agent = make_shared<FollowerAgent>(*this, client);
+    auto agent = make_shared<Agent>(*this, client);
     follower_agents_[client->uuid()] = agent;
 
     return agent.get();
 }
 
-void Replication::onTransaction(transaction_t && transaction)
+void PrimaryReplication::onTransaction(transaction_t && transaction)
 {
     auto update = make_shared<grpc::nsblast::pb::SyncUpdate>();
     update->set_isinsync(true); // Only streaming client gets this
@@ -71,27 +66,27 @@ void Replication::onTransaction(transaction_t && transaction)
               << " to " << follower_agents_.size()
               << " follower agents.";
 
-    // Notify replication agents
+    // Notify PrimaryReplication agents
     for(auto& [_, agent] : follower_agents_) {
         agent->onTransaction(prev_trxid, update);
     }
 }
 
-void Replication::startTimer()
+void PrimaryReplication::startTimer()
 {
     timer_.expires_from_now(boost::posix_time::seconds{server_.config().cluster_replication_housekeeping_timer_});
     timer_.async_wait([this](const auto ec) {
         if (ec) {
             if (ec == boost::asio::error::operation_aborted) {
-                LOG_TRACE << "Replication housekeeping timer aborted.";
+                LOG_TRACE << "PrimaryReplication housekeeping timer aborted.";
                 return;
             }
-            LOG_WARN << "Replication housekeeping timer unexpected error: " << ec;
+            LOG_WARN << "PrimaryReplication housekeeping timer unexpected error: " << ec;
         } else {
             try {
                 housekeeping();
             } catch (const exception& ex) {
-                LOG_ERROR << "Replication housekeeping timer: exception from housekeeping(): "
+                LOG_ERROR << "PrimaryReplication housekeeping timer: exception from housekeeping(): "
                           << ex.what();
             }
         }
@@ -100,11 +95,11 @@ void Replication::startTimer()
     });
 }
 
-void Replication::housekeeping()
+void PrimaryReplication::housekeeping()
 {
     std::lock_guard lock{mutex_};
 
-    LOG_TRACE << "Replication::housekeeping() - "
+    LOG_TRACE << "PrimaryReplication::housekeeping() - "
               "Deleting zombie agents where the RPC request/stream is done with.";
     erase_if(follower_agents_, [](auto& item) {
         return item.second->expired();
@@ -112,7 +107,7 @@ void Replication::housekeeping()
 
 }
 
-Replication::FollowerAgent::FollowerAgent(Replication& parent,
+PrimaryReplication::Agent::Agent(PrimaryReplication& parent,
                                           const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client)
     : uuid_{client->uuid()}
     , client_{client}, parent_{parent}
@@ -120,7 +115,7 @@ Replication::FollowerAgent::FollowerAgent(Replication& parent,
 
 }
 
-void Replication::FollowerAgent::iterateDb()
+void PrimaryReplication::Agent::iterateDb()
 {
     auto trx = parent_.server().db().dbTransaction();
 
@@ -153,13 +148,13 @@ void Replication::FollowerAgent::iterateDb()
     if (!queue_was_filled) {
         LOG_TRACE << *this
                   << " The queue was not filled while iterating the stored transactions."
-                     " Switching replication to streaming mode";
+                     " Switching PrimaryReplication to streaming mode";
 
         setState(State::STREAMING);
     }
 }
 
-void Replication::FollowerAgent::setState(State state, bool doLock)
+void PrimaryReplication::Agent::setState(State state, bool doLock)
 {
     State old = {};
     {
@@ -193,29 +188,29 @@ void Replication::FollowerAgent::setState(State state, bool doLock)
               << old << " to " << state;
 }
 
-void Replication::FollowerAgent::onTrxId(uint64_t trxId)
+void PrimaryReplication::Agent::onTrxId(uint64_t trxId)
 {
     lock_guard lock{mutex_};
     last_confirmed_trx_ = trxId;
     syncLater();
 }
 
-void Replication::FollowerAgent::onQueueIsEmpty()
+void PrimaryReplication::Agent::onQueueIsEmpty()
 {
     lock_guard lock{mutex_};
     syncLater();
 }
 
-void Replication::FollowerAgent::onDone()
+void PrimaryReplication::Agent::onDone()
 {
-    LOG_DEBUG << *this << " onDone: The replication-session has ended.";
+    LOG_DEBUG << *this << " onDone: The PrimaryReplication-session has ended.";
     setState(State::DONE);
 
     lock_guard lock{mutex_};
     client_.reset();
 }
 
-void Replication::FollowerAgent::syncLater()
+void PrimaryReplication::Agent::syncLater()
 {
     assert(!mutex_.try_lock() && "The lock must me held");
 
@@ -232,7 +227,7 @@ void Replication::FollowerAgent::syncLater()
                     lock_guard lock{self->mutex_};
                     self->is_syncing_ = false;
                 } catch (const exception& ex) {
-                    LOG_ERROR << "Replication::FollowerAgent::sync "
+                    LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
                               << " caught exception from iterateDb() on "
                               << self->uuid()
                               << ": " << ex.what();
@@ -242,7 +237,7 @@ void Replication::FollowerAgent::syncLater()
     }
 }
 
-boost::uuids::uuid Replication::FollowerAgent::uuid() const noexcept
+boost::uuids::uuid PrimaryReplication::Agent::uuid() const noexcept
 {
     if (auto client = client_.lock()) {
         return client->uuid();
@@ -251,7 +246,7 @@ boost::uuids::uuid Replication::FollowerAgent::uuid() const noexcept
     return {};
 }
 
-void Replication::FollowerAgent::onTransaction(uint64_t prevTrxId,
+void PrimaryReplication::Agent::onTransaction(uint64_t prevTrxId,
                                                const GrpcPrimary::update_t& update)
 {
     lock_guard lock{mutex_};
@@ -276,68 +271,5 @@ void Replication::FollowerAgent::onTransaction(uint64_t prevTrxId,
         syncLater();
     }
 }
-
-Replication::PrimaryAgent::PrimaryAgent(Replication &parent)
-    : parent_{parent}
-{
-}
-
-void Replication::PrimaryAgent::init()
-{
-    current_trxid_ = parent_.server().db().getLastCommittedTransactionId();
-    due_ = chrono::steady_clock::now();
-
-    parent_.server().grpcFollow().createSyncClient([this]() -> optional<uint64_t> {
-        lock_guard lock{mutex_};
-        if (due_ && due_ <= chrono::steady_clock::now()) {
-            due_.reset();
-            LOG_TRACE << "Replication::PrimaryAgent: - due is replying with trx-id #" << current_trxid_;
-            return current_trxid_;
-        }
-        return {};
-    }, [this](const grpc::nsblast::pb::SyncUpdate& update){
-        try {
-            onTrx(update.trx());
-            const auto id =  update.trx().id();
-            {
-                lock_guard lock{mutex_};
-                current_trxid_ = id;
-                if (!due_) {
-                    due_ = chrono::steady_clock::now() + chrono::milliseconds(
-                               parent_.server().config().cluster_followers_update_delay_);
-                }
-            }
-        } catch(const exception& ex) {
-            LOG_ERROR << "Replication::PrimaryAgent - Failed to apply transaction #"
-                      << update.trx().id()
-                      << ": " << ex.what();
-        }
-    });
-}
-
-void Replication::PrimaryAgent::onTrx(const pb::Transaction &value)
-{
-    const auto trxid = value.id();
-
-    LOG_TRACE << "Replication::PrimaryAgent::onTrx - Applying transaction #" << trxid;
-
-    const ResourceIf::RealKey key{trxid, ResourceIf::RealKey::Class::TRXID};
-    auto trx = parent_.server().db().dbTransaction();
-    trx->disableTrxlog();
-
-    // Re-compose each of the parts of the original transaction
-    for(const auto& part : value.parts()) {
-        const ResourceIf::RealKey key{ResourceIf::RealKey::Binary{part.key()}};
-        auto cat = static_cast<ResourceIf::Category>(part.columnfamilyix());
-        trx->write(key, part.value(), false, cat);
-    }
-
-    // Also write the transaction-log entry
-    string val;
-    value.SerializeToString(&val);
-    trx->write(key, val, false, ResourceIf::Category::TRXLOG);
-    trx->commit();
-}
-
 
 } // ns

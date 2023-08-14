@@ -16,7 +16,7 @@ class Server;
 namespace lib {
 
 
-class Replication {
+class PrimaryReplication {
 public:
     using transaction_t = std::unique_ptr<nsblast::pb::Transaction>;
 
@@ -24,8 +24,8 @@ public:
      *
      *  This represent a nsblast follower-server that needs to be in sync with us
      */
-    class FollowerAgent
-        : public std::enable_shared_from_this<FollowerAgent>
+    class Agent
+        : public std::enable_shared_from_this<Agent>
         , public GrpcPrimary::ReplicationInterface {
     public:
         enum State {
@@ -34,7 +34,7 @@ public:
             DONE
         };
         
-        FollowerAgent(Replication& parent,
+        Agent(PrimaryReplication& parent,
                        const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client);
 
         /*! Iterate over a number of transactions in the db.
@@ -99,7 +99,7 @@ public:
 
         const boost::uuids::uuid uuid_;
         std::weak_ptr<GrpcPrimary::SyncClientInterface> client_;
-        Replication& parent_;
+        PrimaryReplication& parent_;
         bool is_syncing_ = false;
 
         std::atomic<State> state_{State::ITERATING_DB};
@@ -109,40 +109,7 @@ public:
         std::queue<std::promise<void>> test_promises_;
     };
 
-    /*! Follower client
-     *
-     *  This class is used if the server is a follower, and needs to
-     *  be in sync with a primary server.
-     */
-
-    class PrimaryAgent {
-    public:
-        PrimaryAgent(Replication& parent);
-
-        auto trxId() const noexcept {
-            std::lock_guard lock{mutex_};
-            return current_trxid_;
-        }
-
-        void init();
-
-        void onTrx(const pb::Transaction& trx);
-
-    private:
-        std::weak_ptr<GrpcFollow::SyncFromServer> grpc_sync_;
-        uint64_t current_trxid_ = 0; // Last transaction id received from the primary
-        Replication& parent_;
-        std::optional<std::chrono::steady_clock::time_point> due_;
-        mutable std::mutex mutex_;
-    };
-
-    void start();
-
-    Replication(Server& server);
-
-    auto& server() {
-        return server_;
-    }
+    PrimaryReplication(Server& server);
     
     /*! Add an internal representation of a replication agent for a replica server
      *
@@ -161,6 +128,12 @@ public:
      */
     void onTransaction(transaction_t&& transaction);
 
+    void start();
+
+    auto& server() noexcept {
+        return server_;
+    }
+
 private:
     void startTimer();
     void housekeeping();
@@ -168,14 +141,13 @@ private:
     Server& server_;
     uint64_t minTrxIdForAllStreamingAgents_ = 0;
     uint64_t last_trxid_ = 0;
-    std::map<boost::uuids::uuid, std::shared_ptr<FollowerAgent>> follower_agents_;
-    std::shared_ptr<PrimaryAgent> primary_agent_;
+    std::map<boost::uuids::uuid, std::shared_ptr<Agent>> follower_agents_;
     boost::asio::deadline_timer timer_{server_.ctx()};
     mutable std::mutex mutex_;
 };
 
 }} // ns
 
-std::ostream& operator <<(std::ostream& out, const nsblast::lib::Replication::FollowerAgent& agent);
-std::ostream& operator <<(std::ostream& out, const nsblast::lib::Replication::FollowerAgent::State& state);
+std::ostream& operator <<(std::ostream& out, const nsblast::lib::PrimaryReplication::Agent& agent);
+std::ostream& operator <<(std::ostream& out, const nsblast::lib::PrimaryReplication::Agent::State& state);
 

@@ -10,7 +10,8 @@
 #include "AuthMgr.h"
 
 #ifdef NSBLAST_CLUSTER
-#   include "Replication.h"
+#   include "PrimaryReplication.h"
+#   include "FollowerReplication.h"
 #   include "GrpcPrimary.h"
 #   include "GrpcFollow.h"
 #endif
@@ -35,13 +36,6 @@ using namespace yahat;
 Server::Server(const Config &config)
     : config_{config}
 {
-    if (config_.cluster_role == "primary") {
-        role_ = Role::CLUSTER_PRIMARY;
-    } else if (config_.cluster_role == "follower") {
-        role_ = Role::CLUSTER_FOLLOWER;
-    }
-
-    LOG_INFO << "This instances cluster-role is " << role();
 }
 
 Server::~Server()
@@ -179,30 +173,54 @@ void Server::startAuth()
 #ifdef NSBLAST_CLUSTER
 void Server::StartReplication()
 {
-    replication_ = make_shared<Replication>(*this);
-    replication_->start();
+    if (config_.cluster_role == "primary") {
+        role_ = Role::CLUSTER_PRIMARY;
+    } else if (config_.cluster_role == "follower") {
+        role_ = Role::CLUSTER_FOLLOWER;
+    }
+
+    LOG_INFO << "This instances cluster-role is " << role();
+
+    if (isPrimaryReplicationServer()) {
+        primary_replication_ = make_shared<PrimaryReplication>(*this);
+        primary_replication_->start();
+    }
+
+    if (isReplicationFollower()) {
+        follower_replication_ = make_shared<FollowerReplication>(*this);
+        follower_replication_->start();
+    }
 }
 
 void Server::startGrpcService()
 {
-    switch (role()) {
-    case Role::CLUSTER_PRIMARY:
+
+    if (isPrimaryReplicationServer()) {
         grpc_primary_ = make_shared<GrpcPrimary>(*this);
         grpc_primary_->start();
-        break;
-    case Role::CLUSTER_FOLLOWER:
+    }
+
+    if (isReplicationFollower()) {
         grpc_follow_ = make_shared<GrpcFollow>(*this);
         grpc_follow_->start();
-        break;
-    case Role::NONE:
-        ;
-        break;
     }
 }
 
 void Server::startReplicationAndRpc()
 {
-    if (role() == Role::CLUSTER_FOLLOWER) {
+    if (isPrimaryReplicationServer()) {
+        StartReplication();
+        grpc_primary_ = make_shared<GrpcPrimary>(*this);
+        grpc_primary_->start();
+
+        // In the primary, we enable the transaction callback for the database
+        // and link committed transactions to the replication framework.
+        db().setTransactionCallback([this](PrimaryReplication::transaction_t && trx) {
+            primaryReplication().onTransaction(std::move(trx));
+        });
+    }
+
+    if (isReplicationFollower()) {
         // work-around for cluster functional test.
         // As of now, if a follower starts sync before the primary is ready,
         // the sync fails.
@@ -212,18 +230,6 @@ void Server::startReplicationAndRpc()
         grpc_follow_ = make_shared<GrpcFollow>(*this);
         grpc_follow_->start();
         StartReplication();
-    }
-
-    if (role() == Role::CLUSTER_PRIMARY) {
-        StartReplication();
-        grpc_primary_ = make_shared<GrpcPrimary>(*this);
-        grpc_primary_->start();
-
-        // In the primary, we enable the transaction callback for the database
-        // and link committed transactions to the replication framework.
-        db().setTransactionCallback([this](Replication::transaction_t && trx) {
-            replication().onTransaction(std::move(trx));
-        });
     }
 }
 

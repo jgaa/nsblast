@@ -24,7 +24,8 @@ namespace lib {
 #ifdef NSBLAST_CLUSTER
     class GrpcPrimary;
     class GrpcFollow;
-    class Replication;
+    class PrimaryReplication;
+    class FollowerReplication;
 #endif
 
 } // ns lib
@@ -130,8 +131,14 @@ public:
     }
 
 #ifdef NSBLAST_CLUSTER
-    auto& replication() noexcept {
-        return *replication_;
+    auto& primaryReplication() noexcept {
+        assert(primary_replication_);
+        return *primary_replication_;
+    }
+
+    auto& followerReplication() noexcept {
+        assert(follower_replication_);
+        return *follower_replication_;
     }
 
     auto& grpcPrimary() noexcept {
@@ -142,6 +149,14 @@ public:
     auto& grpcFollow() noexcept {
         assert(grpc_follow_);
         return *grpc_follow_;
+    }
+
+    bool isPrimaryReplicationServer() const noexcept {
+         return role_ == Role::CLUSTER_PRIMARY;
+    }
+
+    bool isReplicationFollower() const noexcept {
+         return role_ == Role::CLUSTER_FOLLOWER;
     }
 
 #endif
@@ -183,7 +198,8 @@ protected:
 #ifdef NSBLAST_CLUSTER
     std::shared_ptr<lib::GrpcPrimary> grpc_primary_;
     std::shared_ptr<lib::GrpcFollow> grpc_follow_;
-    std::shared_ptr<lib::Replication> replication_;
+    std::shared_ptr<lib::PrimaryReplication> primary_replication_;
+    std::shared_ptr<lib::FollowerReplication> follower_replication_;
 #endif
 
     //std::shared_ptr<Config> config_;

@@ -31,10 +31,12 @@ add_library(${PROJECT_NAME}
     AuthMgr.h
     DnsEngine.cpp
     DnsMessages.cpp
+    FollowerReplication.cpp
+    FollowerReplication.h
     Notifications.cpp
     Notifications.h
-    Replication.cpp
-    Replication.h
+    PrimaryReplication.cpp
+    PrimaryReplication.h
     ResourceIf.cpp
     RestApi.cpp
     RestApi.h

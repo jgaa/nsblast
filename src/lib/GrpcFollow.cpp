@@ -3,7 +3,6 @@
 #include <grpc/grpc.h>
 
 #include "GrpcFollow.h"
-#include "Replication.h"
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
 

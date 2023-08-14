@@ -7,7 +7,7 @@
 #include <grpcpp/server_context.h>
 
 #include "GrpcPrimary.h"
-#include "Replication.h"
+#include "PrimaryReplication.h"
 #include "nsblast/logging.h"
 
 using namespace std;
@@ -143,7 +143,7 @@ void GrpcPrimary::SyncClient::OnReadDone(bool ok)
     // until after we start a new read.
     if (!replication_) [[unlikely]] {
         // The first read sets up the link with replication
-        replication_ = grpc_.owner_.replication().addAgent(shared_from_this());
+        replication_ = grpc_.owner_.primaryReplication().addAgent(shared_from_this());
     }
 
     assert(replication_);

@@ -6,7 +6,7 @@
 #include "nsblast/Server.h"
 #include "nsblast/logging.h"
 
-#include "Replication.h"
+#include "PrimaryReplication.h"
 
 #include "test_res.h"
 
@@ -93,9 +93,9 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
         auto client = make_shared<MockSyncClient>();
         EXPECT_EQ(client->queueUsed(), 0);
 
-        auto replication_agent = ms.replication().addAgent(client);
+        auto replication_agent = ms.primaryReplication().addAgent(client);
         // Get it going
-        auto& agent = reinterpret_cast<Replication::FollowerAgent &>(*replication_agent);
+        auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
         auto future = agent.getTestFuture();
         replication_agent->onTrxId(0);
 
@@ -116,7 +116,7 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
             return mc.num_enqueued == 1;
         });
 
-        ms.replication().onTransaction(std::move(repl_trx));
+        ms.primaryReplication().onTransaction(std::move(repl_trx));
         EXPECT_EQ(future.wait_for(10s), std::future_status::ready);
         EXPECT_EQ(client->queueUsed(), 1);
         EXPECT_TRUE(client->updates.back()->isinsync());
