@@ -3,6 +3,7 @@
 #include <atomic>
 #include <mutex>
 #include <memory>
+#include "glad/AsyncWaitFor.hpp"
 #include "nsblast/util.h"
 #include "RocksDbResource.h"
 #include "GrpcPrimary.h"
@@ -15,10 +16,13 @@ class Server;
 
 namespace lib {
 
-
 class PrimaryReplication {
+
+    using repl_waiter_t = jgaa::glad::AsyncWaitFor<uint64_t, boost::asio::io_context,
+                                                   std::function<bool(uint64_t current, uint64_t constraint)>>;
 public:
     using transaction_t = std::unique_ptr<nsblast::pb::Transaction>;
+
 
     /*! Replication agent.
      *
@@ -76,11 +80,9 @@ public:
             return test_promises_.emplace().get_future();
         }
 
-    private:
-        // ReplicationInterface interface
-        void onTrxId(uint64_t trxId) override ;
-        void onQueueIsEmpty() override;
-        void onDone() override;
+        uint64_t lastConfirmedTrx() const noexcept {
+            return last_confirmed_trx_;
+        }
 
         bool isStreaming() const noexcept override {
             return state() == State::STREAMING;
@@ -93,6 +95,12 @@ public:
         virtual bool isDone() const noexcept override {
             return state() == State::DONE;
         }
+
+    private:
+        // ReplicationInterface interface
+        void onTrxId(uint64_t trxId) override ;
+        void onQueueIsEmpty() override;
+        void onDone() override;
 
         // Expects lock to be held
         void syncLater();
@@ -134,11 +142,21 @@ public:
         return server_;
     }
 
+    auto& waiter() {
+        return waiter_;
+    }
+
+    void checkAgents();
+
 private:
     void startTimer();
     void housekeeping();
 
+    // Returns 0 if there are no changes or no agents.
+    uint64_t getMinTrxIdForAllAgents();
+
     Server& server_;
+    repl_waiter_t waiter_;
     uint64_t minTrxIdForAllStreamingAgents_ = 0;
     uint64_t last_trxid_ = 0;
     std::map<boost::uuids::uuid, std::shared_ptr<Agent>> follower_agents_;

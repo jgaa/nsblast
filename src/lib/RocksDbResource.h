@@ -40,6 +40,9 @@ public:
         void remove(key_t key, bool recursive, Category category = Category::ENTRY) override;
         void commit() override;
         void rollback() override;
+        uint64_t replicationId() const noexcept override {
+            return replication_id_;
+        }
 
         auto operator -> () {
             return trx_.get();
@@ -117,6 +120,7 @@ public:
         bool dirty_ = false;
         bool disable_trxlog_ = false;
         std::unique_ptr<pb::Transaction> trxlog_;
+        uint64_t replication_id_ = 0;
 
         // TransactionIf interface
     public:

@@ -90,6 +90,12 @@ paths:
       description: "fqdn to change, for example: 'www.example.com' The 'rr' entries contain a, aaa, cname and txt resource records for any fqdn. The Zone and Zone ownership is deduced from the fqdn. You can only uise fqdn's for zones already created under your account."
       required: true
       type: string
+    - name: wait
+      in: query
+      description: Number of seconds to wait for the operation to be replicated to secondary servers.
+      schema:
+        type: integer
+        default: 0
 
     post:
       tags:
@@ -219,6 +225,12 @@ paths:
       description: "fqdn to delete, for example: 'www.example.com' The Zone and Zone ownership is deduced from the fqdn. You can only use fqdn's for zones already created under your account."
       required: true
       type: string
+    - name: wait
+      in: query
+      description: Number of seconds to wait for the operation to be replicated to secondary servers.
+      schema:
+        type: integer
+        default: 0
 
     - in: path
       name: rrname

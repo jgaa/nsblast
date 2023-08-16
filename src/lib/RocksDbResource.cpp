@@ -372,7 +372,8 @@ void RocksDbResource::Transaction::handleTrxLog()
         // no conflicting transactions are committed where the transaxtion-id may
         // be in the wrong order (dirty writes).
         // Holes in the sequence, if a commit failes, are OK.
-        trxlog_->set_id(owner_.createNewTrxId());
+        replication_id_ = owner_.createNewTrxId();
+        trxlog_->set_id(replication_id_);
 
         const RealKey key{trxlog_->id(), RealKey::Class::TRXID};
 

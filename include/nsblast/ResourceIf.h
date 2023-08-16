@@ -305,6 +305,15 @@ public:
             return uuid_;
         }
 
+        /*! Get the replication-id for this transaction.
+         *
+         *  The replication id is only available (non zero) after
+         *  commit(), and only if the transaction was put in the replication queue.
+         *  This only happens for changes that needs to be replicated from a primary
+         *  server to its followers.
+         */
+        virtual uint64_t replicationId() const noexcept = 0;
+
     private:
         const boost::uuids::uuid uuid_ = lib::newUuid();
     };

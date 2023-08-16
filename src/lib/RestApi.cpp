@@ -11,6 +11,7 @@
 #include "SlaveMgr.h"
 #include "AuthMgr.h"
 #include "Notifications.h"
+#include "PrimaryReplication.h"
 #include "RocksDbResource.h"
 //#include "nsblast/DnsEngine.h"
 #include "nsblast/errors.h"
@@ -785,6 +786,18 @@ auto makeReply(T& what, int okCode = 200) {
     return Response{okCode, "OK", out.str()};
 }
 
+auto makeReplyWithReplStatus(int okCode, bool replicated) {
+    ostringstream out;
+
+    out << R"({"error":false, "status":)"
+        << okCode
+        << R"(, "replicated":)"
+        << (replicated ? "true" : "false")
+        << '}';
+
+    return Response{okCode, "OK", out.str()};
+}
+
 Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
 {
     auto session = getSession(req);
@@ -1345,6 +1358,7 @@ put:
     }
 
     trx->commit();
+    const auto repl_id = trx->replicationId();
     trx.reset();
 
     if (config_.dns_enable_notify) {
@@ -1357,15 +1371,19 @@ put:
             LOG_WARN << "RestApi::onResourceRecord - Failed to notify slave servers about update of zone "
                      << lowercaseSoaFqdn;
         }
-    } else {
-        LOG_TRACE << "RestApi::onResourceRecord - NOTIFY is disabled. See Config.dns_enable_notify";
     }
+
+    auto rcode = 200;
 
     if (!existing.hasRr()) {
-        return {201, "OK"};
+        rcode = 201;
     }
 
-    return  {};
+    if (auto waited = waitForReplication(req, repl_id)) {
+        return makeReplyWithReplStatus(rcode, *waited);
+    }
+
+    return {rcode, "OK"};
 }
 
 Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &parsed)
@@ -1525,6 +1543,25 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
     }
 
     return {200, "Ok", boost::json::serialize(out)};
+}
+
+std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint64_t trxid)
+{
+    if (auto it = req.arguments.find("wait"); it != req.arguments.end()) {
+        if (auto seconds = std::stoi(string{it->second})) {
+            if (!trxid || !server().isPrimaryReplicationServer()) {
+                // Not for replication
+                return false;
+            }
+
+            boost::system::error_code ec;
+            server().primaryReplication().waiter().wait(
+                trxid, chrono::seconds{seconds}, (*req.yield)[ec]);
+            return !ec.failed();
+        }
+    }
+
+    return {};
 }
 
 

@@ -53,6 +53,10 @@ private:
         return *server_;
     }
 
+    // Returns false if there was a probem with the replication, including
+    // timeout.
+    std::optional<bool> waitForReplication(const yahat::Request &req, uint64_t trxid);
+
     const Config& config_;
     ResourceIf& resource_;
     Server *server_ = {};

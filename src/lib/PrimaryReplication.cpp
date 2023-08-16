@@ -20,14 +20,24 @@ operator<<(ostream &out,
 
 namespace nsblast::lib {
 
+PrimaryReplication::PrimaryReplication(Server &server)
+    : server_{server}, waiter_{server.ctx(),
+              [](uint64_t current, uint64_t constraint) {
+                  return current <= constraint;
+              }}
+{
+}
+
 void PrimaryReplication::start()
 {
     startTimer();
 }
 
-PrimaryReplication::PrimaryReplication(Server &server)
-    : server_{server}
+void PrimaryReplication::checkAgents()
 {
+    if (auto trxid = getMinTrxIdForAllAgents()) {
+        waiter_.onChange(minTrxIdForAllStreamingAgents_);
+    }
 }
 
 GrpcPrimary::ReplicationInterface *PrimaryReplication::addAgent(
@@ -105,6 +115,30 @@ void PrimaryReplication::housekeeping()
         return item.second->expired();
     });
 
+}
+
+uint64_t PrimaryReplication::getMinTrxIdForAllAgents()
+{
+    lock_guard lock{mutex_};
+    uint64_t lowest = std::numeric_limits<uint64_t>::max(); // Start high
+    for(const auto& [_, agent] : follower_agents_) {
+        if (agent->isStreaming()) {
+            lowest = std::min(agent->lastConfirmedTrx(), lowest);
+        }
+    }
+
+    if (lowest == std::numeric_limits<uint64_t>::max()) {
+        return 0; // No streaming agents.
+    }
+
+    if (lowest > minTrxIdForAllStreamingAgents_) {
+        LOG_TRACE << "PrimaryReplication::PrimaryReplication: minTrxIdForAllStreamingAgents_ changing from "
+                  << minTrxIdForAllStreamingAgents_ << " to " << lowest;
+        minTrxIdForAllStreamingAgents_ = lowest;
+        return minTrxIdForAllStreamingAgents_;
+    }
+
+    return 0; // No changes
 }
 
 PrimaryReplication::Agent::Agent(PrimaryReplication& parent,
@@ -190,9 +224,13 @@ void PrimaryReplication::Agent::setState(State state, bool doLock)
 
 void PrimaryReplication::Agent::onTrxId(uint64_t trxId)
 {
-    lock_guard lock{mutex_};
-    last_confirmed_trx_ = trxId;
-    syncLater();
+    {
+        lock_guard lock{mutex_};
+        last_confirmed_trx_ = trxId;
+        syncLater();
+    }
+
+    parent_.checkAgents();
 }
 
 void PrimaryReplication::Agent::onQueueIsEmpty()
