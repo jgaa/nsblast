@@ -5,7 +5,7 @@
 #include <memory>
 //#include "nsblast/util.h"
 //#include "RocksDbResource.h"
-#include "GrpcPrimary.h"
+//#include "GrpcPrimary.h"
 #include "GrpcFollow.h"
 #include "proto/nsblast.pb.h"
 
@@ -20,7 +20,7 @@ class FollowerReplication {
 public:
     using transaction_t = std::unique_ptr<nsblast::pb::Transaction>;
 
-    /*! Follower client
+    /*! Follower agent
      *
      *  This class is used if the server is a follower, and needs to
      *  be in sync with a primary server.

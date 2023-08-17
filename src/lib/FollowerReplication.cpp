@@ -37,7 +37,7 @@ void FollowerReplication::Agent::init()
         lock_guard lock{mutex_};
         if (due_ && due_ <= chrono::steady_clock::now()) {
             due_.reset();
-            LOG_TRACE << "PrimaryReplication::PrimaryAgent: - due is replying with trx-id #" << current_trxid_;
+            LOG_TRACE_N << "due is replying with trx-id #" << current_trxid_;
             return current_trxid_;
         }
         return {};
@@ -54,7 +54,7 @@ void FollowerReplication::Agent::init()
                 }
             }
         } catch(const exception& ex) {
-            LOG_ERROR << "PrimaryReplication::PrimaryAgent - Failed to apply transaction #"
+            LOG_ERROR_N << "Failed to apply transaction #"
                       << update.trx().id()
                       << ": " << ex.what();
         }
@@ -67,7 +67,6 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
 
     LOG_TRACE << "PrimaryReplication::PrimaryAgent::onTrx - Applying transaction #" << trxid;
 
-    const ResourceIf::RealKey key{trxid, ResourceIf::RealKey::Class::TRXID};
     auto trx = parent_.server().db().dbTransaction();
     trx->disableTrxlog();
 
@@ -81,6 +80,7 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
     // Also write the transaction-log entry
     string val;
     value.SerializeToString(&val);
+    const ResourceIf::RealKey key{trxid, ResourceIf::RealKey::Class::TRXID};
     trx->write(key, val, false, ResourceIf::Category::TRXLOG);
     trx->commit();
 }

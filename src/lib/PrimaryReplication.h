@@ -7,7 +7,7 @@
 #include "nsblast/util.h"
 #include "RocksDbResource.h"
 #include "GrpcPrimary.h"
-#include "GrpcFollow.h"
+//#include "GrpcFollow.h"
 #include "proto/nsblast.pb.h"
 
 namespace nsblast {

@@ -9,6 +9,9 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_serialize.hpp>
 #include <boost/endian/conversion.hpp>
+#include <boost/type_index.hpp>
+#include <boost/type_index/runtime_cast/register_runtime_class.hpp>
+
 
 
 #include "nsblast/DnsMessages.h"
@@ -16,7 +19,6 @@
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
     std::string newUuidStr();
-
 
     uint64_t getRandomNumber64();
     uint32_t getRandomNumber32();
