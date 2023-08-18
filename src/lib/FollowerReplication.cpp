@@ -45,7 +45,14 @@ void FollowerReplication::Agent::init()
         try {
             onTrx(update.trx());
             const auto id =  update.trx().id();
+
+            auto was_in_sync = parent_.is_in_sync_;
             parent_.is_in_sync_ = update.isinsync();
+
+            if (parent_.is_in_sync_ != was_in_sync) {
+                LOG_INFO << "Changed replication state to "
+                         << (parent_.is_in_sync_ ? "IN_SYNC" : "NOT_IN_SYNC");
+            }
 
             {
                 lock_guard lock{mutex_};

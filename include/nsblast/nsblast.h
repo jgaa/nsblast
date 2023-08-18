@@ -59,6 +59,9 @@ struct Config {
     /// Seconds for replication keepalive message
     size_t cluster_keepalive_timer = 60;
 
+    /// Seconds from a request until a reply must occur before the delay is treated as a connection problem
+    size_t cluster_keepalive_timeout = 120;
+
 
     /*! Role of this server.
      *

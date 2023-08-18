@@ -21,8 +21,6 @@ GrpcFollow::GrpcFollow(Server &server)
 
 void GrpcFollow::start()
 {
-//    LOG_INFO_N << "Starting up gRPC follower framework.";
-    //    restart();
 }
 
 void GrpcFollow::stop()
@@ -46,6 +44,7 @@ void GrpcFollow::createSyncClient(due_t due, on_update_t onUpdate)
     on_update_ = std::move(onUpdate);
 
     startFollower();
+    scheduleNextTimer();
 }
 
 void GrpcFollow::scheduleNextTimer()
@@ -54,6 +53,10 @@ void GrpcFollow::scheduleNextTimer()
     timer_.async_wait([this](boost::system::error_code ec) {
         if (!ec.failed()) {
             onTimer();
+        }
+
+        if (!stopped_) {
+            scheduleNextTimer();
         }
     });
 }
@@ -125,6 +128,16 @@ void GrpcFollow::SyncFromServer::ping()
         LOG_TRACE_N << "Repeating the last request as a keep-alive message.";
         writeIf();
     }
+
+    const auto max_response_time = chrono::steady_clock::now()
+                         + chrono::seconds{grpc_.server().config().cluster_keepalive_timeout};
+    if (grpc_.last_contact_.load() > max_response_time) {
+        LOG_INFO_N << "We may have lost connectivity with the primary (cluster_keepalive_timeout="
+                   << grpc_.server().config().cluster_keepalive_timeout
+                   << " seconds).";
+        static const grpc::nsblast::pb::SyncUpdate not_in_sync;
+        callOnUpdate(not_in_sync);
+    }
 }
 
 void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
@@ -136,7 +149,8 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
         stop();
     }
 
-    grpc_.on_update_(update_);
+    grpc_.last_contact_ = chrono::steady_clock::now();
+    callOnUpdate(update_);
     update_.Clear();
     StartRead(&update_);
 }
@@ -170,6 +184,13 @@ void GrpcFollow::onTimer()
             startFollower();
         }
     }
+}
+
+void GrpcFollow::SyncFromServer::callOnUpdate(const grpc::nsblast::pb::SyncUpdate &update)
+{
+    assert(grpc_.on_update_);
+    lock_guard lock{update_mutex_};
+    grpc_.on_update_(update);
 }
 
 

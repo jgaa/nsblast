@@ -55,6 +55,8 @@ public:
         /*! Callback event when the RPC is complete */
         void OnDone(const grpc::Status& s) override;
 
+        void callOnUpdate(const grpc::nsblast::pb::SyncUpdate& update);
+
         GrpcFollow& grpc_;
         grpc::ClientContext ctx_;
         std::shared_ptr<grpc::Channel> channel_;
@@ -65,6 +67,7 @@ public:
         std::shared_ptr<SyncFromServer> self_;
         std::atomic_bool done_{false};
         std::mutex mutex_;
+        std::mutex update_mutex_;
     };
 
     void start();
@@ -87,6 +90,7 @@ private:
     void onTimer();
 
     Server& server_;
+    std::atomic<std::chrono::steady_clock::time_point> last_contact_ = {};
     on_update_t on_update_;
     due_t due_;
     boost::asio::deadline_timer timer_{server_.ctx()};
