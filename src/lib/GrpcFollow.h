@@ -28,9 +28,7 @@ public:
                          , grpc::ClientBidiReactor<grpc::nsblast::pb::SyncRequest,
                                                    grpc::nsblast::pb::SyncUpdate> {
     public:
-        SyncFromServer(GrpcFollow& grpc, const std::string& address,
-                       due_t due, on_update_t onUpdate);
-
+        SyncFromServer(GrpcFollow& grpc, const std::string& address);
 
         auto& uuid() const noexcept {
             return uuid_;
@@ -40,6 +38,10 @@ public:
         void stop();
         void timeout();
         void writeIf();
+        void ping();
+        bool isDone() const noexcept {
+            return done_;
+        }
 
     private:
         /*! Callback event when a write operation is complete */
@@ -48,12 +50,7 @@ public:
         }
 
         /*! Callback event when a read operation is complete */
-        void OnReadDone(bool ok) override {
-            if (ok) {
-                //incoming_(in_);
-                //read();
-            }
-        }
+        void OnReadDone(bool ok) override;
 
         /*! Callback event when the RPC is complete */
         void OnDone(const grpc::Status& s) override;
@@ -62,13 +59,12 @@ public:
         grpc::ClientContext ctx_;
         std::shared_ptr<grpc::Channel> channel_;
         const boost::uuids::uuid uuid_ = newUuid();
-        due_t due_;
-        on_update_t on_update_;
         grpc::nsblast::pb::SyncRequest req_;
         grpc::nsblast::pb::SyncUpdate update_;
         bool can_write_ = false;
-        bool done_ = false;
         std::shared_ptr<SyncFromServer> self_;
+        std::atomic_bool done_{false};
+        std::mutex mutex_;
     };
 
     void start();
@@ -78,12 +74,25 @@ public:
         return server_;
     }
 
-    std::shared_ptr<SyncFromServer> createSyncClient(due_t due, on_update_t onUpdate);
+    void createSyncClient(due_t due, on_update_t onUpdate);
+
+    const auto& agent() {
+        return follower_;
+    }
+
 
 private:
+    void scheduleNextTimer();
+    void startFollower();
+    void onTimer();
+
     Server& server_;
+    on_update_t on_update_;
+    due_t due_;
+    boost::asio::deadline_timer timer_{server_.ctx()};
     std::unique_ptr<grpc::nsblast::pb::NsblastSvc::Stub> stub_;
     std::shared_ptr<SyncFromServer> follower_;
+    bool stopped_ = true;
     //std::optional<std::chrono::steady_clock::time_point> due_for_update_;
 };
 

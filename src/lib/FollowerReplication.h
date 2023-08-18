@@ -49,6 +49,12 @@ public:
 
     FollowerReplication(Server& server);
 
+
+    /*! Tells if the follower is in sync with the primary */
+    bool isInSync() const noexcept {
+        return is_in_sync_;
+    }
+
     void start();
 
     auto& server() {
@@ -58,6 +64,7 @@ public:
 private:
 
     Server& server_;
+    bool is_in_sync_ = false;
     uint64_t last_trxid_ = 0;
     std::shared_ptr<Agent> primary_agent_;
     boost::asio::deadline_timer timer_{server_.ctx()};

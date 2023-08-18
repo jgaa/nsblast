@@ -56,6 +56,9 @@ struct Config {
     /// Milliseconds housekeeping interval in the replication engine.
     size_t cluster_replication_housekeeping_timer_ = 1000;
 
+    /// Seconds for replication keepalive message
+    size_t cluster_keepalive_timer = 60;
+
 
     /*! Role of this server.
      *

@@ -45,6 +45,8 @@ void FollowerReplication::Agent::init()
         try {
             onTrx(update.trx());
             const auto id =  update.trx().id();
+            parent_.is_in_sync_ = update.isinsync();
+
             {
                 lock_guard lock{mutex_};
                 current_trxid_ = id;
