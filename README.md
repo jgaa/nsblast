@@ -24,7 +24,14 @@ So, when I started on nsblast, I had a few requirements:
 # Status
 Under initial development.
 
-MVP expected by spring 2023.
+MVP expected late 2023. 
+
+The POC requirements has grown significantly in the last months, as
+I want the server to be cluster ready (one primary, any number of followers)
+using direct database replication via a replication log sent via streaming gRPC
+connections). I also want backup and restore and some other mature features ready
+before I deploy the server to productin myself.
+
 
 DNSSEC will not be implemented in the MVP, but if people need it, it will follow soon.
 

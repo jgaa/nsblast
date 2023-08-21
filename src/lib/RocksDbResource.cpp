@@ -365,7 +365,7 @@ void RocksDbResource::Transaction::handleTrxLog()
         trxlog_->set_node(owner_.config_.node_name);
         trxlog_->set_uuid(uuid().begin(), uuid().size());
         trxlog_->set_time(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::utc_clock::now().time_since_epoch()).count());
+            std::chrono::steady_clock::now().time_since_epoch()).count());
 
         // The ordering may not be exactely right, as we can't control the
         // order of transactions execution without serializing them, but we can assume that
