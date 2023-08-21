@@ -1,3 +1,5 @@
+
+#include <format>
 #include "gtest/gtest.h"
 
 #include "TmpDb.h"
@@ -34,7 +36,7 @@ public:
 
     // SyncClientInterface interface
     bool enqueue(GrpcPrimary::update_t update) {
-        if (queueUsed() + 1 >= queue_limit) {
+        if (queueUsed() >= queue_limit) {
             return false; // full
         }
 
@@ -47,7 +49,7 @@ public:
     }
 
     size_t queueUsed() const noexcept {
-        return updates.size();
+        return num_enqueued;
     }
 
     boost::uuids::uuid uuid() const noexcept {
@@ -97,6 +99,7 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
         // Get it going
         auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
         auto future = agent.getTestFuture();
+        EXPECT_TRUE(replication_agent->isCatchingUp());
         replication_agent->onTrxId(0);
 
         // Wait for the agent to catch up and switch to streaming mode.
@@ -121,6 +124,75 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
         EXPECT_EQ(client->queueUsed(), 1);
         EXPECT_TRUE(client->updates.back()->isinsync());
         EXPECT_EQ(client->updates.front()->trx().id(), 1);
+    }
+    ms.stop();
+}
+
+TEST(ReplicationPrimary, NewAgentWithBacklog) {
+
+    MockServer ms;
+    ms->config().cluster_role = "primary";
+    ms.StartReplication();
+    ms.startIoThreads();
+
+    {
+        auto client = make_shared<MockSyncClient>();
+        // Add enough transactions to the backlog that it will fill the
+        // queue when an agent starts iterating.
+
+
+        // Start by adding a zone. This adds one transaction to the transaction backlog.
+        auto zone = "example.com"s;
+        ms->createTestZone(zone);
+
+        // Add more transactions to the replication back-log
+        for(auto i = 0; i < client->queue_limit + 1; ++i) {
+            auto alias = format("test{}.{}", i, zone);
+            StorageBuilder sb;
+            sb.createCname(alias, 1234, zone);
+            sb.setZoneLen(zone.size());
+            sb.finish();
+
+            auto tx = ms->resource().transaction();
+            tx->write({alias, key_class_t::ENTRY}, sb.buffer(), true);
+            tx->commit();
+        }
+
+        EXPECT_EQ(client->queueUsed(), 0);
+
+        auto replication_agent = ms.primaryReplication().addAgent(client);
+        // Get it going
+        auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
+        EXPECT_TRUE(replication_agent->isCatchingUp());
+
+        // Start the agent
+        replication_agent->onTrxId(0);
+
+        // Now, wait for the agent to consume the replication backlog until the queue is full.
+        auto future = client->returnWhen([](MockSyncClient& c) {
+            LOG_TRACE << format("c.num_enqueued={}, c.queue_limit={}",
+                                c.num_enqueued, c.queue_limit);
+            return c.num_enqueued == c.queue_limit;
+        });
+
+        EXPECT_EQ(future.wait_for(10s), std::future_status::ready);
+
+        // We should still not have switched to streaming as the queue should be full
+        // before the entire backlog is processed.
+        EXPECT_TRUE(replication_agent->isCatchingUp());
+
+        future = agent.getTestFuture(); // will trigger when the agent switch to streaming
+
+        // simulate a flush
+        client->num_enqueued = 0;
+        agent.onQueueIsEmpty();
+
+        // Wait for the agent to catch up and switch to streaming mode.
+        EXPECT_EQ(future.wait_for(10s), std::future_status::ready);
+        EXPECT_TRUE(replication_agent->isStreaming());
+        EXPECT_EQ(client->queueUsed(), 2);
+        // All the transactions we have added are from storage, and their insync flag is false.
+        EXPECT_FALSE(client->updates.back()->isinsync());
     }
     ms.stop();
 }

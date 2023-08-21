@@ -145,6 +145,7 @@ PrimaryReplication::Agent::Agent(PrimaryReplication& parent,
                                           const std::shared_ptr<GrpcPrimary::SyncClientInterface>& client)
     : uuid_{client->uuid()}
     , client_{client}, parent_{parent}
+    , db_sync_{parent.server().ctx()}
 {
 
 }
@@ -156,7 +157,7 @@ void PrimaryReplication::Agent::iterateDb()
     const ResourceIf::RealKey key{last_enqueued_trxid_, ResourceIf::RealKey::Class::TRXID};
     bool queue_was_filled = false;
 
-    auto fn = [this, queue_was_filled](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+    auto fn = [this, &queue_was_filled](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
         auto update = make_shared<grpc::nsblast::pb::SyncUpdate>();
         update->set_isinsync(false); // We are iterating, so not in sync (streaming).
         auto mtrx = update->mutable_trx();
@@ -170,9 +171,9 @@ void PrimaryReplication::Agent::iterateDb()
             if (result) {
                 last_enqueued_trxid_ = trx_id;
                 return true;
-            } else {
-                queue_was_filled = true;
             }
+
+            queue_was_filled = true;
         }
         return false;
     };
@@ -252,27 +253,30 @@ void PrimaryReplication::Agent::syncLater()
 {
     assert(!mutex_.try_lock() && "The lock must me held");
 
-    if (state_ == State::ITERATING_DB && !is_syncing_) {
-        is_syncing_ = true;
-
-        // We must return immediately, so schedule a follow-up
-        // on a worker-thread.
-        parent_.server().ctx().post([w=weak_from_this()]{
-            if (auto self = w.lock()) {
-                try {
+    // We must return immediately, so schedule a follow-up
+    // on a worker-thread.
+    //
+    // We serialize this processing with a strand to avoid
+    // a race-condition where it get called from another thread
+    // just after finishing iterateDb() but before is_syncing_
+    // is reset.
+    db_sync_.post([w=weak_from_this()]{
+        if (auto self = w.lock()) {
+            try {
+                if (self->state_ == State::ITERATING_DB && !self->is_syncing_) {
                     self->iterateDb();
 
                     lock_guard lock{self->mutex_};
                     self->is_syncing_ = false;
-                } catch (const exception& ex) {
-                    LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
-                              << " caught exception from iterateDb() on "
-                              << self->uuid()
-                              << ": " << ex.what();
                 }
+            } catch (const exception& ex) {
+                LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
+                          << " caught exception from iterateDb() on "
+                          << self->uuid()
+                          << ": " << ex.what();
             }
-        });
-    }
+        }
+    });
 }
 
 boost::uuids::uuid PrimaryReplication::Agent::uuid() const noexcept

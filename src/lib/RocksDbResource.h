@@ -60,6 +60,10 @@ public:
             if (it->Valid()) {
                 // Skip the 'last' key.
                 it->Next();
+            } else {
+                // The key pointed potentially to an item prior to the first key ion the data.
+                // Fall back to searching for the first key.
+                it->SeekToFirst();
             }
 
             for(; it->Valid(); it->Next()) {
@@ -72,6 +76,11 @@ public:
                     return;
                 }
             }
+
+//            assert(!it->Valid());
+//            // Signal that we are EOF
+//            static const rocksdb::Slice empty_slice = {};
+//            fn({RealKey::Binary{empty_slice}}, empty_slice);
         }
 
         template <typename fnT>

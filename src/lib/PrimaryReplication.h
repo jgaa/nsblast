@@ -96,11 +96,11 @@ public:
             return state() == State::DONE;
         }
 
-    private:
         // ReplicationInterface interface
         void onTrxId(uint64_t trxId) override ;
         void onQueueIsEmpty() override;
         void onDone() override;
+    private:
 
         // Expects lock to be held
         void syncLater();
@@ -114,6 +114,7 @@ public:
         std::atomic_uint64_t last_enqueued_trxid_{0};
         std::atomic_uint64_t last_confirmed_trx_{0};
         std::mutex mutex_;
+        boost::asio::io_context::strand db_sync_;
         std::queue<std::promise<void>> test_promises_;
     };
 
