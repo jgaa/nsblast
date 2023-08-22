@@ -1,7 +1,5 @@
 
-#if __has_include(<format>)
-#   include <format>
-#endif
+#include <format>
 
 #include "gtest/gtest.h"
 
@@ -150,11 +148,7 @@ TEST(ReplicationPrimary, NewAgentWithBacklog) {
 
         // Add more transactions to the replication back-log
         for(auto i = 0; i < client->queue_limit + 1; ++i) {
-#ifdef __cpp_lib_format
             auto alias = format("test{}.{}", i, zone);
-#else
-            auto alias = "test"s + to_string(i) + "." + zone;
-#endif
             StorageBuilder sb;
             sb.createCname(alias, 1234, zone);
             sb.setZoneLen(zone.size());
@@ -177,10 +171,8 @@ TEST(ReplicationPrimary, NewAgentWithBacklog) {
 
         // Now, wait for the agent to consume the replication backlog until the queue is full.
         auto future = client->returnWhen([](MockSyncClient& c) {
-#ifdef __cpp_lib_format
             LOG_TRACE << format("c.num_enqueued={}, c.queue_limit={}",
                                 c.num_enqueued, c.queue_limit);
-#endif
             return c.num_enqueued == c.queue_limit;
         });
 

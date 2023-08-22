@@ -1,4 +1,4 @@
-FROM debian:bookworm
+FROM ubuntu:lunar
 LABEL maintainer="jgaa@jgaa.com"
 
 ENV USER_UID=999 USER_NAME=nsblast
