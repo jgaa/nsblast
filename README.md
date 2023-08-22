@@ -28,10 +28,9 @@ MVP expected late 2023.
 
 The POC requirements has grown significantly in the last months, as
 I want the server to be cluster ready (one primary, any number of followers)
-using direct database replication via a replication log sent via streaming gRPC
-connections). I also want backup and restore and some other mature features ready
-before I deploy the server to productin myself.
-
+using direct database replication via streaming gRPC. 
+I also want backup and restore and some other mature features ready
+before I deploy the server to production myself.
 
 DNSSEC will not be implemented in the MVP, but if people need it, it will follow soon.
 
@@ -89,6 +88,15 @@ Building:
 ```sh
 ./build-docker-image.sh
 ```
+
+If you want [logbt](https://github.com/mapbox/logbt) to be used to dump backtraces from crashes in the containers log:
+```
+./build-docker-image.sh --logbt
+
+# With logbt, you need to set the coredump pattern, for example like this
+sudo bash -c "echo '/tmp/logbt-coredumps/core.%p.%E' > /proc/sys/kernel/core_pattern"
+```
+
 
 Starting:
 The example use the local docker IP. You can substitute that with a machines real IP.
