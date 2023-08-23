@@ -215,9 +215,7 @@ void Server::startReplicationAndRpc()
 
         // In the primary, we enable the transaction callback for the database
         // and link committed transactions to the replication framework.
-        db().setTransactionCallback([this](PrimaryReplication::transaction_t && trx) {
-            primaryReplication().onTransaction(std::move(trx));
-        });
+        startForwardingTransactionsToReplication();
     }
 
     if (isReplicationFollower()) {
@@ -267,6 +265,13 @@ RocksDbResource &Server::db() const noexcept
 {
     assert(resource_);
     return dynamic_cast<lib::RocksDbResource&>(*resource_);
+}
+
+void Server::startForwardingTransactionsToReplication()
+{
+    db().setTransactionCallback([this](PrimaryReplication::transaction_t && trx) {
+        primaryReplication().onTransaction(std::move(trx));
+    });
 }
 
 uint32_t Server::getNewId()

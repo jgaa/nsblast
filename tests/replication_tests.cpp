@@ -198,6 +198,54 @@ TEST(ReplicationPrimary, NewAgentWithBacklog) {
     ms.stop();
 }
 
+TEST(ReplicationPrimary, NewAgentFillBacklog) {
+
+    MockServer ms;
+    ms->config().cluster_role = "primary";
+    ms.StartReplication();
+    ms.startForwardingTransactionsToReplication();
+    ms.startIoThreads();
+
+    {
+        auto client = make_shared<MockSyncClient>();
+        EXPECT_EQ(client->queueUsed(), 0);
+
+        auto replication_agent = ms.primaryReplication().addAgent(client);
+        // Get it going
+        auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
+        auto future = agent.getTestFuture();
+        EXPECT_TRUE(replication_agent->isCatchingUp());
+        replication_agent->onTrxId(0);
+
+        // Wait for the agent to catch up and switch to streaming mode.
+        EXPECT_EQ(future.wait_for(10s), std::future_status::ready);
+        EXPECT_TRUE(replication_agent->isStreaming());
+
+        // Create enough transactions to fill the backlog
+        // Start by adding a zone. This adds one transaction to the transaction backlog.
+        auto zone = "example.com"s;
+        ms->createTestZone(zone);
+
+        // Add more transactions to the replication back-log
+        for(auto i = 0; i < client->queue_limit + 1; ++i) {
+            auto alias = format("test{}.{}", i, zone);
+            StorageBuilder sb;
+            sb.createCname(alias, 1234, zone);
+            sb.setZoneLen(zone.size());
+            sb.finish();
+
+            auto tx = ms->resource().transaction();
+            tx->write({alias, key_class_t::ENTRY}, sb.buffer(), true);
+            tx->commit();
+        }
+
+        // Wait for the agent to switch to db mode.
+        EXPECT_EQ(future.wait_for(10s), std::future_status::ready);
+        EXPECT_TRUE(replication_agent->isCatchingUp());
+    }
+    ms.stop();
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

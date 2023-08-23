@@ -159,6 +159,8 @@ public:
          return role_ == Role::CLUSTER_FOLLOWER;
     }
 
+    void startForwardingTransactionsToReplication();
+
 #endif
 
     /*! Get an unused ID for a request */

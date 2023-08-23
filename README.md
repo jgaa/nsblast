@@ -58,7 +58,9 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 # Building
 The project use CMake.
 
-It require boost version 1.81 or newer.
+It uses C++ 20 features and require g++-13 / clang-15 or newer.
+
+It require boost version 1.82 or newer.
 
 Other dependencies that are handled automatically by CMake:
 
