@@ -41,17 +41,17 @@ void GrpcPrimary::start()
 void GrpcPrimary::stop()
 {
     if (svc_) {
-        LOG_INFO << "Grpc::stop - Shutting down gRPC service.";
+        LOG_INFO_N << "Shutting down gRPC service.";
         svc_->Shutdown();
 
-        LOG_DEBUG << "Waiting for gRPC to stop...";
+        LOG_DEBUG_N << "Waiting for gRPC to stop...";
         svc_->Wait();
-        LOG_DEBUG << "gRPC has stopped.";
+        LOG_DEBUG_N << "gRPC has stopped.";
         svc_.reset();
     }
 
     if (impl_) {
-        LOG_DEBUG << "Grpc::stop - Shutting down gRPC impl handlers.";
+        LOG_DEBUG_N << "Shutting down gRPC impl handlers.";
         impl_.reset();
     }
 }
@@ -68,7 +68,7 @@ std::shared_ptr<GrpcPrimary::SyncClient> GrpcPrimary::get(const boost::uuids::uu
 
 void GrpcPrimary::done(SyncClient &client)
 {
-    LOG_TRACE << "Grpc::done - Removing client " << client.uuid();
+    LOG_TRACE_N << "Removing client " << client.uuid();
     lock_guard lock{mutex_};
     clients_.erase(client.uuid());
 }
@@ -76,7 +76,7 @@ void GrpcPrimary::done(SyncClient &client)
 GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::createSyncClient(grpc::CallbackServerContext *context)
 {
     auto client = make_shared<SyncClient>(*this, *context);
-    LOG_INFO << "Grpc::addSyncClient() - Created gRPC Sync client instance "
+    LOG_INFO_N << "Created gRPC Sync client instance "
              << client->uuid()
              << " for RPC from peer " << context->peer();
 
@@ -98,7 +98,7 @@ bool GrpcPrimary::SyncClient::enqueue(update_t update)
 {
     lock_guard lock{mutex_};
     if (is_done_) {
-        LOG_TRACE << "Grpc::Client::enqueue = - Client " << uuid()
+        LOG_TRACE_N << "Client " << uuid()
                   << " is inactive and cannot add updates at this time.";
         return false;
     }
@@ -107,7 +107,7 @@ bool GrpcPrimary::SyncClient::enqueue(update_t update)
     flush();
 
     if (pending_.size() > grpc_.owner_.config().cluster_repl_agent_max_queue_size) {
-        LOG_TRACE << "Grpc::Client::enqueue = - Client " << uuid()
+        LOG_TRACE_N << "Client " << uuid()
                   << " bumped into the queue limit size of "
                   <<  grpc_.owner_.config().cluster_repl_agent_max_queue_size;
         return false;
@@ -118,8 +118,7 @@ bool GrpcPrimary::SyncClient::enqueue(update_t update)
 
 void GrpcPrimary::SyncClient::OnDone()
 {
-    LOG_DEBUG << "GrpcPrimary::SyncClient::OnDone: RPC request "
-              << uuid() << " is done.";
+    LOG_DEBUG_N << "RPC request " << uuid() << " is done.";
 
     if (replication_) {
         replication_->onDone();
@@ -131,7 +130,7 @@ void GrpcPrimary::SyncClient::OnDone()
 void GrpcPrimary::SyncClient::OnReadDone(bool ok)
 {
     if (!ok) [[unlikely]] {
-        LOG_DEBUG << "SyncClient::OnReadDone RPC read failed for " << uuid()
+        LOG_DEBUG_N << "RPC read failed for " << uuid()
                   << ". This RPC request is done.";
 
         std::lock_guard lock{mutex_};
@@ -178,6 +177,7 @@ void GrpcPrimary::SyncClient::flush()
 
 GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::NsblastSvcImpl::Sync(grpc::CallbackServerContext *context)
 {
+    LOG_TRACE_N << "Was called from peer: " << context->peer();
     return grpc_.createSyncClient(context);
 }
 

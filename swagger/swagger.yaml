@@ -57,7 +57,7 @@ paths:
         schema:
           $ref: "#/definitions/Entry"
       responses:
-        "200":
+        "201":
           description: "Success"
           content:
             application/json:

@@ -45,7 +45,7 @@ struct Config {
     ///@{
 
     /// Address (IP ':' port) to the gRPC service used for cluster-sync
-    std::string cluster_server_addr = "0.0.0.0:101234";
+    std::string cluster_server_addr = "0.0.0.0:10123";
 
     /// Max transaction queue size for replication agents (server to slave)
     size_t cluster_repl_agent_max_queue_size = 128;

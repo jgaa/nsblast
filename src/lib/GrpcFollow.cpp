@@ -72,6 +72,9 @@ GrpcFollow::SyncFromServer::SyncFromServer(GrpcFollow &grpc,
         LOG_WARN << "Failed to initialize channel. Is the server address even valid?";
         throw std::runtime_error{"Failed to initialize channel"};
     }
+
+    stub_ = grpc::nsblast::pb::NsblastSvc::NewStub(channel_);
+    assert(stub_);
 }
 
 void GrpcFollow::SyncFromServer::start()
@@ -80,10 +83,12 @@ void GrpcFollow::SyncFromServer::start()
     self_ = shared_from_this();
 
     LOG_TRACE_N << "Starting gRPC async callback for Sync()";
-    grpc_.stub_->async()->Sync(&ctx_, this);
+    assert(stub_);
+    stub_->async()->Sync(&ctx_, this);
     can_write_ = true;
     writeIf();
     StartRead(&update_);
+    StartCall();
 }
 
 void GrpcFollow::SyncFromServer::stop()

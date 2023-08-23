@@ -171,14 +171,17 @@ void Server::startAuth()
 }
 
 #ifdef NSBLAST_CLUSTER
-void Server::StartReplication()
+void Server::initReplication()
 {
     if (config_.cluster_role == "primary") {
         role_ = Role::CLUSTER_PRIMARY;
     } else if (config_.cluster_role == "follower") {
         role_ = Role::CLUSTER_FOLLOWER;
     }
+}
 
+void Server::StartReplication()
+{
     LOG_INFO << "This instances cluster-role is " << role();
 
     if (isPrimaryReplicationServer()) {
@@ -208,6 +211,8 @@ void Server::startGrpcService()
 
 void Server::startReplicationAndRpc()
 {
+    initReplication();
+
     if (isPrimaryReplicationServer()) {
         StartReplication();
         grpc_primary_ = make_shared<GrpcPrimary>(*this);
@@ -266,6 +271,7 @@ RocksDbResource &Server::db() const noexcept
     assert(resource_);
     return dynamic_cast<lib::RocksDbResource&>(*resource_);
 }
+
 
 void Server::startForwardingTransactionsToReplication()
 {

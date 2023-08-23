@@ -1121,6 +1121,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.target);
     auto exists = trx->zoneExists(lowercaseFqdn);
+    int rcode = 200;
 
     switch(req.type) {
     case Request::Type::POST: {
@@ -1151,6 +1152,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         }
 
         server().auth().addZone(*trx, lowercaseFqdn, session->tenant());
+        rcode = 201;
 
     } break;
     case Request::Type::DELETE: {
@@ -1173,7 +1175,13 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     }
 
     trx->commit();
-    return {};
+    const auto repl_id = trx->replicationId();
+
+    if (auto waited = waitForReplication(req, repl_id)) {
+        return makeReplyWithReplStatus(200, *waited);
+    }
+
+    return {rcode, "OK"};
 }
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
@@ -1554,9 +1562,11 @@ std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint6
                 return false;
             }
 
+            LOG_TRACE_N << "Waiting for replication up to " << seconds << " seconds...";
             boost::system::error_code ec;
             server().primaryReplication().waiter().wait(
                 trxid, chrono::seconds{seconds}, (*req.yield)[ec]);
+            LOG_TRACE_N << "Done waiting for replication. wait status: " << ec;
             return !ec.failed();
         }
     }

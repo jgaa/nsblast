@@ -60,6 +60,7 @@ public:
         GrpcFollow& grpc_;
         grpc::ClientContext ctx_;
         std::shared_ptr<grpc::Channel> channel_;
+        std::unique_ptr<grpc::nsblast::pb::NsblastSvc::Stub> stub_;
         const boost::uuids::uuid uuid_ = newUuid();
         grpc::nsblast::pb::SyncRequest req_;
         grpc::nsblast::pb::SyncUpdate update_;
@@ -94,7 +95,6 @@ private:
     on_update_t on_update_;
     due_t due_;
     boost::asio::deadline_timer timer_{server_.ctx()};
-    std::unique_ptr<grpc::nsblast::pb::NsblastSvc::Stub> stub_;
     std::shared_ptr<SyncFromServer> follower_;
     bool stopped_ = true;
     //std::optional<std::chrono::steady_clock::time_point> due_for_update_;

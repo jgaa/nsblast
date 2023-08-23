@@ -131,6 +131,8 @@ public:
     }
 
 #ifdef NSBLAST_CLUSTER
+    void initReplication();
+
     auto& primaryReplication() noexcept {
         assert(primary_replication_);
         return *primary_replication_;

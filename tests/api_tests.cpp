@@ -655,7 +655,7 @@ TEST(ApiRequest, onZoneOk) {
 
         auto res = api.onZone(req, parsed);
 
-        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(res.code, 201);
     }
 }
 
@@ -672,7 +672,7 @@ TEST(ApiRequest, onZoneExists) {
         auto parsed = api.parse(req);
 
         auto res = api.onZone(req, parsed);
-        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(res.code, 201);
 
         res = api.onZone(req, parsed);
         EXPECT_EQ(res.code, 409);
