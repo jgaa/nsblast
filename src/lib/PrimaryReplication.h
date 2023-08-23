@@ -73,9 +73,11 @@ public:
          */
         void onTransaction(uint64_t prevTrxId, const GrpcPrimary::update_t& update);
 
-        /*! Return a future that will be signaled when the agent is idle (streaming or done)
+        /*! Return a future that will be signaled when the state change
+         *
+         *  This is primarily to help the unit tests.
          */
-        auto getTestFuture() {
+        auto getFutureWhenStateChange() {
             std::lock_guard lock{mutex_};
             return test_promises_.emplace().get_future();
         }

@@ -99,7 +99,7 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
         auto replication_agent = ms.primaryReplication().addAgent(client);
         // Get it going
         auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
-        auto future = agent.getTestFuture();
+        auto future = agent.getFutureWhenStateChange();
         EXPECT_TRUE(replication_agent->isCatchingUp());
         replication_agent->onTrxId(0);
 
@@ -182,7 +182,7 @@ TEST(ReplicationPrimary, NewAgentWithBacklog) {
         // before the entire backlog is processed.
         EXPECT_TRUE(replication_agent->isCatchingUp());
 
-        future = agent.getTestFuture(); // will trigger when the agent switch to streaming
+        future = agent.getFutureWhenStateChange(); // will trigger when the agent switch to streaming
 
         // simulate a flush
         client->num_enqueued = 0;
@@ -213,7 +213,7 @@ TEST(ReplicationPrimary, NewAgentFillBacklog) {
         auto replication_agent = ms.primaryReplication().addAgent(client);
         // Get it going
         auto& agent = reinterpret_cast<PrimaryReplication::Agent &>(*replication_agent);
-        auto future = agent.getTestFuture();
+        auto future = agent.getFutureWhenStateChange();
         EXPECT_TRUE(replication_agent->isCatchingUp());
         replication_agent->onTrxId(0);
 
@@ -223,6 +223,7 @@ TEST(ReplicationPrimary, NewAgentFillBacklog) {
 
         // Create enough transactions to fill the backlog
         // Start by adding a zone. This adds one transaction to the transaction backlog.
+        future = agent.getFutureWhenStateChange();
         auto zone = "example.com"s;
         ms->createTestZone(zone);
 

@@ -208,15 +208,12 @@ void PrimaryReplication::Agent::setState(State state, bool doLock)
         old = state_;
         state_ = state;
 
-        if (state == State::DONE || state == State::STREAMING) {
-
-            // Notify callers that we are idle.
-            // This is primarily for unit-tests to avoid abritrary timouts
-            // to wait for the agent to catch up.
-            while(!test_promises_.empty()) {
-                test_promises_.front().set_value();
-                test_promises_.pop();
-            }
+        // Notify callers that we are changing state.
+        // This is primarily for unit-tests to avoid abritrary timouts
+        // to wait for the agent to catch up.
+        while(!test_promises_.empty()) {
+            test_promises_.front().set_value();
+            test_promises_.pop();
         }
     }
     LOG_DEBUG << *this << " setState Changed state from "
