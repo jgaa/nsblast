@@ -22,7 +22,7 @@ using ack_timer_t = AckTimer<boost::asio::io_context, std::function<void()>>;
  */
 class GrpcFollow {
 public:
-    using due_t = std::function<std::optional<uint64_t>()>; // Called to check if we should send an update
+    using get_current_trxid_t = std::function<uint64_t()>; // Called to check if we should send an update
     using on_update_t = std::function<void(const grpc::nsblast::pb::SyncUpdate& update)>;
 
     GrpcFollow(Server& server);
@@ -39,7 +39,7 @@ public:
 
         void start();
         void stop();
-        bool writeIf(bool yesYouCan = false);
+        bool writeIf();
         void ping();
         bool isDone() const noexcept {
             return done_;
@@ -82,7 +82,7 @@ public:
         return server_;
     }
 
-    void createSyncClient(due_t due, on_update_t onUpdate);
+    void createSyncClient(get_current_trxid_t due, on_update_t onUpdate);
 
     const auto& agent() {
         return follower_;
@@ -97,7 +97,7 @@ private:
     Server& server_;
     std::atomic<std::chrono::steady_clock::time_point> last_contact_ = {};
     on_update_t on_update_;
-    due_t due_;
+    get_current_trxid_t get_ack_t;
     boost::asio::deadline_timer timer_{server_.ctx()};
     std::shared_ptr<SyncFromServer> follower_;
     bool stopped_ = true;

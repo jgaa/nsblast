@@ -43,7 +43,6 @@ public:
         std::weak_ptr<GrpcFollow::SyncFromServer> grpc_sync_;
         uint64_t current_trxid_ = 0; // Last transaction id received from the primary
         FollowerReplication& parent_;
-        std::optional<std::chrono::steady_clock::time_point> due_;
         mutable std::mutex mutex_;
     };
 

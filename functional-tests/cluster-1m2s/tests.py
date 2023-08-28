@@ -32,7 +32,8 @@ def global_data():
             'master-url': 'http://127.0.0.1:8080/api/v1',
             'slave1-url': 'http://127.0.0.1:8081/api/v1',
             'slave2-url': 'http://127.0.0.1:8082/api/v1',
-            'pass': password
+            'pass': password,
+            'num-zones': 1000
            }
 
 
@@ -241,4 +242,157 @@ def test_zero_ttl(global_data):
     dns = global_data['master-dns']
     answer = dns.resolve('zero.example.com', 'A')
     assert answer.rrset.ttl == 0
+
+def test_1000_zones(global_data):
+
+    zone = """
+      ttl: 1000
+      soa:
+        refresh: 2000
+        retry: 3000
+        expire: 4000
+        minimum: 5000
+        mname: master
+        rname: hostmaster.example.com
+      ns:
+        - master
+        - slave1
+        - slave2
+      a:
+        - 127.0.0.1
+        - 127.0.0.2
+      mx:
+        - priority: 10
+          host: mail.example.com
+    """
+
+
+    for z in range(global_data['num-zones']):
+        name = "z{}-example.com".format(z)
+
+        print('Creating zone {}', name)
+        url = global_data['master-url'] + "/zone/{}".format(name)
+        body = yaml.load(zone, Loader=yaml.Loader)
+        r = requests.post(url, json=body, auth=('admin', global_data['pass']), params={'wait': 0})
+        print(r.text)
+        assert r.ok
+
+    # Create one more zone and wait for it to be replicated
+    name = "z{}-example.com".format("last")
+    print('Creating zone {}', name)
+    url = global_data['master-url'] + "/zone/{}".format(name)
+    body = yaml.load(zone, Loader=yaml.Loader)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
+    print(r.text)
+    assert r.ok
+
+def test_1000_zones_f1(global_data):
+    dns = global_data['slave1']
+
+    for z in range(global_data['num-zones']):
+        name = "z{}-example.com".format(z)
+        answer = dns.resolve(name, 'SOA')
+        assert answer.rrset.ttl == 1000
+
+def test_1000_zones_f2(global_data):
+    dns = global_data['slave2']
+
+    for z in range(global_data['num-zones']):
+        name = "z{}-example.com".format(z)
+        answer = dns.resolve(name, 'SOA')
+        assert answer.rrset.ttl == 1000
+
+def test_1000_zones_p(global_data):
+    dns = global_data['master-dns']
+
+    for z in range(global_data['num-zones']):
+        name = "z{}-example.com".format(z)
+        answer = dns.resolve(name, 'SOA')
+        assert answer.rrset.ttl == 1000
+
+def test_delete_rr_and_zone(global_data):
+
+    zone = """
+      ttl: 1000
+      soa:
+        refresh: 2000
+        retry: 3000
+        expire: 4000
+        minimum: 5000
+        mname: master
+        rname: hostmaster.example.com
+      ns:
+        - master
+        - slave1
+        - slave2
+      a:
+        - 127.0.0.1
+        - 127.0.0.2
+      mx:
+        - priority: 10
+          host: mail.example.com
+    """
+
+    name = "del-example.com"
+    print('Creating zone {}', name)
+    url = global_data['master-url'] + "/zone/{}".format(name)
+    body = yaml.load(zone, Loader=yaml.Loader)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
+    print(r.text)
+    assert r.ok
+
+    entry = """
+      a:
+        - 127.0.0.3
+        - 127.0.0.4
+    """
+
+    rrname = 'www.' + name
+
+    print('Creating {} A entry', rrname)
+    url = global_data['master-url'] + '/rr/' + rrname
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.post(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
+    print(r.text)
+    assert r.ok
+
+    global_data['master-dns'].resolve(name, 'NS')
+    global_data['slave1'].resolve(name, 'NS')
+    global_data['slave2'].resolve(name, 'NS')
+
+    global_data['master-dns'].resolve(rrname, 'A')
+    global_data['slave1'].resolve(rrname, 'A')
+    global_data['slave2'].resolve(rrname, 'A')
+
+    print('Deleting {} A entry', rrname)
+    url = global_data['master-url'] + '/rr/' + rrname
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.delete(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
+    print(r.text)
+    assert r.ok
+
+    with pytest.raises(Exception):
+        global_data['master-dns'].resolve(rrname, 'A')
+    with pytest.raises(Exception):
+        global_data['slave1'].resolve(rrname, 'A')
+    with pytest.raises(Exception):
+        global_data['slave2'].resolve(rrname, 'A')
+
+    global_data['master-dns'].resolve(name, 'SOA')
+    global_data['slave1'].resolve(name, 'SOA')
+    global_data['slave2'].resolve(name, 'SOA')
+
+    print('Deleting zone {} ', name)
+    url = global_data['master-url'] + '/zone/' + rrname
+    body = yaml.load(entry, Loader=yaml.Loader)
+    r = requests.delete(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
+    print(r.text)
+    assert r.ok
+
+    with pytest.raises(Exception):
+        global_data['master-dns'].resolve(name, 'SOA')
+    with pytest.raises(Exception):
+        global_data['slave1'].resolve(name, 'SOA')
+    with pytest.raises(Exception):
+        global_data['slave2'].resolve(name, 'SOA')
 

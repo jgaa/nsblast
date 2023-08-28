@@ -33,15 +33,15 @@ void GrpcFollow::stop()
     follower_.reset();
 }
 
-void GrpcFollow::createSyncClient(due_t due, on_update_t onUpdate)
+void GrpcFollow::createSyncClient(get_current_trxid_t due, on_update_t onUpdate)
 {
-    assert(!due_);
+    assert(!get_ack_t);
     assert(!on_update_);
 
     LOG_DEBUG << "GrpcFollow::createSyncClient - Setting up sync from primary: "
               << server().config().cluster_server_addr;
 
-    due_ = std::move(due);
+    get_ack_t = std::move(due);
     on_update_ = std::move(onUpdate);
 
     startFollower();
@@ -107,14 +107,9 @@ void GrpcFollow::SyncFromServer::stop()
 } // start
 
 
-bool GrpcFollow::SyncFromServer::writeIf(bool yesYouCan)
+bool GrpcFollow::SyncFromServer::writeIf()
 {
     lock_guard lock{mutex_};
-    if (yesYouCan && !can_write_) {
-        // Should have been in OnWriteDone, but I don't want to
-        // acqure the lock two times for each completed write.
-        can_write_ = true;
-    }
 
     if (can_write_) {
         if (done_) [[unlikely]] {
@@ -124,16 +119,13 @@ bool GrpcFollow::SyncFromServer::writeIf(bool yesYouCan)
             return false;
         }
 
-        if (auto ack = grpc_.due_()) {
-            req_.set_level(grpc::nsblast::pb::SyncLevel::ENTRIES);
-            req_.set_startafter(*ack);
-            can_write_ = false;
-            LOG_TRACE_N << "Asking for transactions from #" << *ack;
-            StartWrite(&req_);
-            return true; // We started a write operation wrote
-        } else {
-            LOG_TRACE_N << "grpc_.due_ returned nothing. Cannot write at this time.";
-        }
+        const auto ack = grpc_.get_ack_t();
+        req_.set_level(grpc::nsblast::pb::SyncLevel::ENTRIES);
+        req_.set_startafter(ack);
+        can_write_ = false;
+        LOG_TRACE_N << "Asking for transactions from #" << ack;
+        StartWrite(&req_);
+        return true; // We started a write operation wrote
     } else {
         LOG_TRACE_N << "I can't write right now. Waiting for a write opperation to complete.";
     }
@@ -145,7 +137,11 @@ void GrpcFollow::SyncFromServer::ping()
 {
     if (!done_) {
         LOG_TRACE_N << "Repeating the last request as a keep-alive message.";
-        writeIf();
+        if (!writeIf()) {
+            // We were onable to write.
+            // make sure there is a write later.
+            startAckTimer();
+        }
     }
 
     const auto max_response_time = chrono::steady_clock::now()
@@ -160,7 +156,8 @@ void GrpcFollow::SyncFromServer::ping()
 }
 
 void GrpcFollow::SyncFromServer::OnWriteDone(bool ok) {
-    writeIf(true);
+    lock_guard lock{mutex_};
+    can_write_ = true;
 }
 
 void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
@@ -203,7 +200,7 @@ void GrpcFollow::onTimer()
             }
 
             f->ping();
-        } else if (due_){
+        } else if (get_ack_t){
             // No follower, but createSyncClient has been called. Let's create a new instance.
             startFollower();
         }
@@ -223,7 +220,7 @@ void GrpcFollow::SyncFromServer::startAckTimer()
         return;
     }
 
-    LOG_TRACE_N << "Starting ACK timer";
+    LOG_TRACE_N << "Maybe starting ACK timer";
     ack_timer_.startIfIdle(grpc_.server().config().cluster_ack_delay);
 }
 

@@ -35,16 +35,10 @@ FollowerReplication::Agent::Agent(FollowerReplication &parent)
 void FollowerReplication::Agent::init()
 {
     current_trxid_ = parent_.server().db().getLastCommittedTransactionId();
-    due_ = chrono::steady_clock::now();
 
-    parent_.server().grpcFollow().createSyncClient([this]() -> optional<uint64_t> {
+    parent_.server().grpcFollow().createSyncClient([this]() {
         lock_guard lock{mutex_};
-        if (due_ && due_ <= chrono::steady_clock::now()) {
-            due_.reset();
-            LOG_TRACE_N << "due is replying with trx-id #" << current_trxid_;
-            return current_trxid_;
-        }
-        return {};
+        return current_trxid_;
     }, [this](const grpc::nsblast::pb::SyncUpdate& update){
         LOG_TRACE << "FollowerReplication::Agent--update called with update. sync="
             << update.isinsync()
@@ -65,10 +59,6 @@ void FollowerReplication::Agent::init()
             {
                 lock_guard lock{mutex_};
                 current_trxid_ = id;
-                if (!due_) {
-                    due_ = chrono::steady_clock::now() + chrono::milliseconds(
-                               parent_.server().config().cluster_followers_update_delay_);
-                }
             }
         } catch(const exception& ex) {
             LOG_ERROR_N << "Failed to apply transaction #"

@@ -20,6 +20,10 @@ template <typename ctxT, typename fnT> class AckTimer {
         }
 
         timer_.expires_from_now(boost::posix_time::millisec{millisec});
+        active_ = true;
+        LOG_TRACE_N << "Starting timer with " << millisec
+                    << " milliseconds time-out";
+
         timer_.async_wait([this](boost::system::error_code ec) {
             {
                 std::lock_guard lock{mutex_};
@@ -35,6 +39,7 @@ template <typename ctxT, typename fnT> class AckTimer {
                 }
             }
 
+            LOG_TRACE << "AckTimer::fn - calling fn.";
             fn_();
         });
     }
