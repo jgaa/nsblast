@@ -196,6 +196,7 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
             }
             auto part = trxlog_->add_parts();
             part->set_key(key.data(), key.size());
+            part->set_columnfamilyix(static_cast<int32_t>(category));
             part->set_value(data.data(), data.size());
         }
     }

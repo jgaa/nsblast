@@ -1,5 +1,9 @@
 #pragma once
 
+#include <format>
+
+#include <sstream>
+
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
@@ -21,6 +25,9 @@ public:
         ACCOUNT,
         TRXLOG
     };
+
+    static int32_t toInt(Category cat);
+    static Category toCatecory(int32_t ix);
 
     /*! Real index key.
      *
@@ -318,18 +325,6 @@ public:
         const boost::uuids::uuid uuid_ = lib::newUuid();
     };
 
-//    class AlreadyExistException : public std::runtime_error {
-//    public:
-//        AlreadyExistException(const std::string& what) noexcept
-//            : std::runtime_error(what) {}
-//    };
-
-//    class NotFoundException : public std::runtime_error {
-//    public:
-//        NotFoundException(const std::string& what) noexcept
-//            : std::runtime_error(what) {}
-//    };
-
     ResourceIf() = default;
     virtual ~ResourceIf() = default;
 
@@ -338,6 +333,9 @@ public:
 
 using trx_t = ResourceIf::TransactionIf;
 using key_class_t = ResourceIf::RealKey::Class;
+
+std::string_view toName(const nsblast::lib::ResourceIf::Category& cat);
+std::string_view toName(const nsblast::lib::ResourceIf::RealKey::Class& kclass);
 
 } // ns
 

@@ -1,3 +1,7 @@
+
+#include <sstream>
+#include <boost/lexical_cast.hpp>
+
 #include "FollowerReplication.h"
 #include "RocksDbResource.h"
 
@@ -42,6 +46,10 @@ void FollowerReplication::Agent::init()
         }
         return {};
     }, [this](const grpc::nsblast::pb::SyncUpdate& update){
+        LOG_TRACE << "FollowerReplication::Agent--update called with update. sync="
+            << update.isinsync()
+            << ", trx #" << update.trx().id();
+
         try {
             onTrx(update.trx());
             const auto id =  update.trx().id();
@@ -74,7 +82,7 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
 {
     const auto trxid = value.id();
 
-    LOG_TRACE << "PrimaryReplication::PrimaryAgent::onTrx - Applying transaction #" << trxid;
+    LOG_TRACE_N << "Applying transaction #" << trxid;
 
     auto trx = parent_.server().db().dbTransaction();
     trx->disableTrxlog();
@@ -82,8 +90,14 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
     // Re-compose each of the parts of the original transaction
     for(const auto& part : value.parts()) {
         const ResourceIf::RealKey key{ResourceIf::RealKey::Binary{part.key()}};
-        auto cat = static_cast<ResourceIf::Category>(part.columnfamilyix());
-        trx->write(key, part.value(), false, cat);
+        try {
+            auto cat = ResourceIf::toCatecory(part.columnfamilyix());
+            trx->write(key, part.value(), false, cat);
+        } catch (const exception& ex) {
+            LOG_WARN_N << "Failed to write " << key << " of transaction "
+                       << value.uuid() << " replid: #"  << trxid
+                       << ": " << ex.what();
+        }
     }
 
     // Also write the transaction-log entry

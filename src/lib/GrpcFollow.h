@@ -9,11 +9,14 @@
 #include <grpcpp/security/credentials.h>
 
 #include "nsblast/Server.h"
+#include "nsblast/AckTimer.hpp"
 #include "nsblast/util.h"
 #include "proto_util.h"
 #include "proto/nsblast-grpc.grpc.pb.h"
 
 namespace nsblast::lib {
+
+using ack_timer_t = AckTimer<boost::asio::io_context, std::function<void()>>;
 
 /*! GRPC service that receives data from the master server
  */
@@ -36,8 +39,7 @@ public:
 
         void start();
         void stop();
-        void timeout();
-        void writeIf();
+        bool writeIf(bool yesYouCan = false);
         void ping();
         bool isDone() const noexcept {
             return done_;
@@ -45,9 +47,7 @@ public:
 
     private:
         /*! Callback event when a write operation is complete */
-        void OnWriteDone(bool ok) override {
-            writeIf();
-        }
+        void OnWriteDone(bool ok) override;
 
         /*! Callback event when a read operation is complete */
         void OnReadDone(bool ok) override;
@@ -56,6 +56,8 @@ public:
         void OnDone(const grpc::Status& s) override;
 
         void callOnUpdate(const grpc::nsblast::pb::SyncUpdate& update);
+        void startAckTimer();
+        void onAckTimer();
 
         GrpcFollow& grpc_;
         grpc::ClientContext ctx_;
@@ -66,6 +68,8 @@ public:
         grpc::nsblast::pb::SyncUpdate update_;
         bool can_write_ = false;
         std::shared_ptr<SyncFromServer> self_;
+        ack_timer_t ack_timer_;
+        bool ack_pending_ = false;
         std::atomic_bool done_{false};
         std::mutex mutex_;
         std::mutex update_mutex_;
@@ -97,7 +101,6 @@ private:
     boost::asio::deadline_timer timer_{server_.ctx()};
     std::shared_ptr<SyncFromServer> follower_;
     bool stopped_ = true;
-    //std::optional<std::chrono::steady_clock::time_point> due_for_update_;
 };
 
 } // ns

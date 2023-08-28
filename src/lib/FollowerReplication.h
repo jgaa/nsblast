@@ -67,7 +67,7 @@ private:
     bool is_in_sync_ = false;
     uint64_t last_trxid_ = 0;
     std::shared_ptr<Agent> primary_agent_;
-    boost::asio::deadline_timer timer_{server_.ctx()};
+    //boost::asio::deadline_timer timer_{server_.ctx()};
     mutable std::mutex mutex_;
 };
 

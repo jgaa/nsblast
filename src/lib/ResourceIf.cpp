@@ -1,3 +1,4 @@
+#include <format>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
@@ -6,17 +7,11 @@
 using namespace std;
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat) {
-    static constexpr array<string_view, 6> names = { "DEFAULT", "MASTER_ZONE", "ENTRY",
-                                                    "DIFF", "ACCOUNT", "TRXLOG" };
-
-    return o << names.at(static_cast<size_t>(cat));
+    return o << nsblast::lib::toName(cat);
 }
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key) {
-    static constexpr array<string_view, 8> names = { "ENTRY", "DIFF", "TENANT", "USER", "ROLE", "ZONE", "TZONE", "TRXID" };
-
-    return o << names.at(static_cast<size_t>(key.kClass()))
-             << ' ' << key.dataAsString();
+    return o << nsblast::lib::toName(key.kClass()) << ' ' << key.dataAsString();
 }
 
 namespace nsblast::lib {
@@ -189,6 +184,36 @@ string ResourceIf::RealKey::init(uint64_t value, Class kclass)
     rval[0] = static_cast<char>(kclass);
     setValueAt(rval, 1, value);
     return rval;
+}
+
+int32_t ResourceIf::toInt(Category cat)
+{
+    return static_cast<int32_t>(cat);
+}
+
+ResourceIf::Category ResourceIf::toCatecory(int32_t ix)
+{
+    if (ix < 0 || ix > static_cast<int32_t>(Category::TRXLOG)) {
+        throw out_of_range{format("unknown category index: {}", ix)};
+    }
+
+    return static_cast<Category>(ix);
+}
+
+string_view toName(const ResourceIf::Category &cat)
+{
+    static constexpr array<string_view, 6> names = { "DEFAULT", "MASTER_ZONE", "ENTRY",
+                                                    "DIFF", "ACCOUNT", "TRXLOG" };
+
+    return names.at(static_cast<size_t>(cat));
+}
+
+string_view toName(const ResourceIf::RealKey::Class &kclass)
+{
+    static constexpr array<string_view, 8> names = { "ENTRY", "DIFF", "TENANT", "USER",
+                                                    "ROLE", "ZONE", "TZONE", "TRXID" };
+
+    return names.at(static_cast<size_t>(kclass));
 }
 
 } // ns

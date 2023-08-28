@@ -4,7 +4,8 @@
 
 #include "GrpcFollow.h"
 #include "nsblast/logging.h"
-#include "nsblast/util.h"
+//#include "nsblast/util.h"
+#include "nsblast/AckTimer.hpp"
 
 using namespace std;
 using namespace std::string_literals;
@@ -64,6 +65,10 @@ void GrpcFollow::scheduleNextTimer()
 GrpcFollow::SyncFromServer::SyncFromServer(GrpcFollow &grpc,
                                            const std::string &address)
     : grpc_{grpc}
+    , ack_timer_{grpc.server().ctx(), [this] {
+                     onAckTimer();
+                 }
+      }
 {
     LOG_INFO_N << "Setting up replication channel to " << address;
 
@@ -102,29 +107,38 @@ void GrpcFollow::SyncFromServer::stop()
 } // start
 
 
-void GrpcFollow::SyncFromServer::timeout()
-{
-    writeIf();
-}
-
-void GrpcFollow::SyncFromServer::writeIf()
+bool GrpcFollow::SyncFromServer::writeIf(bool yesYouCan)
 {
     lock_guard lock{mutex_};
+    if (yesYouCan && !can_write_) {
+        // Should have been in OnWriteDone, but I don't want to
+        // acqure the lock two times for each completed write.
+        can_write_ = true;
+    }
+
     if (can_write_) {
         if (done_) [[unlikely]] {
             LOG_TRACE_N << "I am done. Starting to shut down the stream.";
             StartWritesDone();
             can_write_ = false;
-            return;
+            return false;
         }
+
         if (auto ack = grpc_.due_()) {
             req_.set_level(grpc::nsblast::pb::SyncLevel::ENTRIES);
             req_.set_startafter(*ack);
             can_write_ = false;
             LOG_TRACE_N << "Asking for transactions from #" << *ack;
             StartWrite(&req_);
+            return true; // We started a write operation wrote
+        } else {
+            LOG_TRACE_N << "grpc_.due_ returned nothing. Cannot write at this time.";
         }
+    } else {
+        LOG_TRACE_N << "I can't write right now. Waiting for a write opperation to complete.";
     }
+
+    return false;
 }
 
 void GrpcFollow::SyncFromServer::ping()
@@ -145,6 +159,10 @@ void GrpcFollow::SyncFromServer::ping()
     }
 }
 
+void GrpcFollow::SyncFromServer::OnWriteDone(bool ok) {
+    writeIf(true);
+}
+
 void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
     if (done_) [[unlikely]] {
         return;
@@ -158,6 +176,7 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
     callOnUpdate(update_);
     update_.Clear();
     StartRead(&update_);
+    startAckTimer();
 }
 
 void GrpcFollow::SyncFromServer::OnDone(const grpc::Status &s)
@@ -196,6 +215,26 @@ void GrpcFollow::SyncFromServer::callOnUpdate(const grpc::nsblast::pb::SyncUpdat
     assert(grpc_.on_update_);
     lock_guard lock{update_mutex_};
     grpc_.on_update_(update);
+}
+
+void GrpcFollow::SyncFromServer::startAckTimer()
+{
+    if (done_) {
+        return;
+    }
+
+    LOG_TRACE_N << "Starting ACK timer";
+    ack_timer_.startIfIdle(grpc_.server().config().cluster_ack_delay);
+}
+
+void GrpcFollow::SyncFromServer::onAckTimer()
+{
+    LOG_TRACE_N << "Called.";
+
+    if (!writeIf()) {
+        LOG_TRACE_N << "We did not write anything. Re-starting the ACK timer";
+        startAckTimer();
+    }
 }
 
 

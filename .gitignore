@@ -39,3 +39,4 @@ build
 .user
 __pycache__
 .kdev4
+*.pyi

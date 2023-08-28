@@ -62,6 +62,9 @@ struct Config {
     /// Seconds from a request until a reply must occur before the delay is treated as a connection problem
     size_t cluster_keepalive_timeout = 120;
 
+    /// Milliseconds to wait before ackowledinging the current trx-id from a follower.
+    size_t cluster_ack_delay = 200;
+
 
     /*! Role of this server.
      *
