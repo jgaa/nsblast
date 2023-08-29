@@ -216,7 +216,7 @@ message Zone {
 message TrxPart {
     int32 columnFamilyIx = 1; // Column family
     bytes key = 2; // First byte identifies the key class
-    bytes value = 3;
+    optional bytes value = 3;
 }
 
 message Transaction {

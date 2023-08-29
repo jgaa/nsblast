@@ -122,6 +122,7 @@ public:
 
     private:
         void handleTrxLog();
+        void addDeletedToTrxlog(span_t key, Category category);
 
         RocksDbResource& owner_;
         std::once_flag once_;

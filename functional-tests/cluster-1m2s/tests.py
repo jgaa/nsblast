@@ -383,7 +383,7 @@ def test_delete_rr_and_zone(global_data):
     global_data['slave2'].resolve(name, 'SOA')
 
     print('Deleting zone {} ', name)
-    url = global_data['master-url'] + '/zone/' + rrname
+    url = global_data['master-url'] + '/zone/' + name
     body = yaml.load(entry, Loader=yaml.Loader)
     r = requests.delete(url, json=body, auth=('admin', global_data['pass']), params={'wait': 30})
     print(r.text)

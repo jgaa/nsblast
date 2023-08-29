@@ -304,12 +304,14 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
                 break;
             }
             trx_->Delete(owner_.handle(category), it->key());
+            addDeletedToTrxlog(key, category);
         }
     } else {
         LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
                   << key << ", category " << category;
 
         trx_->Delete(owner_.handle(category), toSlice(key));
+        addDeletedToTrxlog(key, category);
     }
 
     dirty_ = true;
@@ -387,6 +389,20 @@ void RocksDbResource::Transaction::handleTrxLog()
     } else if (trxlog_) {
         // We have an object, but it is empty.
         trxlog_.reset();
+    }
+}
+
+void RocksDbResource::Transaction::addDeletedToTrxlog(span_t key, Category category)
+{
+    if (!disable_trxlog_ && owner_.config_.db_log_transactions) {
+        if (category == Category::ENTRY) {
+            if (!trxlog_) {
+                trxlog_ = make_unique<pb::Transaction>();
+            }
+            auto part = trxlog_->add_parts();
+            part->set_key(key.data(), key.size());
+            part->set_columnfamilyix(static_cast<int32_t>(category));
+        }
     }
 }
 

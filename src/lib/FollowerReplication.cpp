@@ -80,11 +80,17 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
     // Re-compose each of the parts of the original transaction
     for(const auto& part : value.parts()) {
         const ResourceIf::RealKey key{ResourceIf::RealKey::Binary{part.key()}};
+        string_view op = "write";
         try {
             auto cat = ResourceIf::toCatecory(part.columnfamilyix());
-            trx->write(key, part.value(), false, cat);
+            if (part.has_value()) {
+                trx->write(key, part.value(), false, cat);
+            } else {
+                op = "remove";
+                trx->remove(key, false, cat);
+            }
         } catch (const exception& ex) {
-            LOG_WARN_N << "Failed to write " << key << " of transaction "
+            LOG_WARN_N << "Failed to " << op << ' ' << key << " of transaction "
                        << value.uuid() << " replid: #"  << trxid
                        << ": " << ex.what();
         }
