@@ -82,27 +82,30 @@ Other types
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
 - [x] Write transaction log to rocksdb
-- [ ] Cluster / Efficient slave sync
-    - [ ] Write latest zone changes to rocksdb (key: type/sequenceid/soa-fqdn value: soa.serial)
-    - [ ] SSE endpoint for these changes, starting after sequenceid
-- [ ] Allow slaves to subscribe to SSE for zones that change
+- [ ] Simple Cluster / Efficient slave sync
+    - [x] Write latest zone changes to rocksdb (key: type/sequenceid/soa-fqdn value: soa.serial)
+    - [x] Replicate ENTRY changes at the db layer with gRPC
 - [x] Allow zone transfers to slaves
-- [ ] Allow slaves to query for a list of all zones and their soa version
-- [ ] Call slave servers that are on-line to get noitificatiosn when zones are up to date after a change. 
 
-# Slave DNS 
+# Slave DNS (legacy)
 - [x] Handle configuration-based Slave setup (interoperatibility with other servers)
   - [x] API endpoint to tell an instance that it is a slave for a specific zone and it's master's IP.
   - [x] AXFR client to fetch/refresh a slave zone
-- [ ] Startup procedure 
-    - [x] Subscribe to zone changes
-    - [ ] Get a list of all zones and their current version (bootstrap)
-    - [ ] Add optimization so we only get zones that have changed since we went off-line. 
-    - [x] Get all zones that are not up to date from the master
-    - [x] Make sure we have the latest soa version for all zones
-    - [ ] Tell the master server that we are ready and willing to provide SSE updates for zones we have updated.
-    - [x] Start answering requests
-- [ ] Reconnect to the master server when we lose the connection.
+  
+# Slave DNS simple cluster
+- [ ] Replication
+    - [ ] Sync with master on startup
+    - [ ] Disable DNS engine until DB is in sync (streaming)
+    - [ ] Enable DNS engine when in sync
+    - [ ] Option: Disable DNS engine if/when DB gets out of synch (or remove authoritive flag)
+    
+# SaaS
+- [ ] API keys
+    - [ ] CRUD
+- [ ] VZone
+    - [ ] CRUD
+    - [ ] Internal data entry (in Entries?)
+    - [ ] Stats (for security, billing)
 
 # API
 - [ ] Get an Entry as json
@@ -133,6 +136,7 @@ Other types
 - [ ] Allow servers to be masters for some zones and slaves for others. (Sharding and faster access for regional users). 
 - [ ] Allow transparent sharding with master/slave selection based on for example zone. 
 - [ ] Caching server that use the notifications the stream to instantly invalidate zones that have changed.
+- [ ] Fail-over for master. Zookeeper?
 
 # UI
 - [ ] Web CRUD for own zones
@@ -140,6 +144,7 @@ Other types
 
 # Unit tests
 - [ ] Merge - PATCH rr: (add rr, overwrite rr, delete rr?) and check that nothing else cnahges, except the soa serial
+- [ ] CRUD
 
 # Functional tests
 - [x] Functional tests for the API (python)
@@ -149,7 +154,7 @@ Other types
 - [ ] See what other open source DNS servers use/do
 
 # Design
-- [ ] How to handle authentication. What to put in nsblast, and what to put elsewhere.
+- [x] How to handle authentication. What to put in nsblast, and what to put elsewhere.
 - [ ] Signup work-flow. What goes in nsblast, what goes elsewhere and where is that?
 
 # Tests
