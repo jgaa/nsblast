@@ -411,6 +411,98 @@ TEST(Rocksdb, canReload) {
     }
 }
 
+TEST(RocksdbBackup, backup) {
+    TmpDb db;
+
+    auto backup_path = db.path() /= "backup";
+
+    db.createTestZone();
+    EXPECT_NO_THROW(db->backup(backup_path));
+}
+
+TEST(RocksdbBackup, listBackups) {
+    TmpDb db;
+
+    auto backup_path = db.path() /= "backup";
+
+    db.createTestZone();
+    EXPECT_NO_THROW(db->backup(backup_path));
+    db.createWwwA();
+    EXPECT_NO_THROW(db->backup(backup_path));
+
+    boost::json::object meta;
+    db->listBackups(meta, backup_path);
+
+    EXPECT_EQ(meta["backups"].as_array().size(), 2);
+    EXPECT_EQ(meta["backups"].as_array()[0].as_object()["id"], 1);
+    EXPECT_EQ(meta["backups"].as_array()[1].as_object()["id"], 2);
+}
+
+TEST(RocksdbBackup, verifyBackups) {
+    TmpDb db;
+
+    auto backup_path = db.path() /= "backup";
+
+    db.createTestZone();
+    EXPECT_NO_THROW(db->backup(backup_path));
+    db.createWwwA();
+    EXPECT_TRUE(db->verifyBackup(1, backup_path));
+
+    EXPECT_NO_THROW(db->backup(backup_path));
+
+    EXPECT_TRUE(db->verifyBackup(1, backup_path));
+    EXPECT_TRUE(db->verifyBackup(2, backup_path));
+    EXPECT_FALSE(db->verifyBackup(3, backup_path));
+}
+
+TEST(RocksdbBackup, restore) {
+    TmpDb db;
+
+    const auto backup_path = db.path() /= "backup";
+    const std::string_view zone = "example.com";
+    const std::string_view www = "www.example.com";
+
+    db.createTestZone();
+    {
+        auto trx = db->dbTransaction();
+        EXPECT_TRUE(trx->keyExists({zone, key_class_t::ENTRY}));
+    }
+    EXPECT_NO_THROW(db->backup(backup_path)); // #1
+    db.createWwwA();
+    {
+        auto trx = db->dbTransaction();
+        EXPECT_TRUE(trx->keyExists({zone, key_class_t::ENTRY}));
+        EXPECT_TRUE(trx->keyExists({www, key_class_t::ENTRY}));
+    }
+    EXPECT_NO_THROW(db->backup(backup_path)); // #2
+
+    {
+        auto trx = db->dbTransaction();
+        EXPECT_TRUE(trx->keyExists({zone, key_class_t::ENTRY}));
+        EXPECT_TRUE(trx->keyExists({www, key_class_t::ENTRY}));
+    }
+
+    db->close();
+    db->restoreBackup(1, backup_path);
+    db->init();
+
+    {
+        auto trx = db->dbTransaction();
+        EXPECT_TRUE(trx->keyExists({zone, key_class_t::ENTRY}));
+        EXPECT_FALSE(trx->keyExists({www, key_class_t::ENTRY}));
+    }
+
+    db->close();
+    db->restoreBackup(2, backup_path);
+    db->init();
+
+    {
+        auto trx = db->dbTransaction();
+        EXPECT_TRUE(trx->keyExists({zone, key_class_t::ENTRY}));
+        EXPECT_TRUE(trx->keyExists({www, key_class_t::ENTRY}));
+    }
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

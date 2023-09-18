@@ -81,6 +81,10 @@ public:
         db_->init();
     }
 
+    auto path() {
+        return path_;
+    }
+
     void createTestZone(const std::string zone = "example.com") {
         StorageBuilder sb;
         string fqdn = zone;

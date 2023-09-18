@@ -1,6 +1,9 @@
 
 #include <chrono>
 
+#include "rocksdb/db.h"
+#include "rocksdb/utilities/backup_engine.h"
+
 #include "RocksDbResource.h"
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
@@ -22,6 +25,104 @@ using ROCKSDB_NAMESPACE::TransactionDBOptions;
 namespace nsblast::lib {
 
 namespace {
+
+
+class DbLogger : public rocksdb::Logger {
+public:
+    DbLogger(rocksdb::InfoLogLevel logLevel ) : Logger(logLevel) {}
+
+
+    // Logger interface
+    void Logv(const rocksdb::InfoLogLevel log_level, const char *format, va_list ap) override {
+        array<char, 1024> buffer = {0};
+        string vbuffer;
+        string_view message;
+        auto len = vsnprintf(buffer.data(), buffer.size(), format, ap);
+        if (len <= 0) {
+            return;
+        }
+
+        if (len >= buffer.size()) {
+            // Buffer was too small. Try again with the correct size
+            vbuffer.resize(static_cast<size_t>(len) + 1);
+            len = vsnprintf(vbuffer.data(), vbuffer.size(), format, ap);
+            if (len > 0) {
+                message = {vbuffer};
+            }
+        } else {
+            message = {buffer.data(), static_cast<size_t>(len)};
+        }
+
+        LOGFAULT_LOG__(conv(log_level)) << "[RocksDB] " << message;
+    }
+
+    static logfault::LogLevel conv(rocksdb::InfoLogLevel level) {
+        /*
+          DEBUG_LEVEL = 0,
+          INFO_LEVEL,
+          WARN_LEVEL,
+          ERROR_LEVEL,
+          FATAL_LEVEL,
+          HEADER_LEVEL,
+          NUM_INFO_LOG_LEVELS,
+        */
+        static const array<logfault::LogLevel, 6> levels =
+            {logfault::LogLevel::DEBUGGING,
+            logfault::LogLevel::INFO,
+            logfault::LogLevel::WARN,
+            logfault::LogLevel::ERROR,
+            logfault::LogLevel::ERROR,
+            logfault::LogLevel::INFO};
+
+        return levels.at(static_cast<size_t>(level));
+    }
+
+    static rocksdb::InfoLogLevel conv(logfault::LogLevel level) {
+        /* DISABLED, ERROR, WARN, NOTICE, INFO, DEBUGGING, TRACE */
+
+        static const array<rocksdb::InfoLogLevel, 7> levels = {
+            rocksdb::InfoLogLevel::FATAL_LEVEL,
+            rocksdb::InfoLogLevel::ERROR_LEVEL,
+            rocksdb::InfoLogLevel::WARN_LEVEL,
+            rocksdb::InfoLogLevel::INFO_LEVEL,
+            rocksdb::InfoLogLevel::INFO_LEVEL,
+            rocksdb::InfoLogLevel::DEBUG_LEVEL,
+            rocksdb::InfoLogLevel::DEBUG_LEVEL
+        };
+
+        return levels.at(static_cast<size_t>(level));
+    }
+};
+
+DbLogger &dbLogger() {
+    static DbLogger logger{DbLogger::conv(logfault::LogManager::Instance().GetLoglevel())};
+
+    return logger;
+}
+
+template <typename T = rocksdb::BackupEngine>
+[[nodiscard]] auto getBackupEngine(const std::filesystem::path &backupDir, std::mutex& mutex) {
+    using namespace rocksdb;
+
+    unique_lock lock(mutex, try_to_lock);
+    if (!lock.owns_lock()) {
+        LOG_ERROR << "Failed to aquire backup mutex. A backup related operation is already in progress.";
+        throw runtime_error{"Backup related operation already in progress"};
+    }
+
+    BackupEngineOptions opts{backupDir.string(),
+                             nullptr, true, &dbLogger()};
+    T* backup_engine = {};
+
+    auto status = T::Open(opts, Env::Default(), &backup_engine);
+    if (!status.ok()) {
+        LOG_ERROR << "Failed to open backup with path: " << backupDir
+                  << ": " << status.ToString();
+        throw runtime_error{format("Failed to open backup: {}", status.ToString())};
+    }
+
+    return make_pair(makeUniqueFrom(backup_engine), std::move(lock)); // RAAI object for backup_engine
+}
 
 
 } // anon ns
@@ -420,6 +521,40 @@ RocksDbResource::RocksDbResource(const Config &config)
 
 RocksDbResource::~RocksDbResource()
 {
+    close();
+}
+
+std::unique_ptr<ResourceIf::TransactionIf> RocksDbResource::transaction()
+{
+    return make_unique<Transaction>(*this);
+}
+
+void RocksDbResource::init()
+{
+    rocksdb_options_.db_write_buffer_size = config_.rocksdb_db_write_buffer_size;
+
+    if (config_.rocksdb_optimize_for_small_db) {
+        LOG_INFO << "RocksDbResource::init - OptimizeForSmallDb";
+        rocksdb_options_.OptimizeForSmallDb();
+    }
+
+    if (config_.rocksdb_background_threads) {
+        LOG_INFO << "RocksDbResource::init - IncreaseParallelism("
+                 << config_.rocksdb_background_threads << ")";
+        rocksdb_options_.IncreaseParallelism(config_.rocksdb_background_threads);
+    }
+
+    prepareDirs();
+    if (needBootstrap()) {
+        bootstrap();
+    } else {
+        open();
+        loadTrxId();
+    }
+}
+
+void RocksDbResource::close()
+{
     // https://stackoverflow.com/questions/56173836/rocksdb-assertion-last-ref-failed-when-closing-db-while-using-unique-pointers
 
     LOG_INFO << "Closing RocksDB. " << transaction_count_ << " active transactions.";
@@ -456,35 +591,6 @@ RocksDbResource::~RocksDbResource()
     }
 }
 
-std::unique_ptr<ResourceIf::TransactionIf> RocksDbResource::transaction()
-{
-    return make_unique<Transaction>(*this);
-}
-
-void RocksDbResource::init()
-{
-    rocksdb_options_.db_write_buffer_size = config_.rocksdb_db_write_buffer_size;
-
-    if (config_.rocksdb_optimize_for_small_db) {
-        LOG_INFO << "RocksDbResource::init - OptimizeForSmallDb";
-        rocksdb_options_.OptimizeForSmallDb();
-    }
-
-    if (config_.rocksdb_background_threads) {
-        LOG_INFO << "RocksDbResource::init - IncreaseParallelism("
-                 << config_.rocksdb_background_threads << ")";
-        rocksdb_options_.IncreaseParallelism(config_.rocksdb_background_threads);
-    }
-
-    prepareDirs();
-    if (needBootstrap()) {
-        bootstrap();
-    } else {
-        open();
-        loadTrxId();
-    }
-}
-
 uint64_t RocksDbResource::getLastCommittedTransactionId()
 {
     ReadOptions o;
@@ -500,6 +606,93 @@ uint64_t RocksDbResource::getLastCommittedTransactionId()
     }
 
     return 0;
+}
+
+void RocksDbResource::backup(const std::filesystem::path &backupDir)
+{
+    using namespace rocksdb;
+
+    auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
+
+    CreateBackupOptions backup_opts;
+    backup_opts.flush_before_backup = true;
+    BackupID id = {};
+
+    LOG_INFO << "Starting database backup to path " << backupDir;
+    assert(db_);
+    auto status = handle->CreateNewBackup(backup_opts, db_, &id);
+    if (!status.ok()) {
+        LOG_ERROR_N << "Failed to backup to path: " << backupDir
+                    << ": " << status.ToString();
+        throw runtime_error{format("Failed to backup: {}", status.ToString())};
+    }
+    LOG_INFO << "Successfully backup up database. Backup #" << id << " on path " << backupDir;
+}
+
+void RocksDbResource::listBackups(boost::json::object &meta, const std::filesystem::path &backupDir)
+{
+    using namespace rocksdb;
+
+    vector<BackupInfo> bi;
+    {
+        LOG_DEBUG_N << "Getting backup info...";
+        auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
+        handle->GetBackupInfo(&bi);
+    }
+
+    meta["backups"] = boost::json::array{};
+
+    for(const auto& b : bi) {
+        boost::json::object o;
+        o["id"] = b.backup_id;
+        o["timestamp"] = b.timestamp;
+        o["size"] = b.size;
+        o["number_files"] = b.number_files;
+
+        // Informative; for users reading the payload as text.
+        o["date"] = format("{} UTC", std::chrono::system_clock::from_time_t(b.timestamp));
+
+        meta["backups"].as_array().emplace_back(std::move(o));
+    }
+
+    LOG_TRACE_N << "Backup Info: " << boost::json::serialize(meta);
+}
+
+void RocksDbResource::restoreBackup(unsigned int backupId, const std::filesystem::path &backupDir)
+{
+    using namespace rocksdb;
+    assert(!db_);
+
+    LOG_DEBUG_N << "Restoring backup " << backupId << " at " << backupDir;
+    auto [handle, lock] = getBackupEngine<BackupEngineReadOnly>(backupDir, backup_mutex_);
+
+
+    const auto db_path = getDbPath();
+    auto status = handle->RestoreDBFromBackup(backupId, db_path, db_path);
+    if (status.ok()) {
+        LOG_DEBUG_N << "Restore of backup #" << backupId << " at " << backupDir << " was successful.";
+        return;
+    }
+
+    LOG_WARN_N << "Restore of backup #" << backupId << " at " << backupDir
+               << " failed: " << status.ToString();
+}
+
+bool RocksDbResource::verifyBackup(unsigned int backupId, const std::filesystem::path &backupDir)
+{
+    using namespace rocksdb;
+
+    LOG_DEBUG_N << "Verifying backup " << backupId << " at " << backupDir;
+    auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
+    auto status = handle->VerifyBackup(backupId, true);
+    if (status.ok()) {
+        LOG_DEBUG_N << "Backup #" << backupId << " at " << backupDir << " is OK ";
+        return true;
+    }
+
+    LOG_WARN_N << "Backup #" << backupId << " at " << backupDir
+               << " failed verification: " << status.ToString();
+    return false;
 }
 
 rocksdb::ColumnFamilyHandle *RocksDbResource::handle(const ResourceIf::Category category) {

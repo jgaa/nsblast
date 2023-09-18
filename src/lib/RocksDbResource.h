@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/json.hpp>
+
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
 #include "proto/nsblast.pb.h"
@@ -147,6 +149,7 @@ public:
     }
 
     void init();
+    void close();
 
     auto& db() {
         assert(db_);
@@ -176,6 +179,47 @@ public:
         on_trx_cb_ = std::move(cb);
     }
 
+    /*! Backup the database.
+     *
+     *  Only one backup can be active at any time. If this method is
+     *  called when a backup is active, a std::runtime exception is thrown.
+     *
+     *  \param backupDir Destination directory for backups
+     *
+     *  \throws std::runtime_error on errors
+     */
+    void backup(const std::filesystem::path& backupDir);
+
+    /*! List backups.
+     *
+     *  \param meta Metadata about backups
+     *  \param backupDir Destination directory for backups
+     */
+    void listBackups(boost::json::object& meta, const std::filesystem::path& backupDir);
+
+    /*! Restore a backup
+     *
+     *  The database can not be open during restore.
+     *
+     *  \param backupDir Destination directory for backups
+     *  \param backupId ID of the backup to restore
+     *
+     *  \throws std::runtime_error on errors
+     */
+    void restoreBackup(unsigned backupId, const std::filesystem::path& backupDir);
+
+    /*! verify a backup
+     *
+     *  The database can not be open during restore.
+     *
+     *  \param backupDir Destination directory for backups
+     *  \param backupId ID of the backup to verify
+     *
+     *  \return true if the backup was OK
+     *  \throws std::runtime_error on errors
+     */
+    bool verifyBackup(unsigned backupId, const std::filesystem::path& backupDir);
+
 private:
     static constexpr size_t DEFAULT = 0;
     static constexpr size_t MASTER_ZONE = 1;
@@ -202,6 +246,7 @@ private:
     rocksdb::Options rocksdb_options_;
     std::atomic_uint64_t trx_id_{0};
     on_trx_cb_t on_trx_cb_;
+    std::mutex backup_mutex_;
 };
 
 } // ns
