@@ -41,6 +41,13 @@ struct Config {
     std::string node_name = boost::asio::ip::host_name();
     ///@}
 
+    /*! \name Backup / Restore */
+    ///@{
+    /// Path to the DB backup location. By default db_path + "/backup".
+    std::string backup_path;
+
+    ///@}
+
     /*! \name Cluster */
     ///@{
 

@@ -1,4 +1,6 @@
 
+#include <boost/json.hpp>
+
 #include "nsblast/DnsEngine.h"
 #include "nsblast/ResourceIf.h"
 #include "nsblast/logging.h"
@@ -92,14 +94,18 @@ void Server::resetAuth()
     auth_->bootstrap();
 }
 
-void Server::startRocksDb()
+void Server::startRocksDb(bool init)
 {
     auto rdb = make_shared<lib::RocksDbResource>(config());
 
-    LOG_DEBUG << "Initializing RocksDB";
-    rdb->init();
+    if (init) {
+        LOG_DEBUG << "Initializing RocksDB";
+        rdb->init();
 
-    bootstrapped_ = rdb->wasBootstrapped();
+        bootstrapped_ = rdb->wasBootstrapped();
+    } else {
+        //rdb->prepareDirs();
+    }
     resource_ = rdb;
 }
 
@@ -299,6 +305,39 @@ void Server::idDone(uint32_t id)
 {
     lock_guard<mutex> lock{ids_mutex_};
     current_request_ids_.erase(id);
+}
+
+void Server::restoreBackup(int id)
+{
+    startRocksDb(false);
+    //db().close();
+    db().restoreBackup(id, config_.backup_path);
+}
+
+void Server::validateBackup(int id)
+{
+    startRocksDb(false);
+    db().verifyBackup(id, config_.backup_path);
+}
+
+void Server::listBackups()
+{
+    startRocksDb(false);
+    boost::json::object json;
+    db().listBackups(json, config_.backup_path);
+
+    std::ostringstream out;
+    if (auto a = json.if_contains("backups")) {
+        for(const auto& b : a->as_array()) {
+            auto& o = b.as_object();
+            out << "Backup id: #" << o.at("id").as_uint64() << endl
+                << "     uuid: " << o.at("uuid").as_string() << endl
+                << "     date: " << o.at("date").as_string() << endl
+                << "     size: " << o.at("size").as_uint64() << endl;
+        }
+    }
+
+    LOG_INFO << "Listing backups:" << endl << out.str();
 }
 
 void Server::runWorker(const string &name)

@@ -220,7 +220,7 @@ public:
      *
      *  \throws std::runtime_error on errors
      */
-    void restoreBackup(unsigned backupId, const std::filesystem::path& backupDir);
+    void restoreBackup(unsigned backupId, std::filesystem::path backupDir);
 
     /*! verify a backup
      *
@@ -246,6 +246,9 @@ public:
      */
     bool deleteBackup(int id, std::filesystem::path backupDir);
 
+    /*! Create the database directory if it don't exist */
+    void prepareDirs();
+
 private:
     static constexpr size_t DEFAULT = 0;
     static constexpr size_t MASTER_ZONE = 1;
@@ -256,7 +259,6 @@ private:
 
     rocksdb::ColumnFamilyHandle * handle(const Category category);
 
-    void prepareDirs();
     void open();
     void bootstrap();
     bool needBootstrap() const;

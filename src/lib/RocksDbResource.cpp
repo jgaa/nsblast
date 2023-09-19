@@ -66,8 +66,8 @@ public:
           NUM_INFO_LOG_LEVELS,
         */
         static const array<logfault::LogLevel, 6> levels =
-            {logfault::LogLevel::DEBUGGING,
-            logfault::LogLevel::INFO,
+            {logfault::LogLevel::TRACE,
+            logfault::LogLevel::DEBUGGING,
             logfault::LogLevel::WARN,
             logfault::LogLevel::ERROR,
             logfault::LogLevel::ERROR,
@@ -731,24 +731,26 @@ void RocksDbResource::listBackups(boost::json::object &meta, std::filesystem::pa
     LOG_TRACE_N << "Backup Info: " << boost::json::serialize(meta);
 }
 
-void RocksDbResource::restoreBackup(unsigned int backupId, const std::filesystem::path &backupDir)
+void RocksDbResource::restoreBackup(unsigned int backupId, std::filesystem::path backupDir)
 {
     using namespace rocksdb;
     assert(!db_);
 
-    LOG_DEBUG_N << "Restoring backup " << backupId << " at " << backupDir;
+    backupDir = getBackupPath(backupDir);
+    const auto db_path = getDbPath();
+
+    LOG_WARN_N << "Restoring backup #" << backupId << " at " << backupDir << " --> " << db_path;
     auto [handle, lock] = getBackupEngine<BackupEngineReadOnly>(backupDir, backup_mutex_);
 
-
-    const auto db_path = getDbPath();
     auto status = handle->RestoreDBFromBackup(backupId, db_path, db_path);
     if (status.ok()) {
-        LOG_DEBUG_N << "Restore of backup #" << backupId << " at " << backupDir << " was successful.";
+        LOG_INFO_N << "Restore of backup #" << backupId << " at " << backupDir
+                   << " --> " << db_path << " was successful.";
         return;
     }
 
-    LOG_WARN_N << "Restore of backup #" << backupId << " at " << backupDir
-               << " failed: " << status.ToString();
+    LOG_ERROR_N << "Restore of backup #" << backupId << " at " << backupDir
+                << " --> " << db_path  << " failed: " << status.ToString();
 }
 
 bool RocksDbResource::verifyBackup(unsigned int backupId, std::filesystem::path backupDir,
@@ -758,11 +760,11 @@ bool RocksDbResource::verifyBackup(unsigned int backupId, std::filesystem::path 
 
     backupDir = getBackupPath(backupDir);
 
-    LOG_DEBUG_N << "Verifying backup " << backupId << " at " << backupDir;
+    LOG_INFO_N << "Verifying backup " << backupId << " at " << backupDir;
     auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
     auto status = handle->VerifyBackup(backupId, true);
     if (status.ok()) {
-        LOG_DEBUG_N << "Backup #" << backupId << " at " << backupDir << " is OK ";
+        LOG_INFO_N << "Backup #" << backupId << " at " << backupDir << " is OK ";
         return true;
     }
 

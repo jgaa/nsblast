@@ -60,6 +60,8 @@ int main(int argc, char* argv[]) {
     std::string log_file;
     bool trunc_log = true;
     bool reset_auth = false;
+    int restore_backup_id = 0;
+    int validate_backup_id = 0;
 
     namespace po = boost::program_options;
     po::options_description general("Options");
@@ -70,7 +72,7 @@ int main(int argc, char* argv[]) {
         ("version", "print version string and exit")
         ("db-path,d",
             po::value<string>(&config.db_path)->default_value(config.db_path),
-            "Definition file to deploy")
+            "Path to the database directory")
         ("log-to-console,C",
              po::value<string>(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
@@ -87,6 +89,24 @@ int main(int argc, char* argv[]) {
             "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
             "The server will terminate after the changes are made.")
     ;
+    po::options_description backup("Backup/Restore");
+    backup.add_options()
+        ("backup-path",
+         po::value<string>(&config.backup_path),
+        "Path to the root of the backups directory. Defaults to a directory named 'backup' under the db-path.")
+        ("restore-backup",
+         po::value(&restore_backup_id),
+         "This option will attempt to restore backup id# to the database directory and "
+         "then exit the application. USE WITH CARE!")
+        ("validate-backup",
+         po::value(&validate_backup_id),
+         "This option will attempt to validate backup id# "
+         "and then exit the application.")
+        ("list-backups",
+         "This option will attempt to list the available backups "
+         "and then exit the application.")
+        ;
+
     po::options_description cluster("Cluster");
     cluster.add_options()
         ("cluster-role",
@@ -156,7 +176,7 @@ int main(int argc, char* argv[]) {
 
     const auto appname = filesystem::path(argv[0]).stem().string();
     po::options_description cmdline_options;
-    cmdline_options.add(general).add(cluster).add(odns).add(http).add(rocksdb);
+    cmdline_options.add(general).add(backup).add(cluster).add(odns).add(http).add(rocksdb);
     po::variables_map vm;
     try {
         po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -203,6 +223,21 @@ int main(int argc, char* argv[]) {
 
         if (vm.count("reset-auth")) {
             server.resetAuth();
+            return 0;
+        }
+
+        if (vm.count("list-backups")) {
+            server.listBackups();
+            return 0;
+        }
+
+        if (restore_backup_id) {
+            server.restoreBackup(restore_backup_id);
+            return 0;
+        }
+
+        if (validate_backup_id) {
+            server.validateBackup(validate_backup_id);
             return 0;
         }
 

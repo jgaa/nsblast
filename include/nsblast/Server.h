@@ -52,7 +52,7 @@ public:
     /*! Resets the admin user and nsblast account to it's initial, default state." */
     void resetAuth();
 
-    void startRocksDb();
+    void startRocksDb(bool init = true);
 
     void startIoThreads();
 
@@ -182,6 +182,10 @@ public:
     bool isCluster() const noexcept {
         return role_ != Role::NONE;
     }
+
+    void restoreBackup(int id);
+    void validateBackup(int id);
+    void listBackups();
 
 protected:
     void runWorker(const std::string& name);
