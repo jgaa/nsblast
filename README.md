@@ -56,11 +56,11 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 *note*: Things in old RFC's that has later been obsoleted are ignored.
 
 # Features
-- Standards compliant, authorative DNS server
+- Standards compliant, authoritative DNS server
   - Can ast as primary DNS server in a group of standard DNS servers
   - Can act as a follower DNS server in a group of standard DNS servers
 - HTTP REST API
-  - Optional swagger endpoint to document/extepriment with the API
+  - Optional swagger endpoint to document/experiment with the API
   - RBAC (Role Based Access Control)
 - Support SaaS use cases with individual users grouped under organizations/tenants. 
 - Simple Cluster mode
