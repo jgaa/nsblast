@@ -72,7 +72,7 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
   - Incremental backups
   - Backups can be created, deleted, listed and verified from the REST API
   - Backups can be listed, verified and restored from the command-line. The server must be off-line in order to perform a restore.
-  - Backups can easily be copied remote storage via *rsync* or for example *restic*.
+  - Backups can easily be copied to/from remote storage via *rsync* or for example *restic*.
 
 # Building
 The project use CMake.
