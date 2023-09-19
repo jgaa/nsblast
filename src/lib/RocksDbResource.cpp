@@ -2,7 +2,6 @@
 #include <chrono>
 
 #include "rocksdb/db.h"
-#include "rocksdb/utilities/backup_engine.h"
 
 #include "RocksDbResource.h"
 #include "nsblast/logging.h"
@@ -121,7 +120,7 @@ template <typename T = rocksdb::BackupEngine>
         throw runtime_error{format("Failed to open backup: {}", status.ToString())};
     }
 
-    return make_pair(makeUniqueFrom(backup_engine), std::move(lock)); // RAAI object for backup_engine
+    return make_pair(makeSharedFrom(backup_engine), std::move(lock)); // RAAI object for backup_engine
 }
 
 
@@ -559,6 +558,28 @@ void RocksDbResource::close()
 
     LOG_INFO << "Closing RocksDB. " << transaction_count_ << " active transactions.";
 
+    // Make sure any ongoing backup is aborted before we shut down the DD engine.
+    std::optional<thread> backup_thd;
+
+    {
+        lock_guard lock{mutex_};
+
+        if (auto backup = active_backup_.lock()) {
+            LOG_INFO_N << "Aborting ongoing backup " << active_backup_uuid_;
+            backup->StopBackup();
+        }
+
+        if (backup_thread_) {
+            backup_thd = std::move(backup_thread_);
+            backup_thread_.reset();
+        }
+    }
+
+    if (backup_thd) {
+        LOG_INFO_N << "Joining backup-thread...";
+        backup_thd->join();
+    }
+
     if (db_) {
         LOG_TRACE << "RocksDbResource::~RocksDbResource - Removing ColumnFamilyHandle ...";
         for(auto fh : cfh_) {
@@ -608,30 +629,77 @@ uint64_t RocksDbResource::getLastCommittedTransactionId()
     return 0;
 }
 
-void RocksDbResource::backup(const std::filesystem::path &backupDir)
+void RocksDbResource::backup(std::filesystem::path backupDir,
+                             bool syncFirst, boost::uuids::uuid uuid)
 {
     using namespace rocksdb;
 
+    backupDir = getBackupPath(backupDir);
+
     auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
 
+    const auto uuid_str = toLower(boost::uuids::to_string(uuid));
+
     CreateBackupOptions backup_opts;
-    backup_opts.flush_before_backup = true;
+    backup_opts.flush_before_backup = syncFirst;
     BackupID id = {};
 
-    LOG_INFO << "Starting database backup to path " << backupDir;
+    LOG_INFO << "Starting database backup " << uuid_str << " to path " << backupDir;
     assert(db_);
-    auto status = handle->CreateNewBackup(backup_opts, db_, &id);
+
+    {
+        lock_guard lock2{mutex_};
+        active_backup_ = handle;
+        active_backup_uuid_ = uuid;
+    }
+
+    auto status = handle->CreateNewBackupWithMetadata(backup_opts, db_, uuid_str, &id);
     if (!status.ok()) {
         LOG_ERROR_N << "Failed to backup to path: " << backupDir
                     << ": " << status.ToString();
         throw runtime_error{format("Failed to backup: {}", status.ToString())};
     }
-    LOG_INFO << "Successfully backup up database. Backup #" << id << " on path " << backupDir;
+    LOG_INFO << "Successfully backup up database. Backup " << uuid_str
+             << " #" << id << " on path " << backupDir;
 }
 
-void RocksDbResource::listBackups(boost::json::object &meta, const std::filesystem::path &backupDir)
+void RocksDbResource::startBackup(const std::filesystem::path &backupDir,
+                                  bool syncFirst, boost::uuids::uuid uuid)
+{
+    unique_lock lock(backup_mutex_, try_to_lock);
+    if (!lock.owns_lock()) {
+        LOG_ERROR_N << "Failed to aquire backup mutex. A backup related operation is already in progress.";
+        throw runtime_error{"Backup related operation already in progress"};
+    }
+
+
+    lock_guard lock2{mutex_};
+    active_backup_.reset();
+    active_backup_uuid_ = {};
+
+    if (backup_thread_) {
+        LOG_INFO_N << "Joining stale backup-thread...";
+        backup_thread_->join();
+        backup_thread_.reset();
+    }
+
+    backup_thread_.emplace([backupDir, uuid, syncFirst, this] {
+        LOG_DEBUG << "Starting async backup " << uuid;
+        try {
+            backup(backupDir, syncFirst, uuid);
+        } catch(const exception& ex) {
+            LOG_ERROR << "Caught exception from backup " << uuid <<": " << ex.what();
+        }
+
+        LOG_DEBUG << "Async backup " << uuid << " is done.";
+    });
+}
+
+void RocksDbResource::listBackups(boost::json::object &meta, std::filesystem::path backupDir)
 {
     using namespace rocksdb;
+
+    backupDir = getBackupPath(backupDir);
 
     vector<BackupInfo> bi;
     {
@@ -645,6 +713,9 @@ void RocksDbResource::listBackups(boost::json::object &meta, const std::filesyst
     for(const auto& b : bi) {
         boost::json::object o;
         o["id"] = b.backup_id;
+        if (!b.app_metadata.empty()) {
+            o["uuid"] = b.app_metadata;
+        }
         o["timestamp"] = b.timestamp;
         o["size"] = b.size;
         o["number_files"] = b.number_files;
@@ -654,6 +725,8 @@ void RocksDbResource::listBackups(boost::json::object &meta, const std::filesyst
 
         meta["backups"].as_array().emplace_back(std::move(o));
     }
+
+    meta["num_backups"] = meta["backups"].as_array().size();
 
     LOG_TRACE_N << "Backup Info: " << boost::json::serialize(meta);
 }
@@ -678,9 +751,12 @@ void RocksDbResource::restoreBackup(unsigned int backupId, const std::filesystem
                << " failed: " << status.ToString();
 }
 
-bool RocksDbResource::verifyBackup(unsigned int backupId, const std::filesystem::path &backupDir)
+bool RocksDbResource::verifyBackup(unsigned int backupId, std::filesystem::path backupDir,
+                                   string* message)
 {
     using namespace rocksdb;
+
+    backupDir = getBackupPath(backupDir);
 
     LOG_DEBUG_N << "Verifying backup " << backupId << " at " << backupDir;
     auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
@@ -692,7 +768,61 @@ bool RocksDbResource::verifyBackup(unsigned int backupId, const std::filesystem:
 
     LOG_WARN_N << "Backup #" << backupId << " at " << backupDir
                << " failed verification: " << status.ToString();
+
+    if (message) {
+        *message = status.ToString();
+    }
+
     return false;
+}
+
+void RocksDbResource::purgeBackups(int numToKeep, std::filesystem::path backupDir)
+{
+    using namespace rocksdb;
+
+    backupDir = getBackupPath(backupDir);
+
+    LOG_INFO_N << "Purging backups in " << backupDir
+                << ", keeping " << numToKeep << " newest.";
+
+    auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
+    auto status = handle->PurgeOldBackups(numToKeep);
+
+    if (status.ok()) {
+        LOG_DEBUG_N << "Purge of backups in " << backupDir << " is OK ";
+        return;
+    }
+
+    LOG_WARN_N << "Purge of backups in " << backupDir << " failed: "
+               << status.ToString();
+
+    throw runtime_error{"Purge of backups failed"};
+}
+
+bool RocksDbResource::deleteBackup(int id, std::filesystem::path backupDir)
+{
+    using namespace rocksdb;
+
+    backupDir = getBackupPath(backupDir);
+
+    LOG_INFO_N << "Deleting backup " << id << " in " << backupDir;
+
+    auto [handle, lock] = getBackupEngine(backupDir, backup_mutex_);
+    auto status = handle->DeleteBackup(id);
+
+    if (status.ok()) {
+        LOG_DEBUG_N << "Delete of backup " << id << " in " << backupDir << " is OK ";
+        return true;
+    }
+
+    if (status.IsNotFound()) {
+        return false;
+    }
+
+    LOG_WARN_N << "Delete of backup in " << backupDir << " failed: "
+               << status.ToString();
+
+    throw runtime_error{"Delete of backup failed"};
 }
 
 rocksdb::ColumnFamilyHandle *RocksDbResource::handle(const ResourceIf::Category category) {
@@ -766,6 +896,15 @@ void RocksDbResource::loadTrxId()
 {
     trx_id_ = getLastCommittedTransactionId();
     LOG_DEBUG << "RocksDbResource::loadTrxId - trx_id is set to " << trx_id_;
+}
+
+std::filesystem::path RocksDbResource::getBackupPath(std::filesystem::path path) const
+{
+    if (path.empty()) {
+        path = config().db_path;
+        path /= "backup";
+    }
+    return path;
 }
 
 

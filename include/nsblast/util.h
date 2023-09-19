@@ -39,6 +39,11 @@ namespace nsblast::lib {
         return std::unique_ptr<T>{ptr};
     }
 
+    template <typename T>
+    auto makeSharedFrom(T *ptr) {
+        return std::shared_ptr<T>{ptr};
+    }
+
     template <typename I, typename T>
     I getValueAt(const T& b, size_t loc) {
         const auto tlen = sizeof(I);

@@ -89,6 +89,12 @@ enum Permission {
     IMPERSONATE_TENANT = 40; // tenant={tenantId} query is valid
 
     CONFIG_SLAVE = 41;
+
+    CREATE_BACKUP = 42;
+    LIST_BACKUPS = 43;
+    RESTORE_BACKUP = 44;
+    VERIFY_BACKUP = 45;
+    DELETE_BACKUP = 46;
 }
 
 /**

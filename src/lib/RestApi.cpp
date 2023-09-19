@@ -327,6 +327,10 @@ Response RestApi::onReqest(const Request &req)
                 return onConfigMaster(req, p);
             }
         }
+
+        if (p.what == "backup") {
+            return onBackup(req, p);
+        }
     } catch(const nsblast::Exception& ex) {
         LOG_DEBUG << "RestApi::onReqest: Cautht exception while processing request "
               << req.uuid << ": " << ex.what();
@@ -1434,6 +1438,34 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
     return {200, "OK"};
 }
 
+Response RestApi::onBackup(const yahat::Request &req, const Parsed &parsed)
+{
+    try {
+        switch(req.type) {
+        case Request::Type::GET:
+            return listBackups(req, parsed);
+        case Request::Type::POST:
+            if (parsed.target.empty()) {
+                return startBackup(req, parsed);
+            } else if (parsed.operation == "verify") {
+                return verifyBackup(req, parsed);
+            }
+            break;
+        case Request::Type::DELETE:
+            return deleteBackups(req, parsed);
+        default:
+            return {400, "Invalid method"};
+        }
+    } catch (const exception& ex) {
+        LOG_WARN << "Exception while processing config/master request "
+                 << req.uuid << ": " << ex.what();
+        return {500, "Server Error/ "s + ex.what()};
+    }
+
+    return {404, "Not Found"};
+
+}
+
 void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)
 {
     if (!config_.dns_validate_srv_targets_locally) {
@@ -1572,6 +1604,118 @@ std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint6
     }
 
     return {};
+}
+
+Response RestApi::startBackup(const yahat::Request &req, const Parsed &parsed)
+{
+    if (!hasAccess(req, pb::Permission::CREATE_BACKUP)) {
+        return {403, "Access Denied"};
+    }
+
+    const auto uuid = newUuid();
+
+    std::string db_path;
+
+    const auto body = boost::json::parse(req.body);
+    if (body.is_object()) {
+        if (auto path = body.as_object().if_contains("path")) {
+            db_path = string{path->as_string()};
+        }
+    }
+
+    bool syncFirst = true;
+
+    server().db().startBackup(db_path, syncFirst, uuid);
+
+    boost::json::object json, v;
+
+    v["uuid"] = toLower(boost::uuids::to_string(uuid));
+    json["rcode"] = 201;
+    json["error"] = false;
+    json["message"] = "Backup operation was started.";
+    json["value"] = std::move(v);
+
+    return {201, "OK", boost::json::serialize(json)};
+}
+
+Response RestApi::verifyBackup(const yahat::Request &req, const Parsed &parsed)
+{
+    if (!hasAccess(req, pb::Permission::VERIFY_BACKUP)) {
+        return {403, "Access Denied"};
+    }
+
+    std::string db_path;
+    const auto body = boost::json::parse(req.body);
+    if (body.is_object()) {
+        if (auto path = body.as_object().if_contains("path")) {
+            db_path = string{path->as_string()};
+        }
+    }
+
+    const auto id = std::stoi(string{parsed.target});
+
+    string message;
+    if (server().db().verifyBackup(id, db_path, &message)) {
+        return {200, "OK"};
+    }
+
+    boost::json::object json;
+    json["rcode"] = 200;
+    json["error"] = true;
+    json["message"] = format("Verification of backup {} failed with error: '{}'", id, message);
+
+    return {200, "Verification failed", boost::json::serialize(json)};
+}
+
+Response RestApi::listBackups(const yahat::Request &req, const Parsed &parsed)
+{
+    if (!hasAccess(req, pb::Permission::LIST_BACKUPS)) {
+        return {403, "Access Denied"};
+    }
+
+    boost::json::object json, meta;
+    std::string backup_dir;
+    if (auto it = req.arguments.find("path"); it != req.arguments.end()) {
+        backup_dir = string{it->second};
+    }
+
+    server().db().listBackups(meta, backup_dir);
+
+    json["rcode"] = 200;
+    json["error"] = false;
+    json["value"] = std::move(meta);
+
+    return {200, "OK", boost::json::serialize(json)};
+}
+
+Response RestApi::deleteBackups(const yahat::Request &req, const Parsed &parsed)
+{
+    if (!hasAccess(req, pb::Permission::DELETE_BACKUP)) {
+        return {403, "Access Denied"};
+    }
+
+    std::string backup_dir;
+    if (auto it = req.arguments.find("path"); it != req.arguments.end()) {
+        backup_dir = string{it->second};
+    }
+
+    if (parsed.target.empty()) {
+        int keep = 0;
+
+        if (auto it = req.arguments.find("keep"); it != req.arguments.end()) {
+            keep = std::stoi(string{it->second});
+        }
+
+        server().db().purgeBackups(keep, backup_dir);
+        return {200, "OK"};
+    }
+
+    const auto id = std::stoi(string{parsed.target});
+    if (server().db().deleteBackup(id, backup_dir)) {
+        return {200, format("OK. Backup {} was deleted.", id)};
+    }
+
+    return {404, format("Backup id {} not found", id)};
 }
 
 

@@ -1112,6 +1112,206 @@ paths:
               schema:
                 $ref: "#/definitions/Returns"
 
+  /backup:
+    post:
+      tags:
+        - backup
+      summary: Create a new backup of the entire database.
+      operationId: createDbBackup
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the configuration."
+        required: true
+        schema:
+          $ref: "#/definitions/BackupReq"
+      responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "A Backup related operation is already in progress"
+    get:
+      tags:
+        - backup
+      summary: List all successful backups that are still available
+      operationId: listDbBackups
+      parameters:
+        - in: query
+          name: path
+          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
+          required: false
+          type: string
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+    delete:
+      tags:
+        - backup
+      summary: Delete all backups that are still available
+      operationId: deleteDbBackups
+      parameters:
+        - in: query
+          name: path
+          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
+          required: false
+          type: string
+        - in: query
+          name: keep
+          description: "Tells delete to keep the last # backups and delete everything else."
+          required: false
+          type: integer
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /backup/{id}/verify:
+    post:
+      tags:
+        - backup
+      summary: Verify a backup
+      operationId: verifyDbBackup
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: path
+        name: id
+        type: integer
+        description: "Backup ID (not uuid)"
+      - in: body
+        name: "body"
+        description: "Settings for the configuration."
+        required: true
+        schema:
+          $ref: "#/definitions/BackupVerifyReq"
+      responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "409":
+          description: "A Backup related operation is already in progress"
+
+  /backup/{id}:
+    delete:
+      tags:
+        - backup
+      summary: "Delete backup #"
+      operationId: deleteDbBackup
+      parameters:
+        - in: query
+          name: path
+          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
+          required: false
+          type: string
+        - in: path
+          name: id
+          description: "Backlup id (not uuid)"
+          required: true
+          type: integer
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsValue"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
 definitions:
 
   Master:
@@ -1363,8 +1563,13 @@ definitions:
       - GET_TENANT
       - UPDATE_TENANT
       - DELETE_TENANT
-      - CONFIG_SLAVE
       - IMPERSONATE_TENANT
+      - CONFIG_SLAVE
+      - CREATE_BACKUP
+      - LIST_BACKUPS
+      - RESTORE_BACKUP
+      - VERIFY_BACKUP
+      - DELETE_BACKUP
 
   KeyValueList:
     type array:
@@ -1459,7 +1664,7 @@ definitions:
         type: integer
         description: HTTP return code
       error:
-        type: bool
+        type: boolean
         description: True if the request failed
       message:
         type: string
@@ -1472,7 +1677,7 @@ definitions:
         type: integer
         description: HTTP return code
       error:
-        type: bool
+        type: boolean
         description: True if the request failed
       message:
         type: string
@@ -1488,7 +1693,7 @@ definitions:
         type: integer
         description: HTTP return code
       error:
-        type: bool
+        type: boolean
         description: True if the request failed
       message:
         type: string
@@ -1499,6 +1704,22 @@ definitions:
           type: object
         description: Object(s) if the request succeeds
 
+  BackupReq:
+    type: object
+    properties:
+      path:
+        type: string
+        description: Path to the backup on storage. If unset, it use the same path as the database use,  and put the backup in the subfolder 'backup'
+      flushBefore:
+        type: boolean
+        description: Flush the database prior to making the backup. Defaults to true.
+
+  BackupVerifyReq:
+    type: object
+    properties:
+      path:
+        type: string
+        description: Path to the backup on storage. If unset, it use the same path as the database use,  and put the backup in the subfolder 'backup'
 
 externalDocs:
   description: "Find out more about nsBLAST and ready to go hosting options"

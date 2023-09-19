@@ -43,6 +43,7 @@ public:
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onBackup(const yahat::Request &req, const Parsed& parsed);
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
     bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;
     bool hasAccess(const yahat::Request& req, std::string_view lowercaseFqdn, pb::Permission) const noexcept;
@@ -56,6 +57,10 @@ private:
     // Returns false if there was a probem with the replication, including
     // timeout.
     std::optional<bool> waitForReplication(const yahat::Request &req, uint64_t trxid);
+    yahat::Response startBackup(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response verifyBackup(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response listBackups(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response deleteBackups(const yahat::Request &req, const Parsed& parsed);
 
     const Config& config_;
     ResourceIf& resource_;

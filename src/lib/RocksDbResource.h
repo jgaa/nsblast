@@ -7,6 +7,7 @@
 #include "proto/nsblast.pb.h"
 
 #include "rocksdb/db.h"
+#include "rocksdb/utilities/backup_engine.h"
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 
@@ -149,6 +150,13 @@ public:
     }
 
     void init();
+
+    /*! Closes the database.
+     *
+     *  Must not be called if the REST API is active, as this may
+     *  keep transactions open or cause race-conditions with
+     *  backups.
+     */
     void close();
 
     auto& db() {
@@ -188,14 +196,20 @@ public:
      *
      *  \throws std::runtime_error on errors
      */
-    void backup(const std::filesystem::path& backupDir);
+    void backup(std::filesystem::path backupDir, bool syncFirst = true, boost::uuids::uuid uuid=newUuid());
+
+    /*! Start a backup in a worker thread.
+     *
+     *  Returns immediately.
+     */
+    void startBackup(const std::filesystem::path& backupDir, bool syncFirst = true, boost::uuids::uuid uuid=newUuid());
 
     /*! List backups.
      *
      *  \param meta Metadata about backups
      *  \param backupDir Destination directory for backups
      */
-    void listBackups(boost::json::object& meta, const std::filesystem::path& backupDir);
+    void listBackups(boost::json::object& meta, std::filesystem::path backupDir);
 
     /*! Restore a backup
      *
@@ -218,7 +232,19 @@ public:
      *  \return true if the backup was OK
      *  \throws std::runtime_error on errors
      */
-    bool verifyBackup(unsigned backupId, const std::filesystem::path& backupDir);
+    bool verifyBackup(unsigned backupId, std::filesystem::path backupDir, std::string* message = nullptr);
+
+    void purgeBackups(int numToKeep, std::filesystem::path backupDir);
+
+    /*! Delete a specific backup
+     *
+     *  \param id ID of backup to delete
+     *  \param backupDir optional path to backup dir
+     *  \return true if the backup was deleted, false if it was not found.
+     *
+     *  \throws std::runtime_error if some other error occur
+     */
+    bool deleteBackup(int id, std::filesystem::path backupDir);
 
 private:
     static constexpr size_t DEFAULT = 0;
@@ -236,6 +262,7 @@ private:
     bool needBootstrap() const;
     std::string getDbPath() const;
     void loadTrxId();
+    std::filesystem::path getBackupPath(std::filesystem::path path) const;
 
     const Config& config_;
     rocksdb::TransactionDB *db_ = {};
@@ -246,7 +273,11 @@ private:
     rocksdb::Options rocksdb_options_;
     std::atomic_uint64_t trx_id_{0};
     on_trx_cb_t on_trx_cb_;
+    std::weak_ptr<rocksdb::BackupEngine> active_backup_;
+    std::optional<std::thread> backup_thread_;
+    boost::uuids::uuid active_backup_uuid_;
     std::mutex backup_mutex_;
+    std::mutex mutex_;
 };
 
 } // ns
