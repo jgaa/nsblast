@@ -68,6 +68,11 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
   - Replication on the database layer via fast/memory efficient gRPC streams (no separate streaming components like Kafka or Pulsar).
   - In this mode, users of the REST API can wait until a change is propagated to all the servers before the request returns. Useful for example for letsencrypt wildchar certs or certs for fqdn's that resolve to private IP ranges.
 - Uses RocksDB as it's internal database engine. This is one of the most battle-tested and fastest database engines available.
+- Backup and restore at the database layer.
+  - Incremental backups
+  - Backups can be created, deleted, listed and verified from the REST API
+  - Backups can be listed, verified and restored from the command-line. The server must be off-line in order to perform a restore.
+  - Backups can easily be copied remote storage via *rsync* or for example *restic*.
 
 # Building
 The project use CMake.
