@@ -55,6 +55,20 @@ DNSSEC will not be implemented in the MVP, but if people need it, it will follow
 
 *note*: Things in old RFC's that has later been obsoleted are ignored.
 
+# Features
+- Standards compliant, authorative DNS server
+  - Can ast as primary DNS server in a group of standard DNS servers
+  - Can act as a follower DNS server in a group of standard DNS servers
+- HTTP REST API
+  - Optional swagger endpoint to document/extepriment with the API
+  - RBAC (Role Based Access Control)
+- Support SaaS use cases with individual users grouped under organizations/tenants. 
+- Simple Cluster mode
+  - Allows a cluster of Nsblast server to work as a typical database cluster with one primary server for all writes, and any number of follower servers for reads.
+  - Replication on the database layer via fast/memory efficient gRPC streams (no separate streaming components like Kafka or Pulsar).
+  - In this mode, users of the REST API can wait until a change is propagated to all the servers before the request returns. Useful for example for letsencrypt wildchar certs or certs for fqdn's that resolve to private IP ranges.
+- Uses RocksDB as it's internal database engine. This is one of the most battle-tested and fastest database engines available.
+
 # Building
 The project use CMake.
 
