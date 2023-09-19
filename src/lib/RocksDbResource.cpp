@@ -856,8 +856,8 @@ void RocksDbResource::open()
     TransactionDBOptions txn_db_options;
     const auto status = TransactionDB::Open(rocksdb_options_, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
-        LOG_ERROR << "Failed to open database " << config_.db_path
-                  << status.ToString();
+        LOG_ERROR << "Failed to open database " << getDbPath()
+                  << ' ' << status.ToString();
         throw runtime_error{"Failed to open database"};
     }
 
@@ -875,7 +875,7 @@ void RocksDbResource::bootstrap()
     const auto status = TransactionDB::Open(rocksdb_options_, txn_db_options, getDbPath(), cfd_, &cfh_, &db_);
     if (!status.ok()) {
         LOG_ERROR << "Failed to create database " << getDbPath()
-                  << status.ToString();
+                  << ' ' << status.ToString();
         throw runtime_error{"Failed to create the database"};
     }
 

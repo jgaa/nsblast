@@ -309,8 +309,18 @@ void Server::idDone(uint32_t id)
 
 void Server::restoreBackup(int id)
 {
-    startRocksDb(false);
-    //db().close();
+    // We need to actually start the database to make sure that it's not in use by anther process.
+    try {
+        startRocksDb();
+    } catch (const exception& ex) {
+        LOG_WARN_N << "If Nsblast fails to open the existing (old) database "
+        "and you are sure it's not in use by another process, you may try "
+        "to remove the database folder (named 'rocksdb') and it's subdirectories. Make sure "
+        "you DONT remove the backup directory!";
+        return;
+    }
+
+    db().close();
     db().restoreBackup(id, config_.backup_path);
 }
 
