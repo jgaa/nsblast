@@ -46,6 +46,12 @@ struct Config {
     /// Path to the DB backup location. By default db_path + "/backup".
     std::string backup_path;
 
+    /// Hourly backup interval. 0 to disable.
+    size_t hourly_backup_interval = 0;
+
+    /// Tells RocksDB to sync the database before starting a backup
+    bool sync_before_backup = true;
+
     ///@}
 
     /*! \name Cluster */

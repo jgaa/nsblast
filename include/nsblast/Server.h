@@ -20,6 +20,7 @@ namespace lib {
     class Notifications;
     class AuthMgr;
     class RocksDbResource;
+    class BackupMgr;
 
 #ifdef NSBLAST_CLUSTER
     class GrpcPrimary;
@@ -67,6 +68,8 @@ public:
     void startNotifications();
 
     void startAuth();
+
+    void startBackupMgr(bool startAutoBackups = true);
 
 #ifdef NSBLAST_CLUSTER
     void StartReplication();
@@ -183,6 +186,11 @@ public:
         return role_ != Role::NONE;
     }
 
+    auto& backup() {
+        assert(backup_);
+        return *backup_;
+    }
+
     void restoreBackup(int id);
     void validateBackup(int id);
     void listBackups();
@@ -203,6 +211,7 @@ protected:
     std::shared_ptr<lib::SlaveMgr> slave_;
     std::shared_ptr<lib::DnsEngine> dns_;
     std::shared_ptr<lib::AuthMgr> auth_;
+    std::shared_ptr<lib::BackupMgr> backup_;
 #ifdef NSBLAST_CLUSTER
     std::shared_ptr<lib::GrpcPrimary> grpc_primary_;
     std::shared_ptr<lib::GrpcFollow> grpc_follow_;

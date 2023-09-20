@@ -29,6 +29,8 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/util.h
     AuthMgr.cpp
     AuthMgr.h
+    BackupMgr.cpp
+    BackupMgr.h
     DnsEngine.cpp
     DnsMessages.cpp
     FollowerReplication.cpp

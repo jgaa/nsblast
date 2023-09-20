@@ -65,7 +65,6 @@ int main(int argc, char* argv[]) {
 
     namespace po = boost::program_options;
     po::options_description general("Options");
-    po::positional_options_description positionalDescription;
 
     general.add_options()
         ("help,h", "Print help and exit")
@@ -94,6 +93,12 @@ int main(int argc, char* argv[]) {
         ("backup-path",
          po::value<string>(&config.backup_path),
         "Path to the root of the backups directory. Defaults to a directory named 'backup' under the db-path.")
+        ("hourly-backup-interval",
+         po::value(&config.hourly_backup_interval)->default_value(config.hourly_backup_interval),
+         "If set, nsblast will start an automatic backup every # hours.")
+        ("sync-before-backup",
+         po::value(&config.sync_before_backup)->default_value(config.sync_before_backup),
+         "Tells RocksDB to sync the database before starting a backup")
         ("restore-backup",
          po::value(&restore_backup_id),
          "This option will attempt to restore backup id# to the database directory and "
@@ -227,16 +232,19 @@ int main(int argc, char* argv[]) {
         }
 
         if (vm.count("list-backups")) {
+            server.startBackupMgr(false);
             server.listBackups();
             return 0;
         }
 
         if (restore_backup_id) {
+            server.startBackupMgr(false);
             server.restoreBackup(restore_backup_id);
             return 0;
         }
 
         if (validate_backup_id) {
+            server.startBackupMgr(false);
             server.validateBackup(validate_backup_id);
             return 0;
         }

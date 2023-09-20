@@ -10,6 +10,7 @@
 #include "SlaveMgr.h"
 #include "RocksDbResource.h"
 #include "AuthMgr.h"
+#include "BackupMgr.h"
 
 #ifdef NSBLAST_CLUSTER
 #   include "PrimaryReplication.h"
@@ -75,6 +76,7 @@ void Server::start()
     startIoThreads();
     startNotifications();
     startDns();
+    startBackupMgr();
 
     runWorker("main thread");
 }
@@ -173,6 +175,15 @@ void Server::startAuth()
 
     if (wasBootstrapped()) {
         auth_->bootstrap();
+    }
+}
+
+void Server::startBackupMgr(bool startAutoBackups )
+{
+    backup_ = make_shared<BackupMgr>(*this);
+
+    if (startAutoBackups) {
+        backup_->initAutoBackup();
     }
 }
 
@@ -309,46 +320,20 @@ void Server::idDone(uint32_t id)
 
 void Server::restoreBackup(int id)
 {
-    // We need to actually start the database to make sure that it's not in use by anther process.
-    try {
-        startRocksDb();
-    } catch (const exception& ex) {
-        LOG_WARN_N << "If Nsblast fails to open the existing (old) database "
-        "and you are sure it's not in use by another process, you may try "
-        "to remove the database folder (named 'rocksdb') and it's subdirectories. Make sure "
-        "you DONT remove the backup directory!";
-        return;
-    }
-
-    db().close();
-    db().restoreBackup(id, config_.backup_path);
+    return backup().restoreBackup(id);
 }
 
 void Server::validateBackup(int id)
 {
-    startRocksDb(false);
-    db().verifyBackup(id, config_.backup_path);
+    return backup().validateBackup(id);
 }
 
 void Server::listBackups()
 {
-    startRocksDb(false);
-    boost::json::object json;
-    db().listBackups(json, config_.backup_path);
-
-    std::ostringstream out;
-    if (auto a = json.if_contains("backups")) {
-        for(const auto& b : a->as_array()) {
-            auto& o = b.as_object();
-            out << "Backup id: #" << o.at("id").as_uint64() << endl
-                << "     uuid: " << o.at("uuid").as_string() << endl
-                << "     date: " << o.at("date").as_string() << endl
-                << "     size: " << o.at("size").as_uint64() << endl;
-        }
-    }
-
-    LOG_INFO << "Listing backups:" << endl << out.str();
+    return backup().listBackups();
 }
+
+
 
 void Server::runWorker(const string &name)
 {
