@@ -25,6 +25,9 @@ namespace nsblast::lib {
     uint16_t getRandomNumber16();
     std::string getRandomStr(size_t len);
 
+    /*! Validate if a fqdn is valid. */
+    bool validateFqdn(std::string_view fqdn);
+
     /*! Calculate a sha256 checksum on the input
      *
      *  \param what Input, data to calculate a has from

@@ -223,7 +223,7 @@ void RocksDbResource::Transaction::iterate(ResourceIf::TransactionIf::key_t key,
                                            ResourceIf::TransactionIf::iterator_fn_t fn,
                                            Category category)
 {
-    iterateT(key, category, fn);
+    iterateT(key, category, std::move(fn));
 }
 
 bool RocksDbResource::Transaction::keyExists(ResourceIf::TransactionIf::key_t key, Category category)

@@ -1,6 +1,8 @@
 
 #include <algorithm>
 #include <random>
+#include <regex>
+
 #include "nsblast/util.h"
 #include "nsblast/logging.h"
 #include "nsblast/errors.h"
@@ -205,6 +207,12 @@ string sha256(span_t what, bool encodeToBase64)
         }
     }
     throw InternalErrorException{"sha256 failed!"};
+}
+
+bool validateFqdn(std::string_view fqdn)
+{
+    static const std::regex pattern{R"(^[_a-zA-Z0-9][a-zA-Z0-9-]*(\.[_a-zA-Z0-9][a-zA-Z0-9-]*)*?$)"};
+    return std::regex_match(fqdn.begin(), fqdn.end(), pattern);
 }
 
 

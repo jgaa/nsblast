@@ -154,6 +154,23 @@ bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcep
     return left == right;
 }
 
+std::tuple<string_view, string_view> ResourceIf::RealKey::getTenantAndFqdn() const
+{
+    assert(kClass() == key_class_t::TZONE);
+    if (auto p = bytes_.find('/', 1); p != std::string::npos) {
+      string_view t {bytes_.data() + 1, p - 1};
+      string_view f ;
+
+      if (bytes_.size() > t.size() + 2) {
+          f = {bytes_.data() + p + 1, bytes_.size() - t.size() - 2};
+      }
+
+      return {t, f};
+    }
+
+    return {};
+}
+
 string ResourceIf::RealKey::init(span_t key,
                                  ResourceIf::RealKey::Class kclass,
                                  optional<uint32_t> version) {

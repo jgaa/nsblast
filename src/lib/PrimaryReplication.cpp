@@ -178,7 +178,7 @@ void PrimaryReplication::Agent::iterateDb()
         return false;
     };
 
-    trx->iterateFromPrevT(key, ResourceIf::Category::TRXLOG, fn);
+    trx->iterateFromPrevT(key, ResourceIf::Category::TRXLOG, std::move(fn));
 
     if (!queue_was_filled) {
         LOG_TRACE << *this

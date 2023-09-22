@@ -199,6 +199,9 @@ struct Config {
 
     /// Max page size in a REST list reply
     size_t rest_max_page_size = 1000;
+
+    /// Default page size in a REST list reply
+    size_t rest_default_page_size = 100;
     ///@}
 
     /*! \name Authentication */

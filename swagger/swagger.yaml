@@ -31,7 +31,51 @@ tags:
 # schemes:
 # - "https"
 # - "http"
+
 paths:
+  /zone:
+    parameters:
+    - name: tenant
+      in: query
+      description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission. If you use '*' as the tenant value, all zones for all tenants are returned.
+      schema:
+        type: string
+    get:
+      tags:
+        - zone
+      summary: List Zones
+      parameters:
+        - name: limit
+          in: query
+          description: Limits the number of items on a page
+          schema:
+            type: integer
+          default: 100
+        - name: from
+          in: query
+          description: Start the listing after this fqdn. This can be used to paginate a listing of more items than the first page (max 1000 items) is available.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
   /zone/{zonename}:
     parameters:
     - in: path
@@ -39,10 +83,51 @@ paths:
       description: "Unique fqdn of a DNS zone, for example: 'example.com'"
       required: true
       type: string
+    - name: tenant
+      in: query
+      description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+      schema:
+        type: string
+    get:
+      tags:
+        - zone
+      summary: List Resource Records in a zone
+      parameters:
+        - name: limit
+          in: query
+          description: Limits the number of items on a page
+          schema:
+            type: integer
+          default: 100
+        - name: from
+          in: query
+          description: Start the listing after this fqdn. This can be used to paginate a listing of more items than the first page (max 1000 items) is available.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized.)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
     post:
       tags:
       - zone
-      summary: "Create a new zone to the default namespace"
+      summary: "Create a new zone"
       description: "A new zone is added if the fqdn is available (in nsblasts internal database)."
       operationId: "addZone"
       consumes:

@@ -255,9 +255,10 @@ void addDiff(string_view zoneName,
     trx.write(key, sb.buffer(), false, ResourceIf::Category::DIFF);
 }
 
-tuple<std::optional<Response>, shared_ptr<Session>, optional<pb::Tenant>>
-getSessionAndTenant(const yahat::Request &req, Server& server) {
+tuple<std::optional<Response>, shared_ptr<Session>, optional<pb::Tenant>, bool /*all */>
+getSessionAndTenant(const yahat::Request &req, Server& server, bool allowAll = false) {
 
+    bool all = false;
     auto session = getSession(req);
     //auto lowercaseKey = toLower(parsed.target);
     auto tenant_id = string{session->tenant()};
@@ -266,24 +267,32 @@ getSessionAndTenant(const yahat::Request &req, Server& server) {
 
     if (auto impersonate = getQueryArg(req, "tenant")) {
         if (session->isAllowed(pb::Permission::IMPERSONATE_TENANT)) {
-            tenant_id = toLower(*impersonate);
-            LOG_INFO << "In request" << req.uuid << ", session "
-                     << *session << " the client is impersonating  "
-                     << *impersonate;
+            if (allowAll && *impersonate == "*") {
+                // Impersonate all.
+                // Only valid for some queries.
+                LOG_INFO << "In request" << req.uuid << ", session "
+                         << *session << " the client is impersonating  all tenants";
+                all = true;
+            } else {
+                tenant_id = toLower(*impersonate);
+                LOG_INFO << "In request" << req.uuid << ", session "
+                         << *session << " the client is impersonating  "
+                         << *impersonate;
+            }
         } else {
             LOG_WARN << "In request" << req.uuid << ", session "
                      << *session << " the client tried to impersonate "
                      << *impersonate;
-            return {Response{403, "You are not allowed to impersonate another tenant!"}, {}, {}};
+            return {Response{403, "You are not allowed to impersonate another tenant!"}, {}, {}, {}};
         }
     }
 
     auto tenant = server.auth().getTenant(tenant_id);
     if (!tenant) {
-        return {Response{404, "Tenant not found"}, {}, {}};
+        return {Response{404, "Tenant not found"}, {}, {}, {}};
     }
 
-    return {{}, session, tenant};
+    return {{}, session, tenant, all};
 }
 
 } // anon ns
@@ -307,6 +316,11 @@ Response RestApi::onReqest(const Request &req)
         }
 
         if (p.what == "zone") {
+            if (req.type == Request::Type::GET) {
+                if (p.target.empty()) {
+                    return listZones(req, p);
+                }
+            }
             return onZone(req, p);
         }
 
@@ -921,7 +935,7 @@ delete_tenant:
 
 Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
 {
-    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
     if (res) {
         return *res;
     }
@@ -1007,7 +1021,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
 
 Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
 {
-    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
     if (res) {
         return *res;
     }
@@ -1118,7 +1132,7 @@ get_user:
 
 Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 {
-    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
     if (res) {
         return *res;
     }
@@ -1128,6 +1142,14 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     int rcode = 200;
 
     switch(req.type) {
+//    case Request::Type::GET: {
+//        if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+//            return {403, "Access Denied"};
+//        }
+
+
+
+//    } break;
     case Request::Type::POST: {
         if (!session->isAllowed(pb::Permission::CREATE_ZONE, lowercaseFqdn)) {
             return {403, "Access Denied"};
@@ -1190,7 +1212,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
-    auto [res, session, tenant] = getSessionAndTenant(req, server());
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
     if (res) {
         return *res;
     }
@@ -1533,12 +1555,7 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
     out["status"] = 200;
     auto& tenants = out["value"] = boost::json::array{};
 
-    auto page_size = server().config().rest_max_page_size;
-    if (auto it = req.arguments.find("limit"); it != req.arguments.end()) {
-        if (auto psize = std::stoi(string{it->second})) {
-            page_size = psize;
-        }
-    }
+    auto page_size = getPageSize(req);
 
     size_t count = 0;
 
@@ -1572,17 +1589,119 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
         return ++count <= page_size;
     };
 
-    if (auto it = req.arguments.find("from"); it != req.arguments.end()) {
+    if (auto from = getFrom(req); !from.end()) {
         // From last key
-        ResourceIf::RealKey key{it->second, key_class_t::TENANT};
-        trx.iterateFromPrevT(key, ResourceIf::Category::ACCOUNT, on_tenant);
+        ResourceIf::RealKey key{from, key_class_t::TENANT};
+        trx.iterateFromPrevT(key, ResourceIf::Category::ACCOUNT, std::move(on_tenant));
     } else {
         // From start
         ResourceIf::RealKey key{"", key_class_t::TENANT};
-        trx.iterateT(key, ResourceIf::Category::ACCOUNT, on_tenant);
+        trx.iterateT(key, ResourceIf::Category::ACCOUNT, std::move(on_tenant));
     }
 
     return {200, "Ok", boost::json::serialize(out)};
+}
+
+Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
+{
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server(), true);
+    if (res) {
+        return *res;
+    }
+
+    const auto tenant_id = tenant->id();
+
+    auto lowercaseFqdn = toLower(parsed.target);
+
+    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+        return {403, "Access Denied"};
+    }
+
+    auto page_size = getPageSize(req);
+    auto from = getFrom(req);
+    if (!from.empty()) {
+        // From last key
+        if (!validateFqdn(from)) {
+            return {400, "Invalid fqdn in 'from' argument"};
+        }
+    };
+
+    // Return a list of zones
+    optional<ResourceIf::RealKey> key;
+    if (all) {
+        key.emplace(from, key_class_t::TZONE);
+    } else {
+        key.emplace(tenant_id, from, key_class_t::TZONE);
+    }
+
+    LOG_TRACE_N << "Serch Key: " << *key;
+    size_t count = 0;
+    bool more = false;
+    string last_key;
+
+    string body;
+    {
+        boost::json::array zone_list;
+
+        server().db().dbTransaction()->iterateFromPrevT(
+            *key, ResourceIf::Category::ACCOUNT,
+            [&zone_list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+
+            auto [ztenant, zone] = key.getTenantAndFqdn();
+            LOG_TRACE_N << "Key=" << key << format(", tenant={}, zone={}", ztenant, zone);
+
+            if (!all && !compareCaseInsensitive(tenant_id, ztenant)) {
+                return false; // We rolled over to another tenant
+            }
+
+            if (++count > page_size) {
+                LOG_TRACE_N << "Page size full at tenant " << ztenant << " zone " << zone;
+                more = true;
+                return false;
+            }
+
+            boost::json::object o;
+            o["zone"] = zone;
+            if (all) {
+                o["tenant"] = ztenant;
+            }
+
+            zone_list.push_back(std::move(o));
+
+            return true;
+        });
+
+        boost::json::object json;
+        json["rcode"] = 200;
+        json["error"] = false;
+        json["message"] = "";
+        json["more"] = more;
+        json["limit"] = page_size;
+        json["value"] = std::move(zone_list);
+        body = boost::json::serialize(json);
+    }
+
+    return {200, "OK", body};
+}
+
+size_t RestApi::getPageSize(const yahat::Request &req) const
+{
+    if (auto it = req.arguments.find("limit"); it != req.arguments.end()) {
+        if (size_t psize = std::stoi(string{it->second})) {
+            return min(psize, server().config().rest_max_page_size);
+        }
+    }
+
+    return server().config().rest_default_page_size;
+}
+
+string_view RestApi::getFrom(const yahat::Request &req) const
+{
+    if (auto it = req.arguments.find("from"); it != req.arguments.end()) {
+        // From last key
+        return it->second;
+    }
+    return {};
 }
 
 std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint64_t trxid)

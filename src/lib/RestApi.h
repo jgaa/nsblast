@@ -48,8 +48,17 @@ public:
     bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;
     bool hasAccess(const yahat::Request& req, std::string_view lowercaseFqdn, pb::Permission) const noexcept;
     yahat::Response listTenants(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response listZones(const yahat::Request &req, const Parsed& parsed);
 private:
+    size_t getPageSize(const yahat::Request &req) const;
+    std::string_view getFrom(const yahat::Request &req) const;
+
     Server& server() noexcept {
+        assert(server_);
+        return *server_;
+    }
+
+    const Server& server() const noexcept {
         assert(server_);
         return *server_;
     }

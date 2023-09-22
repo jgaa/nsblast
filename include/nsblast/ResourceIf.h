@@ -111,6 +111,8 @@ public:
             return bytes_ != k.bytes_;
         }
 
+        std::tuple<std::string_view, std::string_view> getTenantAndFqdn() const;
+
         /*! Check if the raw key (from the database) is of the same key class as the instance */
         [[nodiscard]] bool isSameKeyClass(span_t key) const noexcept {
             if (!key.empty() && !bytes_.empty()) {

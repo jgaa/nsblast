@@ -57,7 +57,7 @@ public:
          *  key.
          */
         template <typename fnT>
-        void iterateFromPrevT(key_t& key,  Category category, fnT& fn) {
+        void iterateFromPrevT(key_t& key,  Category category, fnT fn) {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             it->SeekForPrev(toSlice(key));
             if (it->Valid()) {
@@ -79,15 +79,10 @@ public:
                     return;
                 }
             }
-
-//            assert(!it->Valid());
-//            // Signal that we are EOF
-//            static const rocksdb::Slice empty_slice = {};
-//            fn({RealKey::Binary{empty_slice}}, empty_slice);
         }
 
         template <typename fnT>
-        void iterateT(key_t& key, Category category, fnT& fn)
+        void iterateT(key_t& key, Category category, fnT fn)
         {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             for(it->Seek(toSlice(key)); it->Valid(); it->Next()) {
@@ -102,7 +97,7 @@ public:
         }
 
         template <typename fnT>
-        void iterateT(Category category, RealKey::Class kclass, fnT& fn)
+        void iterateT(Category category, RealKey::Class kclass, fnT fn)
         {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             for(it->SeekToFirst(); it->Valid(); it->Next()) {
