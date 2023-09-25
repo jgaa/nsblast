@@ -297,6 +297,15 @@ public:
 
     void resetTokensForTenant(std::string_view tenantId);
 
+    /*! Update the index for fqdn's in the zone registry.
+     *
+     *  \param trx Active transaction for a Resource Record or Zone update
+     *  \param fqdn The resource record in question
+     *  \param zoneLen Number of characters of the fqdn that represent the zone name. 0 means thatt they are the same.
+     *  \param update true to add/update, false to delete.
+     */
+    void updateZoneRrIx(ResourceIf::TransactionIf& trx, std::string_view fqdn, size_t zoneLen, bool update=true);
+
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString,
                           const boost::uuids::uuid reqUuid);

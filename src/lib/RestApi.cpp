@@ -317,9 +317,13 @@ Response RestApi::onReqest(const Request &req)
 
         if (p.what == "zone") {
             if (req.type == Request::Type::GET) {
+                if (!p.operation.empty()) {
+                    return {400, "Invalid operation"};
+                }
                 if (p.target.empty()) {
                     return listZones(req, p);
                 }
+                return listZone(req, p);
             }
             return onZone(req, p);
         }
@@ -1143,7 +1147,8 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
     switch(req.type) {
 //    case Request::Type::GET: {
-//        if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+//        assert(parsed.target.empty()); // Should have been directed to listZones!
+//        if (!session->isAllowed(pb::Permission::LIST_RRS, lowercaseFqdn)) {
 //            return {403, "Access Denied"};
 //        }
 
@@ -1236,9 +1241,14 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         return {404, "Not authorative for zone"};
     }
 
+    size_t soa_zone_len = 0; // Part of the fqdn that forms the zone's fqdn. 0 = zone/same.
+    optional<bool> need_to_update_zrr; // true = update, false = delete, unset = nothing.
+
     if (!existing.isSame()) {
         assert(existing.soa().begin()->type() == TYPE_SOA);
-        sb.setZoneLen(existing.soa().begin()->labels().size() -1);
+        assert(existing.soa().begin()->labels().size() > 0);
+        soa_zone_len = existing.soa().begin()->labels().size() -1;
+        sb.setZoneLen(soa_zone_len);
     }
 
     if (req.expectBody()) {
@@ -1269,6 +1279,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
         try {
             trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), true);
+            need_to_update_zrr = true;
 
             if (config_.dns_enable_ixfr) {
                 newData = {sb.buffer()};
@@ -1292,6 +1303,7 @@ put:
             need_version_increment = true;
         }
         trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), false);
+        need_to_update_zrr = true;
 
         if (config_.dns_enable_ixfr) {
             newData = {sb.buffer()};
@@ -1338,6 +1350,7 @@ put:
         merged.finish();
 
         trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged.buffer(), false);
+        need_to_update_zrr = true;
 
         if (config_.dns_enable_ixfr) {
             newData = {merged.buffer()};
@@ -1354,6 +1367,7 @@ put:
         try {
             trx->remove({lowercaseFqdn, key_class_t::ENTRY}, false);
             need_version_increment = true;
+            need_to_update_zrr = false;
         } catch(const NotFoundException&) {
             return {404, "The rr don't exist"};
         }
@@ -1389,6 +1403,10 @@ put:
         assert(newSoa.has_value());
         assert(newSoa->serial() > oldSoa.serial());
         addDiff(lowercaseSoaFqdn, oldSoa, newSoa.value(), oldData, newData, *trx);
+    }
+
+    if (need_to_update_zrr) {
+        server().auth().updateZoneRrIx(*trx, lowercaseFqdn, soa_zone_len, *need_to_update_zrr);
     }
 
     trx->commit();
@@ -1671,7 +1689,7 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
                 tenant_buf = z.tenantid();
                 ztenant = tenant_buf;
             } else {
-                tie(ztenant, zone) = key.getTenantAndFqdn();
+                tie(ztenant, zone) = key.getFirstAndSecondStr();
                 LOG_TRACE_N << "Key=" << key << format(", tenant={}, zone={}", ztenant, zone);
 
                 if (!all && !compareCaseInsensitive(tenant_id, ztenant)) {
@@ -1703,6 +1721,69 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
         json["more"] = more;
         json["limit"] = page_size;
         json["value"] = std::move(zone_list);
+        body = boost::json::serialize(json);
+    }
+
+    return {200, "OK", body};
+}
+
+Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
+{
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server(), true);
+    if (res) {
+        return *res;
+    }
+
+    const auto tenant_id = tenant->id();
+
+    auto lowercaseFqdn = toLower(parsed.target);
+
+    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+        return {403, "Access Denied"};
+    }
+
+    auto page_size = getPageSize(req);
+    auto from = getFrom(req);
+    if (!from.empty()) {
+        // From last key
+        if (!validateFqdn(from)) {
+            return {400, "Invalid fqdn in 'from' argument"};
+        }
+    };
+
+    // Return a list of zones
+    ResourceIf::RealKey key {from, key_class_t::ZRR};
+
+    LOG_TRACE_N << "Serch Key: " << key;
+    size_t count = 0;
+    bool more = false;
+    string last_key;
+
+    string body;
+    {
+        boost::json::array list;
+        server().db().dbTransaction()->iterateFromPrevT(
+            key, ResourceIf::Category::ACCOUNT,
+            [&list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+
+                auto [zone, fqdn] = key.getFirstAndSecondStr();
+                if (++count > page_size) {
+                    LOG_TRACE_N << "Page size full at fqdn " << fqdn << " zone " << zone;
+                    more = true;
+                    return false;
+                }
+
+                list.push_back(boost::json::string{fqdn});
+                return true;
+            });
+
+        boost::json::object json;
+        json["rcode"] = 200;
+        json["error"] = false;
+        json["message"] = "";
+        json["more"] = more;
+        json["limit"] = page_size;
+        json["value"] = std::move(list);
         body = boost::json::serialize(json);
     }
 

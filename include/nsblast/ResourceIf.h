@@ -47,6 +47,7 @@ public:
             ZONE,       // class reversed-fqdn
             TZONE,      // class tenant-id / fqdn
             TRXID,      // class uint64-trxid
+            ZRR,        // zone-name, fqdn of RR in plain text
             UNKNOWN_    // Not used as a Class
         };
 
@@ -111,7 +112,12 @@ public:
             return bytes_ != k.bytes_;
         }
 
-        std::tuple<std::string_view, std::string_view> getTenantAndFqdn() const;
+        /*! Get the first and second string in a key.
+         *
+         *  Only works for key-types in `type str/str` format
+         *  No conversions are performed.
+         */
+        std::tuple<std::string_view, std::string_view> getFirstAndSecondStr() const;
 
         /*! Check if the raw key (from the database) is of the same key class as the instance */
         [[nodiscard]] bool isSameKeyClass(span_t key) const noexcept {

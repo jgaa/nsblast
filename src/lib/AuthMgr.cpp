@@ -225,6 +225,7 @@ void AuthMgr::addZone(trx_t &trx, std::string_view fqdn, std::string_view tenant
 
     // Add index so we can find it by tenantId
     trx.write(key_tzone, fqdn, true, ResourceIf::Category::ACCOUNT);
+    updateZoneRrIx(trx, fqdn, 0);
 }
 
 void AuthMgr::deleteZone(trx_t &trx, std::string_view fqdn, std::string_view tenant)
@@ -244,6 +245,7 @@ void AuthMgr::deleteZone(trx_t &trx, std::string_view fqdn, std::string_view ten
 
     trx.remove(key_zone, false, ResourceIf::Category::ACCOUNT);
     trx.remove(key_tzone, false, ResourceIf::Category::ACCOUNT);
+    updateZoneRrIx(trx, fqdn, 0, true);
 }
 
 void AuthMgr::bootstrap()
@@ -308,6 +310,31 @@ void AuthMgr::resetTokensForTenant(std::string_view tenantId)
     // For now, just delete all the tokens.
     LOG_INFO << "Resetting auth-keys after change in tenant " << tenantId;
     keys_.clear();
+}
+
+void AuthMgr::updateZoneRrIx(ResourceIf::TransactionIf &trx, std::string_view fqdn, size_t zoneLen, bool update)
+{
+    assert(zoneLen < fqdn.size());
+    string_view zone = fqdn.substr(0, zoneLen ? zoneLen : fqdn.size());
+    ResourceIf::RealKey key{zone, fqdn, key_class_t::ZRR};
+
+    if (update) {
+        LOG_TRACE_N << "Updating " << key;
+        trx.write(key, "", false, ResourceIf::Category::ACCOUNT);
+        return;
+    }
+
+    // If we delete a zone, we need to delete all RR's.
+    const bool deleting_a_zone = zoneLen == 0;
+    if (deleting_a_zone) {
+        ResourceIf::RealKey key{zone, key_class_t::ZRR};
+        LOG_TRACE_N << "Removong " << key << " recursively (zone)";
+        trx.remove(key, true, ResourceIf::Category::ACCOUNT);
+        return;
+    }
+
+    LOG_TRACE_N << "Removong " << key;
+    trx.remove(key, false, ResourceIf::Category::ACCOUNT);
 }
 
 yahat::Auth AuthMgr::basicAuth(std::string hash,

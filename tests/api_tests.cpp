@@ -2019,11 +2019,119 @@ TEST(ApiRequest, listZonesPaginationMultipleTenants) {
     EXPECT_EQ(pages, expected_pages);
 }
 
+TEST(ApiRequest, listZone) {
+
+    MockServer svr;
+    RestApi api{svr};
+
+    // Create zone
+    string_view zone = "example.com";
+    auto json = getZoneJson(zone);
+    auto req = makeRequest(svr, "zone", zone, boost::json::serialize(json), yahat::Request::Type::POST);
+    auto parsed = api.parse(req);
+    auto res = api.onZone(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    // List fqdn's in zone zone
+    req = makeRequest(svr, "zone", zone, {}, yahat::Request::Type::GET);
+    parsed = api.parse(req);
+    res = api.listZone(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    LOG_TRACE << "Result-json: " << res.body;
+
+    auto result = boost::json::parse(res.body);
+    EXPECT_FALSE(result.at("error").as_bool());
+    EXPECT_EQ(result.at("value").as_array().size(), 1);
+    EXPECT_EQ(result.at("value").as_array()[0].as_string(), "example.com");
+}
+
+TEST(ApiRequest, listZoneWithPagination) {
+
+    MockServer svr;
+    RestApi api{svr};
+
+    auto constexpr num_fqdns = 55;
+    auto constexpr limit = 10;
+    const auto str_limit = std::format("{}", limit);
+    auto constexpr expected_pages = 6;
+
+    // Create zone
+    string_view zone = "example.com";
+    auto json = getZoneJson(zone);
+    auto req = makeRequest(svr, "zone", zone, boost::json::serialize(json), yahat::Request::Type::POST);
+    auto parsed = api.parse(req);
+    auto res = api.onZone(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    const auto ajson = getAJson();
+
+    // Make more fqdn's
+    for(auto i = 0; i < num_fqdns; ++i) {
+        req = makeRequest(svr, "rr",
+                               format("{}-test.{}", i, zone),
+                               ajson,
+                               yahat::Request::Type::POST);
+
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
+
+    // List fqdn's in zone zone
+    req = makeRequest(svr, "rr", zone, {}, yahat::Request::Type::GET);
+    req.arguments["limit"] = str_limit;
+    parsed = api.parse(req);
+    res = api.listZone(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    LOG_TRACE << "Result-json: " << res.body;
+
+    auto result = boost::json::parse(res.body);
+    EXPECT_FALSE(result.at("error").as_bool());
+    EXPECT_EQ(result.at("value").as_array().size(), limit);
+    EXPECT_EQ(string_view{result.at("value").as_array()[0].as_string()},
+              string_view{"0-test.example.com"});
+
+    size_t pages = 2;
+    for(; pages <= expected_pages; ++pages) {
+        auto next_key = string{result.at("value").as_array().back().as_string()};
+
+        req = makeRequest(svr, "rr", zone, {}, yahat::Request::Type::GET);
+
+        req.arguments["limit"] = str_limit;
+        req.arguments["from"] = next_key;
+        parsed = api.parse(req);
+
+        res = api.listZone(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        LOG_TRACE << "Result-json: " << res.body;
+        result = boost::json::parse(res.body);
+        EXPECT_FALSE(result.at("error").as_bool());
+
+        if (pages == expected_pages) {
+            EXPECT_FALSE(result.at("more").as_bool());
+            EXPECT_EQ(result.at("value").as_array().size(), 6);
+            EXPECT_EQ(zone, result.at("value").as_array().back().as_string());
+        } else {
+            EXPECT_TRUE(result.at("more").as_bool());
+            EXPECT_EQ(result.at("value").as_array().size(), limit);
+        }
+
+        if (!result.at("more").as_bool()) {
+            break;
+        }
+    }
+
+    EXPECT_EQ(pages, expected_pages);
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-        make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::TRACE));
+        make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::DEBUGGING));
     return RUN_ALL_TESTS();
 }

@@ -154,9 +154,11 @@ bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcep
     return left == right;
 }
 
-std::tuple<string_view, string_view> ResourceIf::RealKey::getTenantAndFqdn() const
+std::tuple<string_view, string_view> ResourceIf::RealKey::getFirstAndSecondStr() const
 {
-    assert(kClass() == key_class_t::TZONE);
+    assert(kClass() == key_class_t::TZONE
+           || kClass() == key_class_t::ZRR);
+
     if (auto p = bytes_.find('/', 1); p != std::string::npos) {
       string_view t {bytes_.data() + 1, p - 1};
       string_view f ;
@@ -227,8 +229,8 @@ string_view toName(const ResourceIf::Category &cat)
 
 string_view toName(const ResourceIf::RealKey::Class &kclass)
 {
-    static constexpr array<string_view, 8> names = { "ENTRY", "DIFF", "TENANT", "USER",
-                                                    "ROLE", "ZONE", "TZONE", "TRXID" };
+    static constexpr array<string_view, 9> names = { "ENTRY", "DIFF", "TENANT", "USER",
+                                                    "ROLE", "ZONE", "TZONE", "TRXID", "ZRR" };
 
     return names.at(static_cast<size_t>(kclass));
 }
