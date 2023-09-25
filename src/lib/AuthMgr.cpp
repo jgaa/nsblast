@@ -69,24 +69,38 @@ AuthMgr::AuthMgr(Server &server)
 
 yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 {
-    auto hash = sha256(ar.auth_header, false);
-    if (auto existing = keys_.get(hash)) {
-        LOG_TRACE << "Request " <<  ar.req.uuid << " proceeded with session-key " << Base64Encode(hash);
-        return existing->getAuth();
+    if (ar.auth_header.empty()) {
+        LOG_TRACE_N << "Request " <<  ar.req.uuid << " provided no Authorization header.";
+        return {};
     }
 
-    if (ar.auth_header.empty()) {
-        LOG_TRACE << "Request " <<  ar.req.uuid << " provided no Authorization header.";
-        return {};
+    auto hash = sha256(ar.auth_header, false);
+    if (auto existing = keys_.get(hash)) {
+        LOG_TRACE_N << "Request " <<  ar.req.uuid << " proceeded with session-key " << Base64Encode(hash);
+        return existing->getAuth();
     }
 
     static constexpr string_view basic = "basic ";
     if (compareCaseInsensitive(basic, ar.auth_header, false)) {
-        return basicAuth(hash, ar.auth_header.substr(basic.size()), ar);
+        return basicAuth(hash, ar.auth_header.substr(basic.size()), ar.req.uuid);
     }
 
-    LOG_DEBUG << "AuthMgr::authorize: Unrecognized authentication method" << ar.auth_header.substr(0, 10);
+    LOG_DEBUG_N << "AuthMgr::authorize: Unrecognized authentication method" << ar.auth_header.substr(0, 10);
     return {};
+}
+
+yahat::Auth AuthMgr::login(std::string_view name, std::string_view password)
+{
+    const auto auth_header = Base64Encode(std::format("{}:{}", name, password));
+
+    auto hash = sha256(auth_header, false);
+
+    if (auto existing = keys_.get(hash)) {
+        LOG_TRACE_N << "Proceeded with session-key " << Base64Encode(hash);
+        return existing->getAuth();
+    }
+
+    return basicAuth(hash, auth_header, {});
 }
 
 optional<pb::Tenant> AuthMgr::getTenant(std::string_view tenantId) const
@@ -284,10 +298,9 @@ void AuthMgr::bootstrap()
     createTenant(tenant);
 }
 
-string AuthMgr::createHash(const std::string &seed, const std::string &passwd)
+string AuthMgr::createHash(std::string_view seed, std::string_view passwd)
 {
-    auto combined = seed + passwd;
-    return sha256(combined);
+    return sha256(format("{}{}", seed, passwd));
 }
 
 void AuthMgr::resetTokensForTenant(std::string_view tenantId)
@@ -299,7 +312,7 @@ void AuthMgr::resetTokensForTenant(std::string_view tenantId)
 
 yahat::Auth AuthMgr::basicAuth(std::string hash,
                                std::string_view authString,
-                               const yahat::AuthReq &ar)
+                               const boost::uuids::uuid reqUuid)
 {
     trim(authString);
     if (authString.empty()) {
@@ -331,14 +344,14 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                     if (!user.has_auth()) {
                         LOG_DEBUG << " AuthMgr::basicAuth No Auth data for login for user " << userName
                                   << " at tenant " << tenant->id()
-                                  << " for request " << ar.req.uuid;
+                                  << " for request " << reqUuid;
                         return {};
                     }
                     auto pwhash = createHash(user.auth().seed(), string{pass});
                     if (pwhash != user.auth().hash()) {
                         LOG_DEBUG << " AuthMgr::basicAuth Invalid password for login from user " << userName
                                   << " at tenant " << tenant->id()
-                                  << " for request " << ar.req.uuid;
+                                  << " for request " << reqUuid;
                         return {};
                     }
 
@@ -351,7 +364,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                     LOG_DEBUG << " AuthMgr::basicAuth Added session key "
                               << Base64Encode(hash) << " for user " << userName
                               << " at tenant " << tenant->id()
-                              << " for request " << ar.req.uuid;
+                              << " for request " << reqUuid;
 
                     return session->getAuth();
                 }
@@ -360,7 +373,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
     }
 
     LOG_DEBUG << " AuthMgr::basicAuth User " << toPrintable(userName)
-              << " not found for request " << ar.req.uuid;
+              << " not found for request " << reqUuid;
     return {};
 }
 

@@ -164,12 +164,70 @@ public:
         admin_session_ = make_shared<Session>(*auth_);
     }
 
+    const std::string default_role_name = "default";
+
     auto& operator -> () {
         return db_;
     }
 
     auto& getAdminSession() {
         return admin_session_;
+    }
+
+    auto getAuthAs(std::string_view user, std::string_view passwd) {
+        return auth_->login(user, passwd);
+    }
+
+    template <typename PermissionsT = std::initializer_list<std::string>>
+    std::string createTenant(std::string tenantId, std::string_view userName, std::string_view passwd
+                             , std::function<void(boost::json::object&)> patcher
+                             , const PermissionsT& permissions = {"USE_API"}) {
+
+        string user_name;
+
+        if (!tenantId.empty()) {
+            tenantId = newUuidStr();
+        }
+
+        if (userName.empty()) {
+            user_name = std::format("user@{}", tenantId);
+        } else {
+            user_name = string{userName};
+        }
+
+        if (passwd.empty()) {
+            passwd = "very$ecret123";
+        }
+
+        pb::Tenant tenant;
+        tenant.set_id(tenantId);
+
+        {
+
+            auto role = tenant.add_roles();
+            role->set_name(default_role_name);
+
+            // Add all defined permissions to allowedPermissions and the "default" role.
+            for(const auto& name : permissions) {
+                pb::Permission perm = {};
+                if (pb::Permission_Parse(name, &perm)) {
+                    tenant.add_allowedpermissions(perm);
+                    role->add_permissions(perm);
+                }
+            }
+
+            auto user = tenant.add_users();
+            user->set_id(newUuidStr());
+            user->set_name(user_name);
+            auto auth = user->mutable_auth();
+            auth->set_password(std::string{passwd});
+            user->set_active(true);
+            user->add_roles(default_role_name);
+        }
+
+        auth_->createTenant(tenant);
+
+        return user_name;
     }
 
 private:

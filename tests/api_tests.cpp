@@ -19,6 +19,8 @@ using namespace nsblast::lib;
 namespace {
 
 static constexpr auto DEFAULT_SOA_SERIAL = 1000;
+static constexpr string_view user_passwd = "very$ecure123";
+static constexpr string_view user2_passwd = "even more very$ecure123";
 
 auto getZoneJson(string_view zone = "example.com") {
 
@@ -81,7 +83,7 @@ string getJsonForNewUser(string_view name = {}) {
     "Administrator"
   ],
   "auth": {
-    "password": "secret123"
+    "password": ")" << user_passwd << R"("
   }})";
 
     return out.str();
@@ -157,7 +159,7 @@ string getJsonForNewTenant(string_view id = {}) {
         "guest"
       ],
       "auth": {
-        "password": "very $ecure123"
+        "password": ")" << user_passwd << R"("
       }
     },
     {
@@ -173,7 +175,7 @@ string getJsonForNewTenant(string_view id = {}) {
         "guest"
       ],
       "auth": {
-        "password": "even more $ecure123"
+        "password": ")" << user2_passwd << R"("
       }
     }
   ]
@@ -1429,8 +1431,7 @@ TEST(ApiRequest, getTenant) {
     EXPECT_TRUE(auth1.contains("hash"));
     EXPECT_TRUE(auth1.contains("seed"));
     auto hash1 = nsblast::lib::AuthMgr::createHash(
-        string{auth1.at("seed").as_string()},
-        "very $ecure123");
+        string{auth1.at("seed").as_string()}, user_passwd);
     EXPECT_EQ(string(auth1.at("hash").as_string()), hash1);
 
     const auto& u2 = users.at(1).as_object();
@@ -1444,8 +1445,7 @@ TEST(ApiRequest, getTenant) {
     EXPECT_TRUE(auth2.contains("hash"));
     EXPECT_TRUE(auth2.contains("seed"));
     auto hash2 = nsblast::lib::AuthMgr::createHash(
-        string{auth2.at("seed").as_string()},
-        "even more $ecure123");
+        string{auth2.at("seed").as_string()}, user2_passwd);
     EXPECT_EQ(string(auth2.at("hash").as_string()), hash2);
 }
 
@@ -1876,7 +1876,6 @@ TEST(ApiRequest, listZonesPagination) {
 
 
     // Create zone
-
     for(auto i = 0; i < num_zones; ++i) {
         auto this_zone = format("example-{}.com", i);
         auto json = getZoneJson(this_zone);
@@ -1931,11 +1930,95 @@ TEST(ApiRequest, listZonesPagination) {
     }
 
     EXPECT_EQ(pages, expected_pages);
-
-
-    //EXPECT_EQ(zones.at("value").as_array()[0].as_object().at("zone"), "example.com");
-
 }
+
+TEST(ApiRequest, listZonesPaginationMultipleTenants) {
+    MockServer svr;
+    RestApi api{svr};
+
+    auto constexpr num_zones = 55;
+    auto constexpr limit = 10;
+    const auto str_limit = std::format("{}", limit);
+    auto constexpr expected_pages = 6;
+
+
+
+    // Create zone
+    unsigned user_count = 0;
+    string tenant_id = "nsblast";
+    string current_user;
+    for(auto i = 0; i < num_zones; ++i) {
+
+        if (i % 12) {
+            tenant_id = newUuidStr();
+            current_user = format("user-{}", user_count);
+            ++user_count;
+            svr.createTenant(tenant_id, current_user,
+                             user_passwd, {},
+                             {"USE_API", "CREATE_ZONE", "LIST_ZONES"});
+        }
+
+        auto this_zone = format("example-{}.com", i);
+        auto json = getZoneJson(this_zone);
+        auto req = makeRequest(svr, "zone", this_zone, boost::json::serialize(json), yahat::Request::Type::POST);
+
+        if (!current_user.empty()) {
+            req.auth = svr.getAuthAs(current_user, user_passwd);
+        }
+        auto parsed = api.parse(req);
+        auto res = api.onZone(req, parsed);
+        EXPECT_EQ(res.code, 201);
+    }
+
+    // List zone, page 1
+    auto req = makeRequest(svr, "zone", "", {}, yahat::Request::Type::GET);
+    req.arguments["limit"] = str_limit;
+    req.arguments["tenant"] = "*";
+    auto parsed = api.parse(req);
+    auto res = api.listZones(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    LOG_TRACE << "Result-json: " << res.body;
+
+    auto zones = boost::json::parse(res.body);
+    EXPECT_EQ(zones.at("value").as_array().size(), limit);
+    EXPECT_TRUE(zones.at("more").as_bool());
+    EXPECT_FALSE(zones.at("error").as_bool());
+
+    size_t pages = 2;
+    for(; pages <= expected_pages; ++pages) {
+        string next_key = string{zones.at("value").as_array().back().as_object().at("zone").as_string()};
+
+        req = makeRequest(svr, "zone", "", {}, yahat::Request::Type::GET);
+
+        req.arguments["limit"] = str_limit;
+        req.arguments["from"] = next_key;
+        req.arguments["tenant"] = "*";
+        parsed = api.parse(req);
+
+        res = api.listZones(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        LOG_TRACE << "Result-json: " << res.body;
+        zones = boost::json::parse(res.body);
+        EXPECT_FALSE(zones.at("error").as_bool());
+
+        if (pages == expected_pages) {
+            EXPECT_FALSE(zones.at("more").as_bool());
+            EXPECT_EQ(zones.at("value").as_array().size(), 5);
+        } else {
+            EXPECT_TRUE(zones.at("more").as_bool());
+            EXPECT_EQ(zones.at("value").as_array().size(), limit);
+        }
+
+        if (!zones.at("more").as_bool()) {
+            break;
+        }
+    }
+
+    EXPECT_EQ(pages, expected_pages);
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

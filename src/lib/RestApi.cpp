@@ -1629,7 +1629,7 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
     // Return a list of zones
     optional<ResourceIf::RealKey> key;
     if (all) {
-        key.emplace(from, key_class_t::TZONE);
+        key.emplace(from, key_class_t::ZONE);
     } else {
         key.emplace(tenant_id, from, key_class_t::TZONE);
     }
@@ -1647,11 +1647,36 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
             *key, ResourceIf::Category::ACCOUNT,
             [&zone_list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
 
-            auto [ztenant, zone] = key.getTenantAndFqdn();
-            LOG_TRACE_N << "Key=" << key << format(", tenant={}, zone={}", ztenant, zone);
+            /* In the normal case, we are listig zones for a tenant.
+             * In that case we can use string_view directly to the data in the key.
+             * Therefore, we use use string_views to read the relevant data.
+             * If we list all data, we put the data in the strings, and point
+             * the views to those strings.
+             */
+            string_view zone, ztenant;
+            string zone_buf, tenant_buf;
 
-            if (!all && !compareCaseInsensitive(tenant_id, ztenant)) {
-                return false; // We rolled over to another tenant
+            if (all) [[unlikely]] {
+                // The fqdn is reversed, so we need a string buffer to get the zone in readable format.
+                zone_buf = key.dataAsString();
+                zone = zone_buf;
+
+                pb::Zone z;
+                if (!z.ParseFromArray(value.data(), value.size())) {
+                    LOG_WARN_N << "Failed to parse tenant " << key << " into an object!";
+                    throw Response{500, "Internal Server Error - failed to deserialize object"};
+                }
+
+                // protobuf can't return views over strings yet...
+                tenant_buf = z.tenantid();
+                ztenant = tenant_buf;
+            } else {
+                tie(ztenant, zone) = key.getTenantAndFqdn();
+                LOG_TRACE_N << "Key=" << key << format(", tenant={}, zone={}", ztenant, zone);
+
+                if (!all && !compareCaseInsensitive(tenant_id, ztenant)) {
+                    return false; // We rolled over to another tenant
+                }
             }
 
             if (++count > page_size) {

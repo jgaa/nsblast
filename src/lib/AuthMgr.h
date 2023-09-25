@@ -45,6 +45,7 @@ public:
         if (inserted) {
             makeSpace();
         }
+        assert(items_.size() == lru_.size());
     }
 
     dataT get(const shadowKeyT& key, bool throwOnNotFound = false) {
@@ -74,6 +75,7 @@ public:
         if (auto it = items_.find(key) ; it != items_.end()) {
             lru_.erase(it->second->lruIt_);
             items_.erase(it);
+            assert(items_.size() == lru_.size());
             return true;
         }
 
@@ -84,10 +86,12 @@ public:
         std::lock_guard lock{mutex_};
         items_.clear();
         lru_.clear();
+        assert(items_.size() == lru_.size());
     }
 
     size_t size() {
         std::lock_guard lock{mutex_};
+        assert(items_.size() == lru_.size());
         assert(items_.size() == lru_.size());
         return items_.size();
     }
@@ -239,6 +243,9 @@ public:
 
     yahat::Auth authorize(const yahat::AuthReq& ar);
 
+    /*! Internal method to log in. Primarily ment for unit tests */
+    yahat::Auth login(std::string_view name, std::string_view password);
+
     // Methods to support the REST api
 
     /*! Get an existing tenant
@@ -282,7 +289,7 @@ public:
      */
     void bootstrap();
 
-    static std::string createHash(const std::string& seed, const std::string& passwd);
+    static std::string createHash(std::string_view seed, std::string_view passwd);
 
     static bool hasAuth() noexcept {
         return has_auth_;
@@ -291,7 +298,8 @@ public:
     void resetTokensForTenant(std::string_view tenantId);
 
 private:
-    yahat::Auth basicAuth(std::string hash, std::string_view authString, const yahat::AuthReq &ar);
+    yahat::Auth basicAuth(std::string hash, std::string_view authString,
+                          const boost::uuids::uuid reqUuid);
     void processUsers(pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant,
                            const std::optional<pb::Tenant>& existingTenant);
