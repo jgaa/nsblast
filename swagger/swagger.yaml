@@ -170,17 +170,36 @@ paths:
 
   /rr/{fqdn}:
     parameters:
-    - in: path
-      name: fqdn
-      description: "fqdn to change, for example: 'www.example.com' The 'rr' entries contain a, aaa, cname and txt resource records for any fqdn. The Zone and Zone ownership is deduced from the fqdn. You can only uise fqdn's for zones already created under your account."
-      required: true
-      type: string
-    - name: wait
-      in: query
-      description: Number of seconds to wait for the operation to be replicated to secondary servers.
-      schema:
-        type: integer
-        default: 0
+      - in: path
+        name: fqdn
+        description: "fqdn to change, for example: 'www.example.com' The 'rr' entries contain a, aaa, cname and txt resource records for any fqdn. The Zone and Zone ownership is deduced from the fqdn. You can only uise fqdn's for zones already created under your account."
+        required: true
+        type: string
+
+    get:
+      tags:
+        - rr
+      summary: Get Resource Records for a fqdn
+      operationId: "getFdqn"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized.)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
 
     post:
       tags:
@@ -199,6 +218,12 @@ paths:
         required: true
         schema:
           $ref: "#/definitions/Entry"
+      - name: wait
+        in: query
+        description: Number of seconds to wait for the operation to be replicated to secondary servers.
+        schema:
+          type: integer
+          default: 0
       responses:
         "201":
           description: "Success"
@@ -230,6 +255,12 @@ paths:
         required: true
         schema:
           $ref: "#/definitions/Entry"
+      - name: wait
+        in: query
+        description: Number of seconds to wait for the operation to be replicated to secondary servers.
+        schema:
+          type: integer
+          default: 0
       responses:
         "200":
           description: "Success"
@@ -266,6 +297,12 @@ paths:
         required: true
         schema:
           $ref: "#/definitions/Entry"
+      - name: wait
+        in: query
+        description: Number of seconds to wait for the operation to be replicated to secondary servers.
+        schema:
+          type: integer
+          default: 0
       responses:
         "200":
           description: "Success"
@@ -291,6 +328,13 @@ paths:
       operationId: "deleteFdqn"
       summary: Deletes an existing fqdn
       description: "Deletes a fqdn and all it's resource records (except nn and soa, which are kept in the zone itself). For example, if you delete 'example.com', that means that the resource records are gone, exept the dns information and the soa properties."
+      parameters:
+      - name: wait
+        in: query
+        description: Number of seconds to wait for the operation to be replicated to secondary servers.
+        schema:
+          type: integer
+          default: 0
       responses:
         "200":
           description: "Success"
@@ -316,7 +360,6 @@ paths:
       schema:
         type: integer
         default: 0
-
     - in: path
       name: rrname
       required: true

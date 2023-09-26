@@ -487,7 +487,7 @@ public:
     RrMx(buffer_t bufferView, uint32_t offset)
         : Rr(bufferView, offset) {}
 
-    Labels host();
+    Labels host() const;
     uint32_t priority() const;
 };
 
@@ -500,7 +500,7 @@ public:
     RrAfsdb(buffer_t bufferView, uint32_t offset)
         : Rr(bufferView, offset) {}
 
-    Labels host();
+    Labels host() const;
     uint32_t subtype() const;
 };
 

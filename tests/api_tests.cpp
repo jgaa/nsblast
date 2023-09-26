@@ -2127,6 +2127,52 @@ TEST(ApiRequest, listZoneWithPagination) {
     EXPECT_EQ(pages, expected_pages);
 }
 
+TEST(ApiRequest, getRr) {
+
+    MockServer svr;
+    RestApi api{svr};
+
+    // Create zone
+    string_view zone = "example.com";
+    auto json = getZoneJson(zone);
+    auto req = makeRequest(svr, "zone", zone, boost::json::serialize(json), yahat::Request::Type::POST);
+    auto parsed = api.parse(req);
+    auto res = api.onZone(req, parsed);
+    EXPECT_EQ(res.code, 201);
+
+    // Get RR's in zone zone
+    req = makeRequest(svr, "rr", zone, {}, yahat::Request::Type::GET);
+    parsed = api.parse(req);
+    res = api.onResourceRecord(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    LOG_TRACE << "Result-json: " << res.body;
+
+    auto result = boost::json::parse(res.body);
+    EXPECT_FALSE(result.at("error").as_bool());
+    EXPECT_EQ(result.at("value").as_object().at("fqdn").as_string(), zone);
+    auto v = result.at("value").as_object().at("rr").as_array();
+    EXPECT_EQ(v.size(), 3);
+    EXPECT_EQ(v[0].at("type").as_string(), "SOA");
+        EXPECT_EQ(v[0].at("mname").as_string(), "ns1.example.com");
+        EXPECT_EQ(v[0].at("rname").as_string(), "hostmaster.example.com");
+        EXPECT_EQ(v[0].at("email").as_string(), "hostmaster@example.com");
+        EXPECT_EQ(v[0].at("serial").to_number<int>(), 1000);
+        EXPECT_EQ(v[0].at("refresh").to_number<int>(), 1001);
+        EXPECT_EQ(v[0].at("retry").to_number<int>(), 1002);
+        EXPECT_EQ(v[0].at("expire").to_number<int>(), 1003);
+        EXPECT_EQ(v[0].at("minimum").to_number<int>(), 1004);
+        EXPECT_EQ(v[0].at("class").as_string(), "IN");
+        EXPECT_EQ(v[0].at("ttl").to_number<int>(), 1000);
+    EXPECT_EQ(v[1].at("type").as_string(), "NS");
+        EXPECT_EQ(v[1].at("ns").as_string(), "ns1.example.com");
+        EXPECT_EQ(v[1].at("class").as_string(), "IN");
+        EXPECT_EQ(v[1].at("ttl").to_number<int>(), 1000);
+    EXPECT_EQ(v[2].at("type").as_string(), "NS");
+        EXPECT_EQ(v[2].at("ns").as_string(), "ns2.example.com");
+        EXPECT_EQ(v[2].at("class").as_string(), "IN");
+        EXPECT_EQ(v[2].at("ttl").to_number<int>(), 1000);
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

@@ -105,32 +105,6 @@ bool fromJson(const std::string& json, T& obj) {
     return true;
 }
 
-//template <ProtoMessage T>
-//std::string toJson(const T& obj) {
-//    string str;
-//    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
-//    if (!res.ok()) {
-//        LOG_DEBUG << "Failed to convert object to json: "
-//                  << typeid(T).name() << ": "
-//                  << res.ToString();
-//        throw std::runtime_error{"Failed to convertt object to json"};
-//    }
-//    return str;
-//}
-
-//template <ProtoList T>
-//ostream& toJson(ostream& out, const T& list) {
-//    out << '[';
-//    auto num = 0;
-//    for(const auto& message: list) {
-//        if (++num > 1) {
-//            out << ',';
-//        }
-//        out << toJson(message);
-//    }
-//    return out << ']';
-//}
-
 // Convert a plain email-address from "some.persone.name@example.com" to some\.persons\.name.example.com
 string_view toDnsEmail(string_view email, std::string& buffer) {
 
@@ -295,6 +269,105 @@ getSessionAndTenant(const yahat::Request &req, Server& server, bool allowAll = f
     return {{}, session, tenant, all};
 }
 
+boost::json::object toJson(const span_t buffer, const Rr& rr) {
+    boost::json::object o;
+    string_view tname;
+
+    switch(rr.type()) {
+    case TYPE_A:
+        tname = "A";
+        o["a"] = RrA(buffer, rr.offset()).address().to_string();
+        break;
+    case TYPE_AAAA:
+        tname = "AAAA";
+        o["aaaa"] = RrA(buffer, rr.offset()).address().to_string();
+        break;
+    case TYPE_NS:
+        tname = "NS";
+        o["ns"] = RrNs(buffer, rr.offset()).ns().string();
+        break;
+    case TYPE_CNAME:
+        tname = "CNAME";
+        o["cname"] = RrCname(buffer, rr.offset()).cname().string();
+        break;
+    case TYPE_SOA: {
+        tname = "SOA";
+        const RrSoa soa(buffer, rr.offset());
+        o["mname"] = soa.mname().string();
+        o["rname"] = soa.rname().string();
+        o["email"] = soa.email();
+        o["serial"] = soa.serial();
+        o["refresh"] = soa.refresh();
+        o["retry"] = soa.retry();
+        o["expire"] = soa.expire();
+        o["minimum"] = soa.minimum();
+    } break;
+    case TYPE_PTR:
+        tname = "PTR";
+        o["ptr"] = RrPtr(buffer, rr.offset()).ptrdname().string();
+        break;
+    case TYPE_MX: {
+        tname = "MX";
+        const RrMx mx(buffer, rr.offset());
+        o["host"] = mx.host().string();
+        o["priority"] = mx.priority();
+    } break;
+    case TYPE_TXT:
+        tname = "PTR";
+        o["txt"] = RrTxt(buffer, rr.offset()).string();
+        break;
+    case TYPE_SRV: {
+        tname = "SRV";
+        const RrSrv srv(buffer, rr.offset());
+        o["target"] = srv.target().string();
+        o["priority"] = srv.priority();
+        o["weight"] = srv.weight();
+        o["port"] = srv.port();
+    } break;
+    case TYPE_AFSDB: {
+        tname = "SRV";
+        const RrAfsdb ad(buffer, rr.offset());
+        o["host"] = ad.host().string();
+        o["subtype"] = ad.subtype();
+    } break;
+    case TYPE_RP: {
+        tname = "RP";
+        const RrRp rp(buffer, rr.offset());
+        o["mbox"] = rp.mbox().string();
+        o["txt"] = rp.txt().size();
+    } break;
+    default:
+        o["type"] = format("#{}", rr.type());
+        o["rdata"] = Base64Encode(rr.rdata());
+    } // switch
+
+    if (!tname.empty()) {
+        o["type"] = tname;
+    }
+
+    o["class"] = "IN";
+    o["ttl"] = rr.ttl();
+    return o;
+}
+
+
+auto toJson(const lib::Entry& entry) {
+    boost::json::object o;
+    boost::json::array a;
+    bool has_label = false;
+    for(const auto& rr : entry) {
+        if (!has_label) {
+            o["fqdn"] = rr.labels().string();
+            has_label = true;
+        }
+
+        a.push_back(toJson(entry.buffer(), rr));
+    }
+
+    o["rr"] = std::move(a);
+    return o;
+}
+
 } // anon ns
 
 RestApi::RestApi(Server& server)
@@ -402,23 +475,21 @@ void RestApi::validateSoa(const boost::json::value &json)
         throw Response{400, "'soa' must be a json object"};
     }
 
+    const auto& o = soa.as_object();
+
     for (string_view key : {"mname", "rname"}) {
-        try {
-            if (!soa.at(key).is_string()) {
+        if (auto what = o.if_contains(key)) {
+            if (!what->is_string()) {
                 throw Response{400, "Not a string: "s + string(key)};
             }
-        } catch (std::exception& ex) {
-            throw Response{400, "Missing "s + string(key)};
         }
     }
 
     for (string_view key : {"refresh", "retry", "version", "expire", "minimum"}) {
-        try {
-            if (!soa.at(key).is_int64()) {
+        if (auto what = o.if_contains(key)) {
+            if (!what->is_int64()) {
                 throw Response{400, "Not a number: "s + string(key)};
             }
-        } catch (std::exception& ) {
-            ; // OK
         }
     }
 }
@@ -1265,6 +1336,23 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     // Apply change
     switch(req.type) {
+    case Request::Type::GET: {
+        if (!session->isAllowed(pb::Permission::READ_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
+        }
+        if (!existing.hasRr()) {
+            return {404, "Not Found"};
+        }
+
+        boost::json::object json;
+        json["rcode"] = 200;
+        json["error"] = false;
+        json["message"] = "";
+        json["value"] = toJson(existing.rr());
+
+        return {200, "OK", boost::json::serialize(json)};
+    } break;
+
     case Request::Type::POST: {
         if (!session->isAllowed(pb::Permission::CREATE_RR, lowercaseFqdn)) {
             return {403, "Access Denied"};

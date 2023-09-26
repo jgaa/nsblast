@@ -1447,7 +1447,7 @@ Labels RrNs::ns() const
     return {rdata(), 0};
 }
 
-Labels RrMx::host()
+Labels RrMx::host() const
 {
     if (type() != TYPE_MX) {
         throw runtime_error{"Not a TYPE_MX"};
@@ -1552,7 +1552,7 @@ Labels RrRp::txt() const
     return getLabelsFromRdata<2>(rdata(), 1);
 }
 
-Labels RrAfsdb::host()
+Labels RrAfsdb::host() const
 {
     if (type() != TYPE_AFSDB) {
         throw runtime_error{"Not a TYPE_AFSDB"};
