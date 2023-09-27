@@ -162,6 +162,10 @@ int main(int argc, char* argv[]) {
         ("dns-enable-notify",
             po::value<bool>(&config.dns_enable_notify)->default_value(config.dns_enable_notify),
             "A master server sens DNS NOTIFY messages to slave servers when a zone is changed.")
+        ("dns-enable-ixfr",
+         po::value<bool>(&config.dns_enable_ixfr)->default_value(config.dns_enable_ixfr),
+         "Enable IXFR from a master server to it's slaves. This adds aome extra data in the database "
+         "for each change that is made to a zone.")
         ("dns-notify-port",
             po::value<uint16_t>(&config.dns_notify_to_port)->default_value(config.dns_notify_to_port),
            "Port number to send NOTIFY messages to when a zone change")
