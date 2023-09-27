@@ -3,6 +3,7 @@
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/tokenizer.hpp>
 
 #include "RestApi.h"
 #include "nsblast/logging.h"
@@ -32,6 +33,34 @@ ostream& operator << (ostream& out, nsblast::lib::Session& session) {
 namespace nsblast::lib {
 
 namespace {
+
+auto makeRrFilter(string_view tokens) {
+    static constexpr array<pair<string_view, uint16_t>, 10> rrs = {{
+        {"a", TYPE_A},
+        {"aaaa", TYPE_AAAA},
+        {"ns", TYPE_NS},
+        {"txt", TYPE_TXT},
+        {"cname", TYPE_CNAME},
+        {"mx", TYPE_MX},
+        {"ptr", TYPE_PTR},
+        {"srv", TYPE_SRV},
+        {"hinfo", TYPE_HINFO},
+        {"asfdb", TYPE_AFSDB}
+    }};
+    vector<uint16_t> filter;
+
+    for(auto const &token : boost::tokenizer{tokens.begin(), tokens.end(), boost::char_separator{","}}) {
+        if (auto it = find_if(rrs.begin(), rrs.end(), [&token](auto& v) {
+                return v.first == token;
+            }); it != rrs.end()) {
+            filter.push_back(it->second);
+        } else {
+            throw Response{400, format("Invalid/unknown filter: {}", token)};
+        }
+    }
+
+    return filter;
+}
 
 std::shared_ptr<Session> getSession(const yahat::Request& req) {
     try {
@@ -313,7 +342,7 @@ boost::json::object toJson(const span_t buffer, const Rr& rr) {
         o["priority"] = mx.priority();
     } break;
     case TYPE_TXT:
-        tname = "PTR";
+        tname = "TXT";
         o["txt"] = RrTxt(buffer, rr.offset()).string();
         break;
     case TYPE_SRV: {
@@ -335,6 +364,12 @@ boost::json::object toJson(const span_t buffer, const Rr& rr) {
         const RrRp rp(buffer, rr.offset());
         o["mbox"] = rp.mbox().string();
         o["txt"] = rp.txt().size();
+    } break;
+    case TYPE_HINFO: {
+        tname = "HINFO";
+        const RrHinfo hi(buffer, rr.offset());
+        o["cpu"] = hi.cpu();
+        o["os"] = hi.os();
     } break;
     default:
         o["type"] = format("#{}", rr.type());
@@ -1452,6 +1487,41 @@ put:
         if (!existing.hasRr()) {
             return {404, "The rr don't exist"};
         }
+
+        if (!parsed.operation.empty()) {
+            const auto filter = makeRrFilter(parsed.operation);
+            StorageBuilder merged;
+            for(auto& rr : existing.rr()) {
+                // Add eveything *not* matching the filter
+                if (find(filter.begin(), filter.end(), rr.type()) == filter.end()) {
+                    merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+                }
+            }
+
+            if (existing.isSame()) {
+                merged.incrementSoaVersion(existing.soa());
+            } else {
+                need_version_increment = true;
+                assert(existing.soa().begin()->type() == TYPE_SOA);
+                merged.setZoneLen(existing.soa().begin()->labels().size() -1);
+            }
+
+            merged.finish();
+
+            // Only write back the changed entry if it still contains some RR's
+            if (merged.rrCount()) {
+                trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged.buffer(), false);
+
+                if (config_.dns_enable_ixfr) {
+                    newData = {merged.buffer()};
+                }
+
+                break;
+            }
+
+            // Fall back to delete the entry!
+        }
+
         try {
             trx->remove({lowercaseFqdn, key_class_t::ENTRY}, false);
             need_version_increment = true;
