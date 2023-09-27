@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
 
     general.add_options()
         ("help,h", "Print help and exit")
-        ("version", "print version string and exit")
+        ("version", "print version information and exit")
         ("db-path,d",
             po::value<string>(&config.db_path)->default_value(config.db_path),
             "Path to the database directory")
@@ -88,6 +88,7 @@ int main(int argc, char* argv[]) {
             "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
             "The server will terminate after the changes are made.")
     ;
+
     po::options_description backup("Backup/Restore");
     backup.add_options()
         ("backup-path",
@@ -124,8 +125,12 @@ int main(int argc, char* argv[]) {
              po::value(&config.cluster_repl_agent_max_queue_size)->default_value(config.cluster_repl_agent_max_queue_size),
              "The number of transactions that can be queued for a follower before the follower is regarded as not being up to date.")
         ;
+
     po::options_description http("HTTP/API server");
     http.add_options()
+        ("with-swagger",
+         po::value(&config.swagger)->default_value(config.swagger),
+         "Enable the '/swagger' endpoint to interactively explore the REST API")
         ("http-endpoint,H",
             po::value<string>(&config.http.http_endpoint)->default_value(config.http.http_endpoint),
             "HTTP endpoint. For example [::] to listen to all interfaces")
@@ -142,6 +147,7 @@ int main(int argc, char* argv[]) {
             po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
             "Threads for the embedded HTTP server")
         ;
+
     po::options_description odns("DNS server");
     odns.add_options()
         ("dns-endpoint",
@@ -170,6 +176,7 @@ int main(int argc, char* argv[]) {
             po::value<uint16_t>(&config.dns_notify_to_port)->default_value(config.dns_notify_to_port),
            "Port number to send NOTIFY messages to when a zone change")
         ;
+
     po::options_description rocksdb("RocksDB");
     rocksdb.add_options()
         ("rocksdb-db-write-buffer-size",
