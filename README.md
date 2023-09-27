@@ -128,5 +128,5 @@ You can also use the [official Docker image](https://hub.docker.com/repository/d
 The example use the local docker IP. You can substitute that with a machines real IP.
 
 ```sh
-docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp lastviking/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
+docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp jgaafromnorth/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
 ```
