@@ -118,8 +118,13 @@ If you want [logbt](https://github.com/mapbox/logbt) to be used to dump backtrac
 sudo bash -c "echo '/tmp/logbt-coredumps/core.%p.%E' > /proc/sys/kernel/core_pattern"
 ```
 
+**Official image**
+You can also use the [official Docker image](https://hub.docker.com/repository/docker/jgaafromnorth/nsblast/general):
+```sh
+  docker pull jgaafromnorth/nsblast:latest
+```
 
-Starting:
+**Starting**:
 The example use the local docker IP. You can substitute that with a machines real IP.
 
 ```sh
