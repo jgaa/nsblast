@@ -4,7 +4,7 @@
 ## build a container-image from the deliverables
 
 project=nsblast
-image_repro=lastviking
+image_repro=jgaafromnorth
 
 docker_run_args=""
 tag=latest
@@ -18,6 +18,7 @@ cmake_build_type=RelWithDebInfo
 image_tag=$project
 build_image="${project}bld:latest"
 scriptname=`basename "$0"`
+version=v`grep " set(NSBLAST_VERSION" CMakeLists.txt | xargs | cut -f 2 -d ' ' | cut -f1 -d')'`
 
 if [ -z ${BUILD_DIR+x} ]; then
     BUILD_DIR="${HOME}/${project}-build-image"
@@ -36,14 +37,15 @@ usage() {
   echo "                /proc/sys/kernel/core_pattern must be '/tmp/logbt-coredumps/core.%p.%E'"
   echo "  --push        Push the image to a docker registry"
   echo "  --tag tagname Tag to '--push' to. Defaults to 'latest'"
+  echo "  --version ver Version to tag. Defaults to '${version}'"
   echo "  --scripted    Assume that the command is run from a script"
   echo "  --help        Show help and exit."
   echo "  --skip-tests  Skip running the unit-tests as part of the build"
   echo
   echo "Environment variables"
-  echo "  BUILD_DIR     Directory to build with CMake. Default: ${BUILD_DIR}"
+  echo "  BUILD_DIR     Directory to build with CMake. Default: '${BUILD_DIR}'"
   echo "  TARGET        Target image. Defaults to ${project}:<tagname>"
-  echo "  REGISTRY      Registry to '--push' to. Defaults to ${image_repro}"
+  echo "  REGISTRY      Registry to '--push' to. Defaults to '${image_repro}'"
   echo "  SOURCE_DIR    Directory to the source code. Defaults to the current dir"
   echo
 }
@@ -97,6 +99,12 @@ while [ $# -gt 0 ];  do
         --tag)
             shift
             tag=$1
+            shift
+            ;;
+
+        --version)
+            shift
+            version=$1
             shift
             ;;
 
@@ -206,6 +214,17 @@ fi
 pushd ${artifacts_dir}
 
 docker build -t ${target_image} . || die "Failed to make target: ${target_image}"
+
+if [ "$push" = true ] ; then
+    docker push ${target_image}
+
+    if [[ -n "${version// /}" ]]; then
+        vtag=${REGISTRY}/${project}:${version}
+        echo "Tagging and pushing: ${vtag}"
+        docker tag ${target_image} ${vtag}
+        docker push ${vtag}
+    fi
+fi
 
 popd # ${artifacts_dir}
 popd # ${BUILD_DIR}
