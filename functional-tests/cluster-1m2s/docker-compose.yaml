@@ -5,6 +5,7 @@ services:
     image: lastviking/nsblast
     environment:
         NSBLAST_ADMIN_PASSWORD: VerySecret
+        NSBLAST_CLUSTER_AUTH_KEY: VeryMoreSecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role primary --cluster-server-address 0.0.0.0:10123
     # The cursed avahi-daemon use udp port 5353, so we can't safely use that :/
     ports:
@@ -16,6 +17,7 @@ services:
     image: lastviking/nsblast
     environment:
         NSBLAST_ADMIN_PASSWORD: VerySecret
+        NSBLAST_CLUSTER_AUTH_KEY: VeryMoreSecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123
     ports:
       - "127.0.0.1:8081:80"
@@ -26,6 +28,7 @@ services:
     image: lastviking/nsblast
     environment:
         NSBLAST_ADMIN_PASSWORD: VerySecret
+        NSBLAST_CLUSTER_AUTH_KEY: VeryMoreSecret
     command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123
     ports:
       - "127.0.0.1:8082:80"
