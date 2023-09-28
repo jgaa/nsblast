@@ -144,6 +144,10 @@ public:
 
     bidi_sync_stream_t *createSyncClient(::grpc::CallbackServerContext* context);
 
+    const auto& authKey() const {
+        return auth_key_;
+    }
+
 private:
     void init();
 
@@ -151,7 +155,7 @@ private:
     std::map<boost::uuids::uuid, std::shared_ptr<SyncClient>> clients_;
     std::unique_ptr<NsblastSvcImpl> impl_;
     std::unique_ptr<grpc::Server> svc_;
-
+    const HashedKey auth_key_;
     std::mutex mutex_;
 };
 

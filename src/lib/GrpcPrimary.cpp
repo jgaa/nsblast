@@ -23,6 +23,8 @@ namespace {
 
 GrpcPrimary::GrpcPrimary(Server &server)
     : owner_{server}
+    , auth_key_{getHashFromKeyInFileOrEnvVar(server.config().cluster_auth_key,
+                                             "NSBLAST_CLUSTER_AUTH_KEY")}
 {
 }
 
@@ -175,9 +177,48 @@ void GrpcPrimary::SyncClient::flush()
     }
 }
 
-GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::NsblastSvcImpl::Sync(grpc::CallbackServerContext *context)
+GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::NsblastSvcImpl::Sync(
+    grpc::CallbackServerContext *context)
 {
     LOG_TRACE_N << "Was called from peer: " << context->peer();
+
+    auto client_hash = context->client_metadata().find("auth-hash");
+    auto client_seed = context->client_metadata().find("auth-seed");
+
+    if (client_hash == context->client_metadata().end()) {
+        LOG_WARN_N << "Connection from peer " << context->peer()
+                   << " denied because the client did not send a auth-hash value";
+        return {};
+    }
+
+    if (client_seed == context->client_metadata().end()) {
+        LOG_WARN_N << "Connection from peer " << context->peer()
+                   << " denied because the client did not send a auth-seed value";
+        return {};
+    }
+
+    HashedKey my_hash;
+    try {
+        my_hash = getHashFromKeyInFileOrEnvVar(
+            grpc_.owner_.config().cluster_auth_key,
+            "NSBLAST_CLUSTER_AUTH_KEY",
+            string{client_seed->second.begin(), client_seed->second.end()});
+
+    } catch (const exception& ex) {
+        LOG_ERROR_N << "Connection from peer " << context->peer()
+                    << " denied because I failed to compute the auth-hash value: "
+                    << ex.what();
+        return {};
+    }
+
+    if (string_view{my_hash.hash}
+        != string_view{client_hash->second.data(), client_hash->second.size()}) {
+        LOG_WARN_N << "Connection from peer " << context->peer()
+                   << " denied because the client did not provide a correct hashed auth-key value";
+        return {};
+    }
+
+
     return grpc_.createSyncClient(context);
 }
 

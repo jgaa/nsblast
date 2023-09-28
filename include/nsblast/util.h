@@ -28,6 +28,38 @@ namespace nsblast::lib {
     /*! Validate if a fqdn is valid. */
     bool validateFqdn(std::string_view fqdn);
 
+    struct HashedKey {
+        std::string seed;
+        std::string hash;
+    };
+
+    /*! Calculate sha256 hash from the binary content of file with seed
+     *
+     *  The hash is created from seed \\t keyBuffer; also a seed buffer
+     *  with a single tab character and then the key buffer.
+     *
+     *  \param file Full path to the key-file. The file is assumed to contain
+     *      unencoded key and may be a text-string or a binary file.
+     *      The entire file is used as the key, including linefeeds if the
+     *      file is created in a text editor.
+     *  \param seed Seed to use. If empty, a 16 byte seed is created.
+     */
+    HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed = {});
+
+    /*! Calculate sha256 hash from content of an environment variable
+     *
+     *  The hash is created from seed \\t keyBuffer; also a seed buffer
+     *  with a single tab character and then the key buffer.
+     *
+     *  \param name Secret key
+     *  \param seed Seed to use. If empty, a 16 byte seed is created.
+     */
+    HashedKey getHashFromKeyInEnvVar(const std::string& name, std::string seed = {});
+
+    HashedKey getHashFromKeyInFileOrEnvVar(std::filesystem::path file,
+                                           const std::string& envName,
+                                           std::string seed = {});
+
     /*! Calculate a sha256 checksum on the input
      *
      *  \param what Input, data to calculate a has from

@@ -60,6 +60,10 @@ struct Config {
     /// Address (IP ':' port) to the gRPC service used for cluster-sync
     std::string cluster_server_addr = "0.0.0.0:10123";
 
+    /// Path to a file containing a gRPC shared secret.
+    /// Used to authenticate gRPC replicas.
+    std::string cluster_auth_key;
+
     /// Max transaction queue size for replication agents (server to slave)
     size_t cluster_repl_agent_max_queue_size = 128;
 

@@ -118,6 +118,12 @@ int main(int argc, char* argv[]) {
         ("cluster-role",
             po::value(&config.cluster_role)->default_value(config.cluster_role),
             "One of: \"primary\", \"follower\", \"none\" (not part of a nsblast cluster)")
+        ("cluster-auth-key",
+         po::value(&config.cluster_auth_key)->default_value(config.cluster_auth_key),
+         "Path to a binary file containing a key (shared secret) to use for gRPC authentication. "
+         "The same key must be used by all the neblast servers in a Simple Cluster. "
+         "As an alternative, the environment-valiable NSBLAST_CLUSTER_AUTH_KEY ca be used. In that "
+         "case, the variable must contain the secret key itself as plain text."   )
         ("cluster-server-address",
              po::value(&config.cluster_server_addr)->default_value(config.cluster_server_addr),
              "Address to the primary server, or (for the primary), the address/port to listen to.")

@@ -215,5 +215,68 @@ bool validateFqdn(std::string_view fqdn)
     return std::regex_match(fqdn.begin(), fqdn.end(), pattern);
 }
 
+HashedKey getHashFromKeyAndSeed(std::string_view key, std::string seed) {
+    if (seed.empty()) {
+        seed = getRandomStr(16);
+    }
+
+    auto seeded_key = format("{}\t{}", seed, key);
+    return {seed, sha256(seeded_key)};
+}
+
+HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed)
+{
+    if (file.empty()) {
+        LOG_WARN << "getHashFromKeyInFile - key-file argument is empty!";
+        throw runtime_error{"key-file is empty"};
+    }
+
+    auto in = ifstream{file, std::ios_base::in & std::ios_base::binary};
+    if (!in.is_open()) {
+        auto err = errno;
+        LOG_WARN << "Failed to open " << file << " for read: " << strerror(err);
+        throw runtime_error{format("Failed to open file {} for read", file.string())};
+    }
+
+    std::string key;
+    const auto len = filesystem::file_size(file);
+    if (len < 8 || len > 1024) {
+        LOG_WARN << "Key in file " << file << " must be 1 - 1024 bytes long!";
+        throw runtime_error{format("Failed to open file {} for read", file.string())};
+    }
+    key.resize(len);
+    in.read(key.data(), len);
+    in.close();
+
+    ScopedExit bye{[&key] {
+        //Erase the key from memory
+        for(auto &c : key) {
+            c = 0;
+        }
+        key.clear();
+    }};
+
+    return getHashFromKeyAndSeed(key, std::move(seed));
+}
+
+HashedKey getHashFromKeyInEnvVar(const std::string& name, std::string seed)
+{
+    if (auto key = std::getenv(name.c_str())) {
+        return getHashFromKeyAndSeed(key, std::move(seed));
+    }
+
+    LOG_WARN << "getHashFromKeyInEnvVar - Missing environment variable: " << name;
+    throw runtime_error{format("Missing environment variable: {}", name)};
+}
+
+HashedKey getHashFromKeyInFileOrEnvVar(std::filesystem::path file, const std::string &envName, std::string seed)
+{
+    if (!file.empty()) {
+        return getHashFromKeyInFile(std::move(file), std::move(seed));
+    }
+
+    return getHashFromKeyInEnvVar(envName, std::move(seed));
+}
+
 
 } // ns

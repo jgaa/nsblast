@@ -16,6 +16,8 @@ namespace nsblast::lib {
 
 GrpcFollow::GrpcFollow(Server &server)
     : server_{server}
+    , auth_key_{getHashFromKeyInFileOrEnvVar(server.config().cluster_auth_key,
+                                             "NSBLAST_CLUSTER_AUTH_KEY")}
 {
 
 }
@@ -89,6 +91,8 @@ void GrpcFollow::SyncFromServer::start()
 
     LOG_TRACE_N << "Starting gRPC async callback for Sync()";
     assert(stub_);
+    ctx_.AddMetadata("auth-hash", grpc_.authKey().hash);
+    ctx_.AddMetadata("auth-seed", grpc_.authKey().seed);
     stub_->async()->Sync(&ctx_, this);
     can_write_ = true;
     writeIf();
@@ -167,6 +171,11 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
     if (!ok) [[unlikely]] {
         LOG_TRACE_N << "Not ok. Assuming the other end is shutting down.";
         stop();
+        return;
+    }
+
+    if (!was_connected_) {
+        was_connected_ = true;
     }
 
     grpc_.last_contact_ = chrono::steady_clock::now();
@@ -178,7 +187,14 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
 
 void GrpcFollow::SyncFromServer::OnDone(const grpc::Status &s)
 {
-    LOG_INFO_N << "gRPC Replication is done. Status is " << s.error_message();
+    if (!was_connected_) {
+        LOG_ERROR_N << "Failed to establish connection to primary grpc server. "
+                       "Is the 'cluster-auth-key' valid?";
+    }
+
+    LOG_INFO_N << "gRPC Replication is done. Status is " << s.error_message()
+               << " was_connected_=" << was_connected_;
+
     self_.reset();
 }
 

@@ -67,6 +67,7 @@ public:
         grpc::nsblast::pb::SyncRequest req_;
         grpc::nsblast::pb::SyncUpdate update_;
         bool can_write_ = false;
+        bool was_connected_ = false;
         std::shared_ptr<SyncFromServer> self_;
         ack_timer_t ack_timer_;
         bool ack_pending_ = false;
@@ -88,6 +89,10 @@ public:
         return follower_;
     }
 
+    const auto& authKey() const {
+        return auth_key_;
+    }
+
 
 private:
     void scheduleNextTimer();
@@ -100,6 +105,7 @@ private:
     get_current_trxid_t get_ack_t;
     boost::asio::deadline_timer timer_{server_.ctx()};
     std::shared_ptr<SyncFromServer> follower_;
+    const HashedKey auth_key_;
     bool stopped_ = true;
 };
 
