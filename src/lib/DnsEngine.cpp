@@ -1012,7 +1012,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
 
     auto out_buffer_len = request.maxReplyBytes;
 
-    Message message{request.span}; // TODO: Return error code. Now throws if the message is malformed
+    Message message{request.span};
 
     shared_ptr<MessageBuilder> mb;
     bool ok = true;

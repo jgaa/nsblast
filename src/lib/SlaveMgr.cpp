@@ -63,8 +63,8 @@ void SlaveMgr::deleteZone(string_view fqdn)
 
 void SlaveMgr::init()
 {
-    // TODO: Read all active zones we will replicate and
-    //       create Slave objects and set timers.
+    // Read all active zones we will replicate and
+    // create Slave objects and set timers.
 
     auto trx = db().transaction();
     trx->iterate({"", key_class_t::ENTRY}, [this](ResourceIf::TransactionIf::key_t key, span_t value) {
@@ -77,8 +77,7 @@ void SlaveMgr::init()
         }
 
         return true;
-    }
-        , ResourceIf::Category::MASTER_ZONE);
+    }, ResourceIf::Category::MASTER_ZONE);
 }
 
 void SlaveMgr::reload(string_view fqdn)

@@ -67,6 +67,16 @@ Other types
 - [X] AXFR
 - [x] IXFR
 
+# Important Todos
+- [ ] TODO: Check if the caller is allowed to do AXFR!
+- [ ] TODO: Validate that the client has access to this operation on this zone
+- [ ] TODO: set up configuration for the session; idle time etc.
+- [ ] TODO: Set reasonable defaults
+- [ ] TODO: Add re-try loop in replication.
+- [ ] TODO: Set up timer / util.cpp
+- [ ] TODO: Add more tests with pointers
+
+
 # Internals
 - [ ] Otimize the resolver to process related questions in in one loop (for example A and AAAA queries for the same fqdn)
 - [ ] Handle the mname and NS entries for a new zone automatically
@@ -78,6 +88,12 @@ Other types
 # Security
 - [ ] Limit the numb er of concurrent UDP connections
 - [ ] Limit the numb er of concurrent TCP connections
+- [x] Authenticate gRPC connections
+- [ ] Authenticate / validate zone transfers using the DNS protocol
+ - [ ] IP whitelist
+- [ ] Add optional TLS for gRPC connections
+ - [ ] Args in grpc init.
+ - [ ] Self signed certs script for incoming connections/ automatic setup
 
 # Master DNS configuration
 - [ ] Redirect API requests from slaves to master
@@ -108,8 +124,8 @@ Other types
     - [ ] Stats (for security, billing)
 
 # API
-- [ ] Get an Entry as json
-- [ ] Delete a RR type from a fqdn
+- [x] Get an Entry as json
+- [x] Delete a RR type from a fqdn
 - [ ] DDNS service to allow users to use the DNS for their home networks
 - [ ] Import/export zones via a standard DNS zone file
 - [ ] Import/export zones via a json file
@@ -164,6 +180,17 @@ Other types
 - [ ] AXFR for valid key inside a zone (but not the key for the SOA) returns NAME_ERROR
 - [ ] AXFR request from client without access returns REFUSED
 - [ ] AXFR returns the correct data for it's SOA version even when the zone is changed during the transfer.
+- [ ] Long-runnig tests / 48 hours / Simple Cluster
+ - [ ] Auto Backup
+ - [ ] Backup
+ - [ ] Restore
+ - [ ] Many zones
+ - [ ] Many RR's
+ - [ ] Many tenants, users, zones, rr's
+ - [ ] High-freqnency DNS lookups for existing records in existing zones
+ - [ ] High-freqnency DNS lookups for non-existing records and zones
+ - [ ] High-frequency add RR's and zones via API (10000 siumultaneous connections)
+ - [ ] Deletes
 
 # CI
 - [x] Compile to docker image
@@ -172,3 +199,8 @@ Other types
  - [ ] run unit-tests
  - [ ] run functional tests
  - [ ] push docker-image somewhere
+
+# Tools
+- [ ] Load testing tool for API
+- [ ] Load testing tool for DNS records
+

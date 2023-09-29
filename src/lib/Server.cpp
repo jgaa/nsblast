@@ -125,7 +125,6 @@ void Server::startHttpServer()
 {
     assert(api_);
 
-     // TODO: Add actual authentication
     http_ = make_shared<yahat::HttpServer>(config().http, [this](const AuthReq& ar) {
             return auth_->authorize(ar);
     }, "nsblast "s + NSBLAST_VERSION);
