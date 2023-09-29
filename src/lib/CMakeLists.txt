@@ -2,6 +2,7 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
+if (NSBLAST_WITH_SWAGGER)
 # See https://lastviking.eu/code_generator.html
 add_custom_command(
     COMMAND mkres nsblast::lib::embedded swagger_files_ swagger_res.cpp swagger_res.h ${NSBLAST_ROOT}/swagger/*
@@ -9,6 +10,8 @@ add_custom_command(
     OUTPUT swagger_res.cpp swagger_res.h
     COMMENT "Embedding swagger..."
     )
+    set(LIB_SWAGGER_FILES swagger_res.cpp swagger_res.h)
+endif()
 
 ADD_SUBDIRECTORY(proto)
 
@@ -18,6 +21,7 @@ endif()
 
 add_library(${PROJECT_NAME}
     ${LIB_CLUSTER_FILES}
+    ${LIB_SWAGGER_FILES}
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
@@ -50,8 +54,7 @@ add_library(${PROJECT_NAME}
     SlaveMgr.cpp
     SlaveMgr.h
     proto_util.h
-    swagger_res.cpp
-    swagger_res.h
+
     util.cpp
     )
 

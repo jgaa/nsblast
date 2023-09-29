@@ -12,7 +12,10 @@ echo "Building nsblast..."
 
 cd /build || die
 
-cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DNSBLAST_RUN_TESTS=${NSBLAST_RUN_TESTS} /src || die "CMake failed configure step"
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNSBLAST_RUN_TESTS=${NSBLAST_RUN_TESTS} \
+      -DNSBLAST_WITH_SWAGGER=${WITH_SWAGGER} /src \
+      || die "CMake failed configure step"
 
 make -j `nproc` || die "Build failed"
 

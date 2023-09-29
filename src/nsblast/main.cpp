@@ -134,9 +134,11 @@ int main(int argc, char* argv[]) {
 
     po::options_description http("HTTP/API server");
     http.add_options()
+#ifdef NSBLAST_WITH_SWAGGER
         ("with-swagger",
          po::value(&config.swagger)->default_value(config.swagger),
          "Enable the '/swagger' endpoint to interactively explore the REST API")
+#endif
         ("http-endpoint,H",
             po::value<string>(&config.http.http_endpoint)->default_value(config.http.http_endpoint),
             "HTTP endpoint. For example [::] to listen to all interfaces")

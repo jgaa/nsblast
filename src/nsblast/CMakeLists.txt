@@ -52,11 +52,11 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Massively scalable authoritative Internet Domain Name Server"
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Massively scalable authoritative DNS Server"
     CACHE STRING "Package description for the package metadata"
 )
 SET (CPACK_DEBIAN_PACKAGE_DESCRIPTION
-    "SaaS ready authoritative DNS server that is simple to deploy as a vertically scalable DNS cluster.")
+    "SaaS ready authoritative DNS server that is simple to deploy as a vertically scalable DNS cluster for anything from hosting your own domain to large scale cloud use-cases.")
 set(CPACK_PACKAGE_VENDOR "The Last Viking LTD")
 set(CPACK_DEB_COMPONENT_INSTALL YES)
 set(CPACK_COMPONENTS_GROUPING ALL_COMPONENTS_IN_ONE)

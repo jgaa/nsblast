@@ -22,7 +22,9 @@
 #include "nsblast/Server.h"
 #include "yahat/HttpServer.h"
 
-#include "swagger_res.h"
+#ifdef NSBLAST_WITH_SWAGGER
+#   include "swagger_res.h"
+#endif
 
 using namespace std;
 using namespace std::string_literals;
@@ -130,6 +132,7 @@ void Server::startHttpServer()
     }, "nsblast "s + NSBLAST_VERSION);
 
     http_->addRoute("/api/v1", api_);
+#ifdef NSBLAST_WITH_SWAGGER
     if (config().swagger) {
         const string_view swagger_path = "/api/swagger";
         LOG_INFO << "Enabling Swagger at http/https://<fqdn>[:port]" << swagger_path;
@@ -139,6 +142,7 @@ void Server::startHttpServer()
                                 lib::embedded::swagger_files_,
                                 "/api/swagger"));
     }
+#endif
 
     assert(!ft_http_);
     ft_http_ = http_->start();

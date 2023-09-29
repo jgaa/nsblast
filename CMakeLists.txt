@@ -19,9 +19,14 @@ option(NSBLAST_WITH_DOCS "Generate documentation" ON)
 option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
 option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" OFF)
 option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)
+option(NSBLAST_WITH_SWAGGER "Enable Swagger" ON)
 
 if (NSBLAST_CLUSTER)
     add_definitions(-DNSBLAST_CLUSTER=1)
+endif()
+
+if (NSBLAST_WITH_SWAGGER)
+    add_definitions(-DNSBLAST_WITH_SWAGGER=1)
 endif()
 
 if (NSBLAST_USE_VALGRIND)

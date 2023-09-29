@@ -19,8 +19,12 @@ static constexpr uint32_t DEFAULT_TTL = 2592000; // 30 days
 struct Config {
     /*! \name Options */
     ///@{
+#ifdef NSBLAST_WITH_SWAGGER
     /// Enable the swagger interface
     bool swagger = true;
+#else
+    bool dummy_placeholder_ = false;
+#endif
 
     ///@}
 
