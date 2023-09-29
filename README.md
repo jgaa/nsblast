@@ -97,10 +97,10 @@ Example on building the application (with custom built boost-library in /opt):
 cd nsblast
 mkdir build
 cd build
-cmake -DBOOST_ROOT=/opt/boost/boost_1_81_0 ..
+cmake -DBOOST_ROOT=/opt/boost/boost_1_83_0 ..
 make -j `nproc`
-LD_LIBRARY_PATH=/opt/boost/boost_1_81_0/stage/lib/ ctest
-LD_LIBRARY_PATH=/opt/boost/boost_1_81_0/stage/lib/ ./bin/nsblast --help
+LD_LIBRARY_PATH=/opt/boost/boost_1_83_0/stage/lib/ ctest
+LD_LIBRARY_PATH=/opt/boost/boost_1_83_0/stage/lib/ ./bin/nsblast --help
 ```
 
 # Docker image
