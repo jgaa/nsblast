@@ -9,7 +9,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
         libssl3 libprotobuf32 libicu72 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51
 
 COPY bin/* /usr/local/bin/
-COPY lib/* /usr/local/lib/
+# COPY lib/* /usr/local/lib/
 
 RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
     && mkdir -m=755 -p /var/home/ \

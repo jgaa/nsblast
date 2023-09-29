@@ -13,6 +13,7 @@ debug=false
 push=false
 clean=false
 logbt=false
+build_deb=false
 run_tests=ON
 cmake_build_type=RelWithDebInfo
 image_tag=$project
@@ -35,6 +36,7 @@ usage() {
   echo "  --clean       Perform a full, new build."
   echo "  --logbt       Use logbt to get a stack-trace if the app segfaults"
   echo "                /proc/sys/kernel/core_pattern must be '/tmp/logbt-coredumps/core.%p.%E'"
+  echo "  --deb         Build a deb package for Debian as well"
   echo "  --push        Push the image to a docker registry"
   echo "  --tag tagname Tag to '--push' to. Defaults to 'latest'"
   echo "  --version ver Version to tag. Defaults to '${version}'"
@@ -79,6 +81,11 @@ while [ $# -gt 0 ];  do
         --push)
             shift
             push=true
+            ;;
+
+        --deb)
+            shift
+            build_deb=true
             ;;
 
         --skip-tests)
@@ -172,6 +179,7 @@ artifacts_dir="${BUILD_DIR}/artifacts"
 echo rm -rf $artifacts_dir
 mkdir -p ${artifacts_dir}/lib
 mkdir -p ${artifacts_dir}/bin
+mkdir -p ${artifacts_dir}/deb
 
 if [ ! -d "build" ]; then
     mkdir build
@@ -187,6 +195,7 @@ docker run                                                           \
     -u $UID                                                          \
     --name "${project}-build"                                        \
     -e DO_STRIP=${strip}                                             \
+    -e BUILD_DEB=${build_deb}                                        \
     -e BUILD_DIR=/build                                              \
     -e BUILD_TYPE="${cmake_build_type}"                              \
     -e NSBLAST_RUN_TESTS="${run_tests}"                              \

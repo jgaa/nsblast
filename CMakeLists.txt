@@ -70,6 +70,7 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.82)
 endif()
 
+option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
     program_options
@@ -98,3 +99,6 @@ if (NSBLAST_WITH_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+
+message(STATUS "Components to pack: ${CPACK_COMPONENTS_ALL}")
