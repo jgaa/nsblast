@@ -34,7 +34,24 @@ void GrpcPrimary::start()
     impl_ = make_unique<NsblastSvcImpl>(*this);
 
     grpc::ServerBuilder builder;
-    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+
+    std::shared_ptr<grpc::ServerCredentials> creds;
+
+    if (!owner_.config().cluster_x509_server_cert.empty()) {
+        grpc::SslServerCredentialsOptions sslopts{GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE};
+
+        sslopts.pem_key_cert_pairs.emplace_back(owner_.config().cluster_x509_server_key,
+                                                owner_.config().cluster_x509_server_cert);
+        sslopts.pem_root_certs = owner_.config().cluster_x509_ca_cert;
+        creds = grpc::SslServerCredentials(sslopts);
+
+    } else {
+        creds = grpc::InsecureServerCredentials();
+    }
+
+    assert(creds);
+
+    builder.AddListeningPort(server_address, creds);
     builder.RegisterService(impl_.get());
     svc_ = builder.BuildAndStart();
     LOG_INFO << "gRPC (cluster) Server listening on " << server_address;

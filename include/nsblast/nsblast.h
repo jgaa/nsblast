@@ -68,6 +68,15 @@ struct Config {
     /// Used to authenticate gRPC replicas.
     std::string cluster_auth_key;
 
+    /// Path to a x509 certificate for the gRPC server
+    std::string cluster_x509_server_cert;
+
+    /// Path to a x509 key for the gRPC server
+    std::string cluster_x509_server_key;
+
+    /// Path to a x509 certificate root cert for the gRPC server
+    std::string cluster_x509_ca_cert;
+
     /// Max transaction queue size for replication agents (server to slave)
     size_t cluster_repl_agent_max_queue_size = 128;
 

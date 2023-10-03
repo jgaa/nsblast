@@ -116,14 +116,23 @@ int main(int argc, char* argv[]) {
     po::options_description cluster("Cluster");
     cluster.add_options()
         ("cluster-role",
-            po::value(&config.cluster_role)->default_value(config.cluster_role),
-            "One of: \"primary\", \"follower\", \"none\" (not part of a nsblast cluster)")
+         po::value(&config.cluster_role)->default_value(config.cluster_role),
+         "One of: \"primary\", \"follower\", \"none\" (not part of a nsblast cluster)")
         ("cluster-auth-key",
          po::value(&config.cluster_auth_key)->default_value(config.cluster_auth_key),
          "Path to a binary file containing a key (shared secret) to use for gRPC authentication. "
          "The same key must be used by all the neblast servers in a Simple Cluster. "
          "As an alternative, the environment-valiable NSBLAST_CLUSTER_AUTH_KEY ca be used. In that "
          "case, the variable must contain the secret key itself as plain text."   )
+        ("cluster-server-cert",
+         po::value(&config.cluster_x509_server_cert)->default_value(config.cluster_x509_server_cert),
+         "X509 certificate for the gRPC server")
+        ("cluster-server-key",
+         po::value(&config.cluster_x509_server_key)->default_value(config.cluster_x509_server_key),
+         "X509 key for the gRPC server")
+        ("cluster-ca-cert",
+         po::value(&config.cluster_x509_ca_cert)->default_value(config.cluster_x509_ca_cert),
+         "X509 certificate used to sign the server cert for the gRPC server")
         ("cluster-server-address",
              po::value(&config.cluster_server_addr)->default_value(config.cluster_server_addr),
              "Address to the primary server, or (for the primary), the address/port to listen to.")
