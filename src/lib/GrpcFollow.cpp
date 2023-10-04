@@ -74,7 +74,19 @@ GrpcFollow::SyncFromServer::SyncFromServer(GrpcFollow &grpc,
 {
     LOG_INFO_N << "Setting up replication channel to " << address;
 
-    channel_ = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+    std::shared_ptr<grpc::ChannelCredentials> creds;
+
+    if (!grpc_.server().config().cluster_x509_ca_cert.empty()) {
+        grpc::SslCredentialsOptions opts;
+        opts.pem_root_certs = readFileToBuffer(grpc_.server().config().cluster_x509_ca_cert);
+        creds = grpc::SslCredentials(opts);
+    } else {
+        creds = grpc::InsecureChannelCredentials();
+    }
+
+    assert(creds);
+
+    channel_ = grpc::CreateChannel(address, creds);
     if (auto status = channel_->GetState(false); status == GRPC_CHANNEL_TRANSIENT_FAILURE) {
         LOG_WARN << "Failed to initialize channel. Is the server address even valid?";
         throw std::runtime_error{"Failed to initialize channel"};

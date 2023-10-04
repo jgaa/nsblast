@@ -28,6 +28,12 @@ namespace nsblast::lib {
     /*! Validate if a fqdn is valid. */
     bool validateFqdn(std::string_view fqdn);
 
+    /*! Read a file into a string
+     *
+     *  (A funtion like this is part of the Rust standard library because it is so common...)
+     */
+    std::string readFileToBuffer(const std::filesystem::path& path);
+
     struct HashedKey {
         std::string seed;
         std::string hash;

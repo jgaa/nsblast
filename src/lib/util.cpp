@@ -278,5 +278,20 @@ HashedKey getHashFromKeyInFileOrEnvVar(std::filesystem::path file, const std::st
     return getHashFromKeyInEnvVar(envName, std::move(seed));
 }
 
+string readFileToBuffer(const std::filesystem::path &path)
+{
+    LOG_TRACE << "readFileToBuffer - reading file: " << path;
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        throw runtime_error{format("Faied to open file {} for read", path.string())};
+    }
+
+    auto len = std::filesystem::file_size(path);
+    string b;
+    b.resize(len);
+    file.read(b.data(), b.size());
+    return b;
+}
+
 
 } // ns

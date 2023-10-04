@@ -37,12 +37,19 @@ void GrpcPrimary::start()
 
     std::shared_ptr<grpc::ServerCredentials> creds;
 
+    if (owner_.config().cluster_x509_server_cert.empty() != owner_.config().cluster_x509_server_key.empty()) {
+        throw runtime_error{"Use of gRPC server certs require both the key and the cert arguments!"};
+    }
+
     if (!owner_.config().cluster_x509_server_cert.empty()) {
         grpc::SslServerCredentialsOptions sslopts{GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE};
 
-        sslopts.pem_key_cert_pairs.emplace_back(owner_.config().cluster_x509_server_key,
-                                                owner_.config().cluster_x509_server_cert);
-        sslopts.pem_root_certs = owner_.config().cluster_x509_ca_cert;
+        sslopts.pem_key_cert_pairs.emplace_back(readFileToBuffer(owner_.config().cluster_x509_server_key),
+                                                readFileToBuffer(owner_.config().cluster_x509_server_cert));
+
+        if (!owner_.config().cluster_x509_ca_cert.empty()) {
+            sslopts.pem_root_certs = readFileToBuffer(owner_.config().cluster_x509_ca_cert);
+        }
         creds = grpc::SslServerCredentials(sslopts);
 
     } else {
