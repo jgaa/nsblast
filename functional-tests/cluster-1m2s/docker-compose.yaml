@@ -6,7 +6,9 @@ services:
     environment:
         - NSBLAST_ADMIN_PASSWORD=VerySecret
         - NSBLAST_CLUSTER_AUTH_KEY=VeryMoreSecret
-    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role primary --cluster-server-address 0.0.0.0:10123
+    volumes:
+        - /tmp/nsblast-testcerts:/certs
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role primary --cluster-server-address 0.0.0.0:10123 --cluster-ca-cert /certs/ca-cert.pem --cluster-server-cert /certs/server1-cert.pem --cluster-server-key /certs/server1-key.pem
     # The cursed avahi-daemon use udp port 5353, so we can't safely use that :/
     ports:
       - "127.0.0.1:8080:80"
@@ -18,7 +20,9 @@ services:
     environment:
         - NSBLAST_ADMIN_PASSWORD=VerySecret
         - NSBLAST_CLUSTER_AUTH_KEY=VeryMoreSecret
-    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123
+    volumes:
+        - /tmp/nsblast-testcerts:/certs
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123 --cluster-ca-cert /certs/ca-cert.pem
     ports:
       - "127.0.0.1:8081:80"
       - "127.0.0.1:5355:53/tcp"
@@ -29,7 +33,9 @@ services:
     environment:
         - NSBLAST_ADMIN_PASSWORD=VerySecret
         - NSBLAST_CLUSTER_AUTH_KEY=VeryMoreSecret
-    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123
+    volumes:
+       - /tmp/nsblast-testcerts:/certs
+    command: --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0 --log-to-console trace --http-port 80 --cluster-role follower --cluster-server-address master:10123 --cluster-ca-cert /certs/ca-cert.pem
     ports:
       - "127.0.0.1:8082:80"
       - "127.0.0.1:5356:53/tcp"

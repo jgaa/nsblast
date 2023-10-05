@@ -7,8 +7,20 @@ die() {
     exit 1;
 }
 
+certdir=/tmp/nsblast-testcerts
 
 docker-compose down --timeout 1
+
+if [ -d "${certdir}" ]
+then
+    echo "Removing old cert dir: ${certdir}"
+    rm -rf "${certdir}"
+fi
+
+mkdir ${certdir} || die
+# Create certs got gRPC
+docker run --rm --name nsblast-cert -it -v ${certdir}:/certs -u $(id -u ${USER}):$(id -g ${USER})  jgaafromnorth/nsblast --create-cert-subject master --create-certs-path /certs
+
 docker-compose up -d || die
 
 docker-compose logs -f --no-color > /tmp/nsblast-cluster-1m2s-logs.log &
