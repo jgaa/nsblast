@@ -8,6 +8,7 @@
 #include <boost/core/span.hpp>
 
 #include "yahat/HttpServer.h"
+#include "nsblast/certs.h"
 
 namespace nsblast {
 
@@ -240,6 +241,12 @@ struct Config {
 
     /// Number of threads for flush and compaction. 0 == use default.
     size_t rocksdb_background_threads = 0;
+    ///@}
+
+    /*! \name Certs */
+    ///@{
+    /// Options to generate a chain of self-signed cerificates
+    CreateCaChainOptions ca_chain;
     ///@}
 };
 

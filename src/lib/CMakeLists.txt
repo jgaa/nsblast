@@ -26,6 +26,7 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h
     ${NSBLAST_ROOT}/include/nsblast/Server.h
+    ${NSBLAST_ROOT}/include/nsblast/certs.h
     ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ${NSBLAST_ROOT}/include/nsblast/errors.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
@@ -53,8 +54,8 @@ add_library(${PROJECT_NAME}
     Slave.h
     SlaveMgr.cpp
     SlaveMgr.h
+    certs.cpp
     proto_util.h
-
     util.cpp
     )
 

@@ -207,9 +207,25 @@ int main(int argc, char* argv[]) {
          "Number of threads for flush and compaction. 0 == use default.")
         ;
 
+    po::options_description cg("Certificate Generator");
+    cg.add_options()
+        ("create-cert-subject",
+         po::value(&config.ca_chain.server_subjects),
+         "Add a subject to a self-signed server cert. "
+         "If this option is given, the application will generate self-signed certificate(s) and exit.")
+        ("create-certs-num-clients",
+         po::value(&config.ca_chain.num_clients)->default_value(config.ca_chain.num_clients),
+         "Specifies how many client certs to generate. "
+         "Require cert-subject to also be provided.")
+        ("create-certs-path",
+         po::value(&config.ca_chain.path)->default_value(config.ca_chain.path),
+         "Specifies where to generate the certs. "
+         "Require cert-subject to also be provided.")
+        ;
+
     const auto appname = filesystem::path(argv[0]).stem().string();
     po::options_description cmdline_options;
-    cmdline_options.add(general).add(backup).add(cluster).add(odns).add(http).add(rocksdb);
+    cmdline_options.add(general).add(backup).add(cluster).add(odns).add(http).add(rocksdb).add(cg);
     po::variables_map vm;
     try {
         po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -239,7 +255,7 @@ int main(int argc, char* argv[]) {
 
     if (!log_file.empty()) {
         if (auto level = toLogLevel(log_level)) {
-        logfault::LogManager::Instance().AddHandler(
+            logfault::LogManager::Instance().AddHandler(
                 make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
         }
     }
@@ -247,6 +263,21 @@ int main(int argc, char* argv[]) {
     if (auto level = toLogLevel(log_level_console)) {
         logfault::LogManager::Instance().AddHandler(
                 make_unique<logfault::StreamHandler>(clog, *level));
+    }
+
+    if (!config.ca_chain.server_subjects.empty()) {
+        LOG_INFO << appname << ' ' << NSBLAST_VERSION
+                 << " generating self-signed certs in : "
+                 << config.ca_chain.path;
+
+        try {
+            createCaChain(config.ca_chain);
+        } catch (const exception& ex) {
+            LOG_ERROR << "Caught exception: " << ex.what();
+            return -4;
+        }
+
+        return 0;
     }
 
     LOG_INFO << appname << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
