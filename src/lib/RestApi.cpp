@@ -298,29 +298,33 @@ getSessionAndTenant(const yahat::Request &req, Server& server, bool allowAll = f
     return {{}, session, tenant, all};
 }
 
-boost::json::object toJson(const span_t buffer, const Rr& rr) {
-    boost::json::object o;
-    string_view tname;
+boost::json::array& asArray(boost::json::object& v, string_view name) {
 
+    if (auto entry = v.if_contains(name)) {
+        assert(entry->is_array());
+        return entry->as_array();
+    }
+
+    auto [it, _] = v.emplace(name, boost::json::array{});
+    return it->value().as_array();
+}
+
+void toJson(const span_t buffer, const Rr& rr, boost::json::object& obj) {
     switch(rr.type()) {
     case TYPE_A:
-        tname = "A";
-        o["a"] = RrA(buffer, rr.offset()).address().to_string();
+        asArray(obj, "a").emplace_back(RrA(buffer, rr.offset()).address().to_string());
         break;
     case TYPE_AAAA:
-        tname = "AAAA";
-        o["aaaa"] = RrA(buffer, rr.offset()).address().to_string();
+        asArray(obj, "aaaa").emplace_back(RrA(buffer, rr.offset()).address().to_string());
         break;
     case TYPE_NS:
-        tname = "NS";
-        o["ns"] = RrNs(buffer, rr.offset()).ns().string();
+        asArray(obj, "ns").emplace_back(RrNs(buffer, rr.offset()).ns().string());
         break;
     case TYPE_CNAME:
-        tname = "CNAME";
-        o["cname"] = RrCname(buffer, rr.offset()).cname().string();
+        obj["cname"] = RrCname(buffer, rr.offset()).cname().string();
         break;
     case TYPE_SOA: {
-        tname = "SOA";
+        boost::json::object o;
         const RrSoa soa(buffer, rr.offset());
         o["mname"] = soa.mname().string();
         o["rname"] = soa.rname().string();
@@ -330,59 +334,55 @@ boost::json::object toJson(const span_t buffer, const Rr& rr) {
         o["retry"] = soa.retry();
         o["expire"] = soa.expire();
         o["minimum"] = soa.minimum();
+        obj["soa"] = std::move(o);
     } break;
     case TYPE_PTR:
-        tname = "PTR";
-        o["ptr"] = RrPtr(buffer, rr.offset()).ptrdname().string();
-        break;
+        asArray(obj, "ptr").emplace_back(RrPtr(buffer, rr.offset()).ptrdname().string());
     case TYPE_MX: {
-        tname = "MX";
+        boost::json::object o;
         const RrMx mx(buffer, rr.offset());
         o["host"] = mx.host().string();
         o["priority"] = mx.priority();
+        obj["mx"] = std::move(o);
     } break;
     case TYPE_TXT:
-        tname = "TXT";
-        o["txt"] = RrTxt(buffer, rr.offset()).string();
+        asArray(obj, "txt").emplace_back(RrTxt(buffer, rr.offset()).string());
         break;
     case TYPE_SRV: {
-        tname = "SRV";
+        boost::json::object o;
         const RrSrv srv(buffer, rr.offset());
         o["target"] = srv.target().string();
         o["priority"] = srv.priority();
         o["weight"] = srv.weight();
         o["port"] = srv.port();
+        obj["srv"] = std::move(o);
     } break;
     case TYPE_AFSDB: {
-        tname = "SRV";
+        boost::json::object o;
         const RrAfsdb ad(buffer, rr.offset());
         o["host"] = ad.host().string();
         o["subtype"] = ad.subtype();
+        obj["afsdb"] = std::move(o);
     } break;
     case TYPE_RP: {
-        tname = "RP";
+        boost::json::object o;
         const RrRp rp(buffer, rr.offset());
         o["mbox"] = rp.mbox().string();
         o["txt"] = rp.txt().size();
+        obj["rp"] = std::move(o);
     } break;
     case TYPE_HINFO: {
-        tname = "HINFO";
+        boost::json::object o;
         const RrHinfo hi(buffer, rr.offset());
         o["cpu"] = hi.cpu();
         o["os"] = hi.os();
+        obj["hinfo"] = std::move(o);
     } break;
     default:
-        o["type"] = format("#{}", rr.type());
-        o["rdata"] = Base64Encode(rr.rdata());
+        const auto name = format("#{}", rr.type());
+        asArray(obj, name).emplace_back(Base64Encode(rr.rdata()));
     } // switch
 
-    if (!tname.empty()) {
-        o["type"] = tname;
-    }
-
-    o["class"] = "IN";
-    o["ttl"] = rr.ttl();
-    return o;
 }
 
 
@@ -393,13 +393,13 @@ auto toJson(const lib::Entry& entry) {
     for(const auto& rr : entry) {
         if (!has_label) {
             o["fqdn"] = rr.labels().string();
+            o["ttl"] = rr.ttl();
             has_label = true;
         }
 
-        a.push_back(toJson(entry.buffer(), rr));
+        toJson(entry.buffer(), rr, o);
     }
 
-    o["rr"] = std::move(a);
     return o;
 }
 
@@ -691,10 +691,23 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
     }},
     { "txt", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
-        if (!v.if_string()) {
-            throw Response{400, "Txt entities must be strings"};
+        if (v.if_string()) {
+            // Allow a single string as well.
+            sb.createTxt(fqdn, ttl, v.as_string());
+            return;
         }
-        sb.createTxt(fqdn, ttl, v.as_string());
+
+        if (!v.is_array()) {
+            throw Response{400, "Txt entities must be an array of strings"};
+        }
+
+        for(const auto& name : v.as_array()) {
+            if (!name.if_string()) {
+                throw Response{400, "Txt entities must be strings"};
+            }
+
+            sb.createTxt(fqdn, ttl, name.as_string());
+        }
     }},
     { "hinfo", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 

@@ -18,7 +18,7 @@ then
 fi
 
 mkdir ${certdir} || die
-# Create certs got gRPC
+# Create certs for gRPC
 docker run --rm --name nsblast-cert -it -v ${certdir}:/certs -u $(id -u ${USER}):$(id -g ${USER})  jgaafromnorth/nsblast --create-cert-subject master --create-certs-path /certs
 
 docker-compose up -d || die

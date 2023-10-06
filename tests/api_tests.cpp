@@ -585,6 +585,36 @@ TEST(ApiBuild, txtOk) {
     EXPECT_EQ(txt.string(), text);
 }
 
+TEST(ApiBuild, txtArrayOk) {
+    const string_view fqdn = "example.com";
+    const string_view text1 = "Dogs are man's best friends";
+    const string_view text2 = "Dogs love cats. They taste so good!";
+
+
+    boost::json::object json;
+    boost::json::array txts = {text1, text2};
+    json["txt"] = txts;
+
+    StorageBuilder sb;
+    EXPECT_NO_THROW(RestApi::build(fqdn, 1000, sb, json));
+
+    Entry entry{sb.buffer()};
+    EXPECT_TRUE(entry.begin() != entry.end());
+
+    auto it = entry.begin();
+    {
+        RrTxt txt{sb.buffer(), it->offset()};
+        EXPECT_EQ(txt.ttl(), 1000);
+        EXPECT_EQ(txt.string(), text1);
+    }
+    ++it;
+    {
+        RrTxt txt{sb.buffer(), it->offset()};
+        EXPECT_EQ(txt.ttl(), 1000);
+        EXPECT_EQ(txt.string(), text2);
+    }
+}
+
 TEST(ApiBuild, cnameOk) {
     const string_view fqdn = "example.com";
     const string_view refer = "a.b.c.d.example.com";
@@ -2146,38 +2176,15 @@ TEST(ApiRequest, getRr) {
     res = api.onResourceRecord(req, parsed);
     EXPECT_EQ(res.code, 200);
 
-    LOG_TRACE << "Result-json: " << res.body;
+    LOG_DEBUG << "Result-json: " << res.body;
 
-    auto result = boost::json::parse(res.body);
-    EXPECT_FALSE(result.at("error").as_bool());
-    EXPECT_EQ(result.at("value").as_object().at("fqdn").as_string(), zone);
-    auto v = result.at("value").as_object().at("rr").as_array();
-    EXPECT_EQ(v.size(), 3);
-    EXPECT_EQ(v[0].at("type").as_string(), "SOA");
-        EXPECT_EQ(v[0].at("mname").as_string(), "ns1.example.com");
-        EXPECT_EQ(v[0].at("rname").as_string(), "hostmaster.example.com");
-        EXPECT_EQ(v[0].at("email").as_string(), "hostmaster@example.com");
-        EXPECT_EQ(v[0].at("serial").to_number<int>(), 1000);
-        EXPECT_EQ(v[0].at("refresh").to_number<int>(), 1001);
-        EXPECT_EQ(v[0].at("retry").to_number<int>(), 1002);
-        EXPECT_EQ(v[0].at("expire").to_number<int>(), 1003);
-        EXPECT_EQ(v[0].at("minimum").to_number<int>(), 1004);
-        EXPECT_EQ(v[0].at("class").as_string(), "IN");
-        EXPECT_EQ(v[0].at("ttl").to_number<int>(), 1000);
-    EXPECT_EQ(v[1].at("type").as_string(), "NS");
-        EXPECT_EQ(v[1].at("ns").as_string(), "ns1.example.com");
-        EXPECT_EQ(v[1].at("class").as_string(), "IN");
-        EXPECT_EQ(v[1].at("ttl").to_number<int>(), 1000);
-    EXPECT_EQ(v[2].at("type").as_string(), "NS");
-        EXPECT_EQ(v[2].at("ns").as_string(), "ns2.example.com");
-        EXPECT_EQ(v[2].at("class").as_string(), "IN");
-        EXPECT_EQ(v[2].at("ttl").to_number<int>(), 1000);
+    EXPECT_EQ(res.body, R"({"rcode":200,"error":false,"message":"","value":{"fqdn":"example.com","ttl":1000,"soa":{"mname":"ns1.example.com","rname":"hostmaster.example.com","email":"hostmaster@example.com","serial":1000,"refresh":1001,"retry":1002,"expire":1003,"minimum":1004},"ns":["ns1.example.com","ns2.example.com"]}})");
 }
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 
     logfault::LogManager::Instance().AddHandler(
-        make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::DEBUGGING));
+        make_unique<logfault::StreamHandler>(clog, logfault::LogLevel::TRACE));
     return RUN_ALL_TESTS();
 }
