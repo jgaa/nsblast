@@ -14,9 +14,6 @@ basePath: "/api/v1"
 tags:
 - name: "zone"
   description: "DNS Zone"
-  # externalDocs:
-  #   description: "A zone is an administrative unit in the DNS hirarcy"
-  #   url: "http://swagger.io"
 - name: rr
   description: Operations about an individual DNS entry's resource record(s)
 - name: "tenant"
@@ -28,9 +25,9 @@ tags:
 - name: role
   description: RBAC roles. RBAC are supported for users and api keys.
 
-# schemes:
-# - "https"
-# - "http"
+schemes:
+ - "https"
+ - "http"
 
 paths:
   /zone:
@@ -1511,6 +1508,11 @@ definitions:
     items:
       type: string
 
+  Txt:
+    type: array
+    items:
+      type: string
+
   Zone:
     type: object
     description: A DNS zone. All the properties are optional. Reasonable defaults will be set for omitted items.
@@ -1611,7 +1613,7 @@ definitions:
       a:
         $ref: "#/definitions/Rra"
       txt:
-        type: string
+        $ref: "#/definitions/Txt"
       cname:
         type: string
         description: Redirect to another fqdn. If used, a and aaaa must be empty

@@ -914,6 +914,80 @@ TEST(ApiRequest, patchSubRr) {
     }
 }
 
+TEST(ApiRequest, patchSubRrAddTxt) {
+    const string_view fqdn{"www.example.com"};
+    const string_view soa_fqdn{"example.com"};
+
+    MockServer svr;
+    {
+        svr->createTestZone();
+        svr->createWwwA();
+
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL);
+
+        boost::json::object o;
+        o["txt"] = "one single line of text";
+        auto json = boost::json::serialize(o);
+        auto req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PATCH);
+
+        RestApi api{svr};
+        auto parsed = api.parse(req);
+        auto res = api.onResourceRecord(req, parsed);
+
+        EXPECT_EQ(res.code, 200);
+        EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+        EXPECT_EQ(getSoaSerial(soa_fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
+
+        req = makeRequest(svr, "rr", fqdn, {}, yahat::Request::Type::GET);
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        LOG_DEBUG << "Result-json: " << res.body;
+
+        EXPECT_EQ(res.body, R"({"rcode":200,"error":false,"message":"","value":{"fqdn":"www.example.com","ttl":1000,"a":["127.0.0.3","127.0.0.4"],"aaaa":["2003:db8:85a3::8a2e:370:7334","2004:db8:85a3::8a2e:370:7335"],"txt":["one single line of text"]}})");
+
+        o["txt"] = "another single line of text";
+        json = boost::json::serialize(o);
+        req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PATCH);
+
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        req = makeRequest(svr, "rr", fqdn, {}, yahat::Request::Type::GET);
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        LOG_DEBUG << "Result-json: " << res.body;
+
+        EXPECT_EQ(res.body, R"({"rcode":200,"error":false,"message":"","value":{"fqdn":"www.example.com","ttl":1000,"a":["127.0.0.3","127.0.0.4"],"aaaa":["2003:db8:85a3::8a2e:370:7334","2004:db8:85a3::8a2e:370:7335"],"txt":["another single line of text"]}})");
+
+        boost::json::array a;
+        a.emplace_back("first text");
+        a.emplace_back("second text");
+        a.emplace_back("third and final text");
+        o["txt"] = a;
+
+        json = boost::json::serialize(o);
+        req = makeRequest(svr, "rr", fqdn, json, yahat::Request::Type::PATCH);
+
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        req = makeRequest(svr, "rr", fqdn, {}, yahat::Request::Type::GET);
+        parsed = api.parse(req);
+        res = api.onResourceRecord(req, parsed);
+        EXPECT_EQ(res.code, 200);
+
+        LOG_DEBUG << "Result-json: " << res.body;
+
+        EXPECT_EQ(res.body, R"({"rcode":200,"error":false,"message":"","value":{"fqdn":"www.example.com","ttl":1000,"a":["127.0.0.3","127.0.0.4"],"aaaa":["2003:db8:85a3::8a2e:370:7334","2004:db8:85a3::8a2e:370:7335"],"txt":["first text","second text","third and final text"]}})");
+    }
+}
+
 TEST(ApiRequest, patchSubRrNoZone) {
     const string_view fqdn{"www.otherexample.com"};
 

@@ -1377,6 +1377,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     bool need_version_increment = false;
 
+    optional<StorageBuilder> merged;
     const auto& oldData = existing.rr();
     Entry newData;
     std::optional<RrSoa> newSoa;
@@ -1460,36 +1461,36 @@ put:
         Entry newRrs{sb.buffer()};
 
         set<uint16_t> new_types;
-        StorageBuilder merged;
+        merged.emplace();
 
         // Add the new rr's to the merged buffer
         for(const auto& rr : newRrs) {
-            merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+            merged->createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
             new_types.insert(rr.type());
         }
 
         // Add the relevant old rr's to the merged buffer
         for(const auto& rr : existing.rr()) {
             if (new_types.find(rr.type()) == new_types.end()) {
-                merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+                merged->createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
             }
         }
 
         if (existing.isSame()) {
-            merged.incrementSoaVersion(existing.soa());
+            merged->incrementSoaVersion(existing.soa());
         } else {
             need_version_increment = true;
             assert(existing.soa().begin()->type() == TYPE_SOA);
-            merged.setZoneLen(existing.soa().begin()->labels().size() -1);
+            merged->setZoneLen(existing.soa().begin()->labels().size() -1);
         }
 
-        merged.finish();
+        merged->finish();
 
-        trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged.buffer(), false);
+        trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged->buffer(), false);
         need_to_update_zrr = true;
 
         if (config_.dns_enable_ixfr) {
-            newData = {merged.buffer()};
+            newData = {merged->buffer()};
         }
     } break;
 
@@ -1502,31 +1503,31 @@ put:
         }
 
         if (!parsed.operation.empty()) {
+            merged.emplace();
             const auto filter = makeRrFilter(parsed.operation);
-            StorageBuilder merged;
             for(auto& rr : existing.rr()) {
                 // Add eveything *not* matching the filter
                 if (find(filter.begin(), filter.end(), rr.type()) == filter.end()) {
-                    merged.createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+                    merged->createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
                 }
             }
 
             if (existing.isSame()) {
-                merged.incrementSoaVersion(existing.soa());
+                merged->incrementSoaVersion(existing.soa());
             } else {
                 need_version_increment = true;
                 assert(existing.soa().begin()->type() == TYPE_SOA);
-                merged.setZoneLen(existing.soa().begin()->labels().size() -1);
+                merged->setZoneLen(existing.soa().begin()->labels().size() -1);
             }
 
-            merged.finish();
+            merged->finish();
 
             // Only write back the changed entry if it still contains some RR's
-            if (merged.rrCount()) {
-                trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged.buffer(), false);
+            if (merged->rrCount()) {
+                trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged->buffer(), false);
 
                 if (config_.dns_enable_ixfr) {
-                    newData = {merged.buffer()};
+                    newData = {merged->buffer()};
                 }
 
                 break;
