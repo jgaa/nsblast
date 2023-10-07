@@ -598,7 +598,7 @@ yahat::Auth Session::getAuth() noexcept
     yahat::Auth a;
     a.access = isAllowed(pb::Permission::USE_API);
     a.extra = shared_from_this();
-    a.account = tenant();
+    a.account = format("{}/{}", tenant(), who_);
     return a;
 }
 
