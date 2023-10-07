@@ -403,6 +403,30 @@ auto toJson(const lib::Entry& entry) {
     return o;
 }
 
+enum class KindOfListing {
+    DEFAULT,
+    ID
+};
+
+KindOfListing getKindOfListing(const yahat::Request &req)
+{
+    static constexpr array<pair<string_view, KindOfListing>, 2> kinds = {
+        make_pair("id", KindOfListing::ID),
+        {"default", KindOfListing::DEFAULT}};
+
+    if (auto it = req.arguments.find("kind"); it != req.arguments.end()) {
+        const auto key = it->second;
+        if (auto kit = find_if(kinds.begin(), kinds.end(), [&key](const auto& p ) {
+                return p.first == key;
+            }); kit != kinds.end()) {
+            return kit->second;
+        }
+    }
+
+    return KindOfListing::DEFAULT;
+}
+
+
 } // anon ns
 
 RestApi::RestApi(Server& server)
@@ -1737,6 +1761,8 @@ bool RestApi::hasAccess(const yahat::Request &req,
 
 Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*/)
 {
+
+
     auto trx_ = server().resource().transaction();
     auto& trx = dynamic_cast<RocksDbResource::Transaction&>(*trx_);
 
@@ -1745,7 +1771,8 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
     out["status"] = 200;
     auto& tenants = out["value"] = boost::json::array{};
 
-    auto page_size = getPageSize(req);
+    const auto page_size = getPageSize(req);
+    const auto kind = getKindOfListing(req);
 
     size_t count = 0;
 
@@ -1756,26 +1783,32 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
                      << key << " into an object!";
             throw Response{500, "Internal Server Error - failed to deserialize object"};
         }
-        boost::json::object item;
-        item["id"] = tenant.id();
-        item["active"] = tenant.active();
-        item["root"] = tenant.root();
-        auto& users = item["users"] = boost::json::array{};
-        for(const auto& user : tenant.users()) {
-            users.as_array().emplace_back(user.name());
-        }
 
-        auto& roles = item["roles"] = boost::json::array{};
-        for(const auto& role: tenant.roles()) {
-            roles.as_array().emplace_back(role.name());
-        }
+        if (kind == KindOfListing::ID) {
+            tenants.as_array().emplace_back(tenant.id());
+        } else {
+            // DEFAULT kind listing
+            boost::json::object item;
+            item["id"] = tenant.id();
+            item["active"] = tenant.active();
+            item["root"] = tenant.root();
+            auto& users = item["users"] = boost::json::array{};
+            for(const auto& user : tenant.users()) {
+                users.as_array().emplace_back(user.name());
+            }
 
-        auto& perms = item["allowedPermissions"] = boost::json::array{};
-        for(auto perm : tenant.allowedpermissions()) {
-            perms.as_array().emplace_back(pb::Permission_Name(perm));
-        }
+            auto& roles = item["roles"] = boost::json::array{};
+            for(const auto& role: tenant.roles()) {
+                roles.as_array().emplace_back(role.name());
+            }
 
-        tenants.as_array().emplace_back(item);
+            auto& perms = item["allowedPermissions"] = boost::json::array{};
+            for(auto perm : tenant.allowedpermissions()) {
+                perms.as_array().emplace_back(pb::Permission_Name(perm));
+            }
+
+            tenants.as_array().emplace_back(item);
+        }
         return ++count <= page_size;
     };
 
