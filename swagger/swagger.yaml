@@ -544,6 +544,15 @@ paths:
           description: Start the listing after this tenant-id. This can be used to paginate a listing of more items than firts in one retrurned list (max 1000 items).
           schema:
             type: string
+        - name: kind
+          in: query
+          description: "What kind of listing the user want in return.
+            <br> - *default* A verbose listing
+            <br> -  *id* A listing only of the Tenant id's
+            "
+          schema:
+            type: string
+          default: default
       responses:
         "200":
           description: "Success"
