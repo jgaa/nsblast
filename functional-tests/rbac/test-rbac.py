@@ -6,7 +6,60 @@ import dns.resolver
 import time
 import os
 
-def create_zone(g, fqdn):
+@pytest.fixture(scope = 'module')
+def global_data():
+    mresolver = dns.resolver.Resolver(configure=False)
+    mresolver.nameservers = ['127.0.0.1']
+    mresolver.port = 5354
+
+    slave1 = dns.resolver.Resolver(configure=False)
+    slave1.nameservers = ['127.0.0.1']
+    slave1.port = 5355
+
+    slave2 = dns.resolver.Resolver(configure=False)
+    slave2.nameservers = ['127.0.0.1']
+    slave2.port = 5356
+    password = os.environ['NSBLAST_ADMIN_PASSWORD']
+
+    num_tenants = 5
+    tenants = {}
+    for t in range(num_tenants):
+        zones = {}
+        tname = 'tenant-{}'.format(t)
+        for z in range(t):
+            zname = ''
+            if z == 0:
+                zname = '{}.com'.format(tname)
+            else:
+                zname = 'z{}-{}.com'.format(z, tname)
+            zones[zname] = {}
+        tenants[tname] = {
+            'id': tname,
+            'zones': zones,
+            'auth': {'super': ('admin@{}'.format(tname), 'teste'), 
+                     'normal':('normaluser@{}'.format(tname), 'tester'), 
+                     'guest': ('rouser@{}'.format(tname), 'xteste')
+                     }
+            }
+
+    return {'master-dns': mresolver,
+            'slave1': slave1,
+            'slave2': slave2,
+            #'master-url': os.getenv('NSBLAST_URL', 'http://127.0.0.1:8080/api/v1'),
+            'master-url': 'http://localhost:8080/api/v1',
+            'slave1-url': 'http://127.0.0.1:8081/api/v1',
+            'slave2-url': 'http://127.0.0.1:8082/api/v1',
+            'pass': password,
+            'num-zones': 1000,
+            'wait': 0,
+            'tenants': tenants
+           }
+
+
+def create_zone(g, fqdn, auth):
+    # if auth == None:
+    #     auth=('admin', g['pass'])
+
     url = g['master-url'] + '/zone/' + fqdn
 
     zone = {'soa': 
@@ -24,9 +77,12 @@ def create_zone(g, fqdn):
              ]
             }
     
-    return requests.post(url, data=json.dumps(zone), auth=('admin', g['pass']), params={'wait': g['wait']})
+    return requests.post(url, data=json.dumps(zone), auth=auth, params={'wait': g['wait']})
 
-def create_tenant(g, name):
+def create_tenant(g, tenant, auth=None):
+    if auth == None:
+        auth=('admin', g['pass'])
+
     allperms = ['USE_API', 'READ_ZONE', 'LIST_ZONES', 'CREATE_ZONE', 'UPDATE_ZONE', 
             'DELETE_ZONE', 'READ_VZONE', 'LIST_VZONES', 'CREATE_VZONE', 'UPDATE_VZONE',
             'DELETE_VZONE', 'READ_RR', 'LIST_RRS', 'CREATE_RR', 'UPDATE_RR', 'DELETE_RR', 
@@ -41,8 +97,9 @@ def create_tenant(g, name):
             'READ_VZONE', 'LIST_VZONES', 
             'READ_RR', 'LIST_RRS', 'LIST_APIKEYS', 'GET_APIKEY', 'GET_SELF_USER', 
             'LIST_ROLES', 'GET_ROLE', 'GET_SELF_TENANT']
-
+        
     tenant = {
+        'id': tenant['id'],
         'active': True,
         'allowedPermissions': allperms,
         'roles': [
@@ -60,63 +117,168 @@ def create_tenant(g, name):
             }
         ],
         'users': [
-            {'name': 'admin@' + name,
+            {'name': tenant['auth']['super'][0],
              'active': True,
              'roles': ['super'],
-             'auth': {'password': 'teste'}
+             'auth': {'password': tenant['auth']['super'][1]}
              },
-             {'name': 'normaluser@' + name,
+             {'name': tenant['auth']['normal'][0],
              'active': True,
              'roles': ['write', "read"],
-             'auth': {'password': 'teste'}
+             'auth': {'password': tenant['auth']['normal'][1]}
              },
-             {'name': 'rouser@' + name,
+             {'name': tenant['auth']['guest'][0],
              'active': True,
              'roles': ['read'],
-             'auth': {'password': 'teste'}
+             'auth': {'password': tenant['auth']['guest'][1]}
              }
         ]
         }
     url = g['master-url'] + '/tenant'
-    r = requests.post(url, data=json.dumps(tenant), auth=('admin', g['pass']), params={'wait': g['wait']})
-    assert r.ok
-    v = r.json();
-    id = v['value']['id']
-    print('Created user {}', id)
-    return id
+    return requests.post(url, data=json.dumps(tenant), auth=('admin', g['pass']), params={'wait': g['wait']})
 
-@pytest.fixture(scope = 'module')
-def global_data():
-    mresolver = dns.resolver.Resolver(configure=False)
-    mresolver.nameservers = ['127.0.0.1']
-    mresolver.port = 5354
+def list_something(g, what, auth):
+    url = '{}/{}'.format(g['master-url'], what)
+    return requests.get(url, auth=auth, params={'wait': g['wait']})
 
-    slave1 = dns.resolver.Resolver(configure=False)
-    slave1.nameservers = ['127.0.0.1']
-    slave1.port = 5355
-
-    slave2 = dns.resolver.Resolver(configure=False)
-    slave2.nameservers = ['127.0.0.1']
-    slave2.port = 5356
-    password = os.environ['NSBLAST_ADMIN_PASSWORD']
-
-    return {'master-dns': mresolver,
-            'slave1': slave1,
-            'slave2': slave2,
-            #'master-url': os.getenv('NSBLAST_URL', 'http://127.0.0.1:8080/api/v1'),
-            'master-url': 'http://localhost:8080/api/v1',
-            'slave1-url': 'http://127.0.0.1:8081/api/v1',
-            'slave2-url': 'http://127.0.0.1:8082/api/v1',
-            'pass': password,
-            'num-zones': 1000,
-            'wait': 0
-           }
+def get_something(g, what, item, auth):
+    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    return requests.get(url, auth=auth, params={'wait': g['wait']})
 
 def test_bootstrap(global_data):
+    print('Creating example.com zone owned by nsblast')
     #assert create_zone(global_data, "example.com").ok
-    tid = create_tenant(global_data, "test1")
 
-# Create tenant, roles, users
+    print('Creating tenants as admin')
+    for name, tenant in global_data['tenants'].items():
+        assert create_tenant(global_data, tenant).ok
+
+
+# Create zones as tenants/super
+def test_create_zones(global_data):
+    for tname, td in global_data['tenants'].items():
+        auth=td['auth']['super']
+        for zfqdn, zd in td['zones'].items():
+            assert create_zone(global_data, zfqdn, auth).ok
+
+def test_normal_user_can_crud_rr(global_data):
+    for tname, td in global_data['tenants'].items():
+        auth=td['auth']['normal']
+
+        # List zones
+        assert list_something(global_data, "zone", auth).ok
+
+        for zfqdn, zd in td['zones'].items():
+            # List RR's
+            assert get_something(global_data, "zone", zfqdn, auth).ok
+
+            # Get RR for zone
+            assert get_something(global_data, "rr", zfqdn, auth).ok
+
+            www = "www.{}".format(zfqdn)
+            assert not get_something(global_data, "rr",www, auth).ok
+
+            url = '{}/rr/{}'.format(global_data['master-url'], www)
+            assert requests.post(url,
+                                 json={'a':['127.0.0.1', '127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+            assert requests.put(url,
+                                 json={'a':['127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+            assert requests.patch(url,
+                                 json={'txt':['teste']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+            assert requests.delete(url + '/txt',
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+            assert requests.delete(url,
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+            assert not requests.delete(url,
+                                 auth=auth, params={'wait': global_data['wait']}).ok
+
+def test_guests_can_read_and_list_but_not_change(global_data):
+    for tname, td in global_data['tenants'].items():
+        auth=td['auth']['guest']
+
+        # List zones
+        assert list_something(global_data, "zone", auth).ok
+
+        for zfqdn, zd in td['zones'].items():
+            # List RR's
+            assert get_something(global_data, "zone", zfqdn, auth).ok
+
+            # Get RR for zone
+            assert get_something(global_data, "rr", zfqdn, auth).ok
+
+            www = "www.{}".format(zfqdn)
+            assert not get_something(global_data, "rr",www, auth).ok
+
+            url = '{}/rr/{}'.format(global_data['master-url'], www)
+            assert requests.post(url,
+                                 json={'a':['127.0.0.1', '127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+            assert requests.put(url,
+                                 json={'a':['127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+            assert requests.patch(url,
+                                 json={'txt':['teste']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+            assert requests.delete(url + '/txt',
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+            assert requests.delete(url,
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+            assert requests.delete(url,
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+
+def test_users_can_not_access_other_tenants(global_data):
+    it =  iter(global_data['tenants'].items())
+
+     # Auth details from first tenant's super user
+    ak, av = next(it)
+
+    # data/zones from second  tenant
+    tname, td = next(it)
+
+    print('td is {}'.format(td))
+
+    auth=av['auth']['super']
+
+    for zfqdn, zd in td['zones'].items():
+        url = '{}/zone/{}'.format(global_data['master-url'], zfqdn)
+        assert requests.delete(url + '/a',
+                              auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.delete(url,
+                              auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        
+        url = '{}/rr/{}'.format(global_data['master-url'], zfqdn)
+        assert requests.post(url,
+                                 json={'a':['127.0.0.1', '127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.put(url,
+                                json={'a':['127.0.0.2', '127.0.0.3']}, 
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.patch(url,
+                                json={'txt':['teste']}, 
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.delete(url + '/txt',
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.delete(url,
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        
+        url = '{}/rr/www.{}'.format(global_data['master-url'], zfqdn)
+        assert requests.post(url,
+                                 json={'a':['127.0.0.1', '127.0.0.2', '127.0.0.3']}, 
+                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.put(url,
+                                json={'a':['127.0.0.2', '127.0.0.3']}, 
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.patch(url,
+                                json={'txt':['teste']}, 
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.delete(url + '/txt',
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        assert requests.delete(url,
+                                auth=auth, params={'wait': global_data['wait']}).status_code == 403
+        
 # Let user create zones
 # Let read-only user read but fail to update/create zones
 # Try to access other tenants zones
