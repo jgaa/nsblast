@@ -995,7 +995,10 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
                 tenant.set_id(lowercaseKey);
             }
         }
+    }
 
+    if (tenant.has_id() && !isValidUuid(tenant.id())) {
+        return {400, "id must be a valid UUID"};
     }
 
     try {

@@ -130,8 +130,14 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
 
     ResourceIf::RealKey key{id, ResourceIf::RealKey::Class::TENANT};
     if (trx->keyExists(key, ResourceIf::Category::ACCOUNT)) {
-        LOG_INFO << "AuthMgr::createTenant - Tenant already exist: " << key;
-        throw AlreadyExistException{"Tenant already exist"};
+        LOG_INFO << "AuthMgr::createTenant - Tenant id already exist: " << key;
+        throw AlreadyExistException{"Tenant id already exist"};
+    }
+
+    ResourceIf::RealKey name_key{id, ResourceIf::RealKey::Class::TENANT_NAME};
+    if (trx->keyExists(name_key, ResourceIf::Category::ACCOUNT)) {
+        LOG_INFO << "AuthMgr::createTenant - Tenant name already exist: " << key;
+        throw AlreadyExistException{"Tenant name already exist"};
     }
 
     processUsers(tenant, {});
@@ -139,6 +145,7 @@ string AuthMgr::createTenant(pb::Tenant &tenant)
     LOG_INFO << "Creating tenant " << id;
     upsert(*trx, key, tenant, true);
     upsertUserIndexes(*trx, tenant, {});
+    upsertTenantIndexes(*trx, tenant, {});
     trx->commit();
     return id;
 }
@@ -149,6 +156,7 @@ bool AuthMgr::upsertTenant(std::string_view tenantId, const pb::Tenant& ctenant,
     pb::Tenant tenant{ctenant};
 
     assert(!tenantId.empty());
+    assert(isValidUuid(tenantId));
     auto trx = server_.resource().transaction();
     if (tenant.has_id()) {
         if (tenant.id() != tenantId) {
@@ -157,7 +165,13 @@ bool AuthMgr::upsertTenant(std::string_view tenantId, const pb::Tenant& ctenant,
     }
 
     auto id = toLower(tenant.id());
+    assert(isValidUuid(id));
     ResourceIf::RealKey key{id, ResourceIf::RealKey::Class::TENANT};
+
+    auto name = utf8FoldCase(tenant.name());
+    if (name.empty()) {
+        name = id;
+    }
 
     auto existing = getTenant(id);
     if (merge) {
@@ -172,6 +186,7 @@ bool AuthMgr::upsertTenant(std::string_view tenantId, const pb::Tenant& ctenant,
     upsert(*trx, key, tenant, false);
     upsertUserIndexes(*trx, tenant, existing);
 commit:
+    upsertTenantIndexes(*trx, tenant, existing);
     trx->commit();
 
     auto was_new = !existing.has_value();
@@ -198,6 +213,7 @@ void AuthMgr::deleteTenant(std::string_view tenantId)
     auto tenant = getTenant(tenantId);
     if (tenant) {
         deleteUserIndexes(*trx, *tenant);
+        deleteTenantIndexes(*trx, *tenant);
     }
 
     trx->remove(key, true, ResourceIf::Category::ACCOUNT);
@@ -252,7 +268,9 @@ void AuthMgr::bootstrap()
 {
     pb::Tenant tenant;
 
-    tenant.set_id("nsblast");
+    string id = boost::uuids::to_string(nsblastTenantUuid);
+    tenant.set_id(id);
+    tenant.set_name("nsblast");
     tenant.set_active(true);
     tenant.set_root(""); // all
 
@@ -532,6 +550,22 @@ void AuthMgr::upsertUserIndexes(trx_t &trx, const pb::Tenant& tenant,
     }
 }
 
+void AuthMgr::upsertTenantIndexes(trx_t &trx, const pb::Tenant &tenant, const std::optional<pb::Tenant>& existingTenant)
+{
+    if (existingTenant) {
+        if (existingTenant->name() == tenant.name()) {
+            return;
+        }
+
+        // Remove the previous name
+        ResourceIf::RealKey key{existingTenant->name(), ResourceIf::RealKey::Class::TENANT_NAME};
+        trx.remove(key, false, ResourceIf::Category::ACCOUNT);
+    }
+
+    ResourceIf::RealKey nkey{tenant.name(), ResourceIf::RealKey::Class::TENANT_NAME};
+    trx.write(nkey, tenant.id(), true, ResourceIf::Category::ACCOUNT);
+}
+
 void AuthMgr::deleteUserIndexes(trx_t &trx, const pb::Tenant &tenant)
 {
     for(auto& user: tenant.users()) {
@@ -550,6 +584,12 @@ void AuthMgr::deleteUserIndexes(trx_t &trx, const pb::Tenant &tenant)
 
         trx.remove(key, false, ResourceIf::Category::ACCOUNT);
     }
+}
+
+void AuthMgr::deleteTenantIndexes(trx_t &trx, const pb::Tenant &tenant)
+{
+    ResourceIf::RealKey key{tenant.name(), ResourceIf::RealKey::Class::TENANT_NAME};
+    trx.remove(key, false, ResourceIf::Category::ACCOUNT);
 }
 
 bool Session::isAllowed(pb::Permission perm, bool throwOnFailure) const {

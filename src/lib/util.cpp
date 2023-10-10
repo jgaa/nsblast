@@ -3,6 +3,8 @@
 #include <random>
 #include <regex>
 
+#include "boost/locale.hpp"
+
 #include "nsblast/util.h"
 #include "nsblast/logging.h"
 #include "nsblast/errors.h"
@@ -291,6 +293,48 @@ string readFileToBuffer(const std::filesystem::path &path)
     b.resize(len);
     file.read(b.data(), b.size());
     return b;
+}
+
+string toBytes(const boost::uuids::uuid &uuid) {
+    std::string b;
+    b.assign(uuid.begin(), uuid.end());
+    assert(b.size() == 16);
+    return b;
+}
+
+bool isValidUuid(std::string_view uuid)
+{
+    try {
+        auto result = boost::uuids::string_generator()(uuid.begin(), uuid.end());
+        return result.version() != boost::uuids::uuid::version_unknown;
+    } catch(const runtime_error&) {
+        return false;
+    }
+}
+
+string utf8FoldCase(std::string_view from)
+{
+    static const std::locale loc{"en_US.UTF-8"};
+
+    if (from.empty()) {
+        return {};
+    }
+
+    //auto& facet = std::use_facet<std::ctype<wchar_t>>(loc);
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+    auto ws = converter.from_bytes(from.begin(), from.end());
+
+    // Don't work. Consitently throws std::bad_cast due to lack of some "facet".
+    // The state of utf8/unicode support in C++20 in an embarrassment!
+    // auto folded = boost::locale::fold_case(ws, loc);
+
+    for(auto& ch: ws) {
+        ch = tolower(ch, loc);
+    }
+
+    auto utf8_str = converter.to_bytes(ws);
+
+    return utf8_str;
 }
 
 

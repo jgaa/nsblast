@@ -229,8 +229,9 @@ string_view toName(const ResourceIf::Category &cat)
 
 string_view toName(const ResourceIf::RealKey::Class &kclass)
 {
-    static constexpr array<string_view, 9> names = { "ENTRY", "DIFF", "TENANT", "USER",
-                                                    "ROLE", "ZONE", "TZONE", "TRXID", "ZRR" };
+    static constexpr array<string_view, 10> names = { "ENTRY", "DIFF", "TENANT", "USER",
+                                                    "ROLE", "ZONE", "TZONE", "TRXID", "ZRR",
+                                                    "TENANT_NAME"  };
 
     return names.at(static_cast<size_t>(kclass));
 }

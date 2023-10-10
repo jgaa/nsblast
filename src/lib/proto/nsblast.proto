@@ -181,7 +181,8 @@ message User {
  */
 
 message Tenant {
-    optional string id = 1;
+    optional string id = 1; // Strictly uuid
+    optional string name = 2; // Globally unique
     optional bool active = 3;
     optional string root = 4; // Absolute root of fqdn's for this tenant
     repeated KeyValue properties = 5;

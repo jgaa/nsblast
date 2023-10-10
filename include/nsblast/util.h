@@ -19,11 +19,15 @@
 namespace nsblast::lib {
     boost::uuids::uuid newUuid();
     std::string newUuidStr();
+    bool isValidUuid(std::string_view uuid);
+    std::string utf8FoldCase(std::string_view from);
 
     uint64_t getRandomNumber64();
     uint32_t getRandomNumber32();
     uint16_t getRandomNumber16();
     std::string getRandomStr(size_t len);
+
+    std::string toBytes(const boost::uuids::uuid& uuid);
 
     /*! Validate if a fqdn is valid. */
     bool validateFqdn(std::string_view fqdn);

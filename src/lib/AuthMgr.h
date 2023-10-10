@@ -8,6 +8,7 @@
 #include <regex>
 
 #include "nsblast/nsblast.h"
+#include "nsblast/DnsMessages.h"
 #include "nsblast/ResourceIf.h"
 #include "proto/nsblast.pb.h"
 #include "nsblast/Server.h"
@@ -186,7 +187,7 @@ public:
     };
 
     Session(AuthMgr& mgr)
-        : mgr_{mgr}, tenant_{"nsblast"}, who_{"somebody"} {};
+        : mgr_{mgr}, tenant_{boost::uuids::to_string(nsblastTenantUuid)}, who_{"somebody"} {};
 
     // Check if a non-zone permission is granted
     bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const;
@@ -312,7 +313,9 @@ private:
     void processUsers(pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant,
                            const std::optional<pb::Tenant>& existingTenant);
+    void upsertTenantIndexes(trx_t& trx, const pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);
+    void deleteTenantIndexes(trx_t& trx, const pb::Tenant& tenant);
 
     Server& server_;
     detail::Lru<std::shared_ptr<Session>> keys_;

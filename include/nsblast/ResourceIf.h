@@ -48,6 +48,7 @@ public:
             TZONE,      // class tenant-id / fqdn
             TRXID,      // class uint64-trxid
             ZRR,        // zone-name, fqdn of RR in plain text
+            TENANT_NAME,// Name of tenant, folded UTF8
             UNKNOWN_    // Not used as a Class
         };
 

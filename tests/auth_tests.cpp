@@ -45,9 +45,9 @@ TEST(AuthMgr, upsertConstraintId) {
     MockServer ms;
     {
         pb::Tenant tenant;
-        tenant.set_id("foo");
+        tenant.set_id("e0147650-676f-11ee-bd36-d71ea8293c52");
         tenant.set_root("example.com");
-        EXPECT_THROW(ms.auth().upsertTenant("bar", tenant, false), nsblast::ConstraintException);
+        EXPECT_THROW(ms.auth().upsertTenant("5fa48ac2-6770-11ee-b55f-d37f23f3956d", tenant, false), nsblast::ConstraintException);
     }
 }
 

@@ -263,7 +263,8 @@ StorageBuilder::createRr(span_t fqdn, uint16_t type, uint32_t ttl, span_t rdata,
 StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, string_view mname,
                                                 string_view rname, uint32_t serial,
                                                 uint32_t refresh, uint32_t retry,
-                                                uint32_t expire, uint32_t minimum)
+                                                uint32_t expire, uint32_t minimum,
+                                                boost::uuids::uuid tenant)
 {
     // I could be fancy and create the SOA while creating the Rr, to avoid
     // copying the rdata buffer, but this code is much cleaner - and soa's
@@ -274,7 +275,7 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
     const auto mname_size = writeName<false>(rdata, 0, mname);
     const auto rname_size = writeName<false, true>(rdata, 0, rname);
 
-    rdata.resize(mname_size + rname_size + (4 * 5));
+    rdata.resize(mname_size + rname_size + (4 * 5) + RrSoa::tenantLen);
 
     // TODO: See if we can compress the labels if parts of the names are already present
     // in the builders buffer.
@@ -285,7 +286,12 @@ StorageBuilder::NewRr StorageBuilder::createSoa(string_view fqdn, uint32_t ttl, 
     assert(bytes == rname_size);
 
     auto offset = mname_size + rname_size;
-    assert(offset == (static_cast<int>(rdata.size()) - (4 * 5)));
+    assert(offset == (static_cast<int>(rdata.size()) - (4 * 5) - RrSoa::tenantLen));
+
+    // Copy the tenant uuid
+    assert(tenant.size() == RrSoa::tenantLen);
+    std::copy(tenant.begin(), tenant.end(), rdata.begin() + offset);
+    offset += tenant.size();
 
     // Write the 32 bit values in the correct order
     for(const auto val : {serial, refresh, retry, expire, minimum}) {
@@ -1384,38 +1390,46 @@ Labels RrSoa::rname() const
     return {rdata(), mname().bytes()};
 }
 
+const boost::uuids::uuid& RrSoa::tenant() const
+{
+    const auto rd = rdata();
+    assert(rd.size() >= 38);
+    span_t p {rd.data() + (rd.size() - (tenantLen + 20)), tenantLen};
+    return *reinterpret_cast<const boost::uuids::uuid *>(p.data());
+}
+
 uint32_t RrSoa::serial() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 22);
+    assert(rd.size() >= 38);
     return get32bValueAt(rd, rd.size() - 20);
 }
 
 uint32_t RrSoa::refresh() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 22);
+    assert(rd.size() >= 38);
     return get32bValueAt(rd, rd.size() - 16);
 }
 
 uint32_t RrSoa::retry() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 22);
+    assert(rd.size() >= 38);
     return get32bValueAt(rd, rd.size() - 12);
 }
 
 uint32_t RrSoa::expire() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 22);
+    assert(rd.size() >= 38);
     return get32bValueAt(rd, rd.size() - 8);
 }
 
 uint32_t RrSoa::minimum() const
 {
     const auto rd = rdata();
-    assert(rd.size() >= 22);
+    assert(rd.size() >= 38);
     return get32bValueAt(rd, rd.size() - 4);
 }
 

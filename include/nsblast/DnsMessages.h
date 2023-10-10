@@ -5,6 +5,7 @@
 #include <cassert>
 #include <deque>
 #include <boost/asio.hpp>
+#include <boost/uuid/string_generator.hpp>
 #include "nsblast/nsblast.h"
 
 
@@ -13,6 +14,10 @@ namespace nsblast::lib {
 static constexpr uint32_t TTL_MAX = 2147483647; // RFC 2181 8
 uint32_t sanitizeTtl(uint32_t ttl) noexcept;
 struct RrInfo;
+
+/// "Magic "uuid" for the nsblast tenant
+static const boost::uuids::uuid nsblastTenantUuid = boost::uuids::string_generator()("{85b185fc-6767-11ee-aad2-1bf9c8825814}");
+
 
 /*! Representation of RFC1035 labels
  *
@@ -312,11 +317,13 @@ public:
     /*! Convert rname to a normail email */
     std::string email() const;
     Labels rname() const;
+    const boost::uuids::uuid& tenant() const;
     uint32_t serial() const;
     uint32_t refresh() const;
     uint32_t retry() const;
     uint32_t expire() const;
     uint32_t minimum() const;
+    static constexpr size_t tenantLen = sizeof(boost::uuids::uuid);
 
     /*! Offset of serial from the start of the original buffer */
     uint16_t serialOffset() const;
@@ -1180,7 +1187,8 @@ public:
                     uint32_t refresh,
                     uint32_t retry,
                     uint32_t expire,
-                    uint32_t minimum);
+                    uint32_t minimum,
+                    boost::uuids::uuid tenant = nsblastTenantUuid);
 
     /*! Create a CNAME record. */
     NewRr createCname(std::string_view fqdn,

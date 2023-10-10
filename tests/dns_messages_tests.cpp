@@ -4,6 +4,7 @@
 
 #include "nsblast/DnsMessages.h"
 #include "nsblast/detail/write_labels.hpp"
+#include "nsblast/util.h"
 
 using namespace std;
 using namespace nsblast::lib;
@@ -801,7 +802,24 @@ TEST(Rr, Soa) {
     EXPECT_EQ(soa.retry(), 1002);
     EXPECT_EQ(soa.expire(), 1003);
     EXPECT_EQ(soa.minimum(), 1004);
+    EXPECT_EQ(soa.tenant(), nsblast::lib::nsblastTenantUuid);
 }
+
+TEST(Rr, SoaTenantUuid) {
+    StorageBuilder sb;
+
+    string_view fqdn = "www.example.com";
+    string_view mname = "ns1.example.com";
+    string_view rname = "hostmaster.example.com";
+    const auto uuid = nsblast::lib::newUuid();
+
+    auto rr = sb.createSoa(fqdn, 9999, mname, rname,
+                           1000, 1001, 1002, 1003, 1004, uuid);
+
+    RrSoa soa{sb.buffer(), rr.offset()};
+    EXPECT_EQ(soa.tenant(), uuid);
+}
+
 
 TEST(Rr, SoaEscapedEmail) {
     StorageBuilder sb;

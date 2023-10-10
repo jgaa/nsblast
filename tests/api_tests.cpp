@@ -1408,7 +1408,7 @@ TEST(ApiRequest, createTenant) {
 TEST(ApiRequest, createExistingTenant) {
     MockServer svr;
 
-    auto json = getJsonForNewTenant("teste-id");
+    auto json = getJsonForNewTenant("40af80e8-6772-11ee-bd63-4f3d941e113e");
     auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
 
     RestApi api{svr};
@@ -1426,7 +1426,7 @@ TEST(ApiRequest, createTenantInvalidTarget) {
     MockServer svr;
 
     auto json = getJsonForNewTenant();
-    auto req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::POST);
+    auto req = makeRequest(svr, "tenant", "40af80e8-6772-11ee-bd63-4f3d941e113e", json, yahat::Request::Type::POST);
 
     RestApi api{svr};
 
@@ -1439,8 +1439,8 @@ TEST(ApiRequest, createTenantInvalidTarget) {
 TEST(ApiRequest, putNewTenant) {
     MockServer svr;
 
-    auto json = getJsonForNewTenant("testme");
-    auto req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PUT);
+    auto json = getJsonForNewTenant("40af80e8-6772-11ee-bd63-4f3d941e113e");
+    auto req = makeRequest(svr, "tenant", "40af80e8-6772-11ee-bd63-4f3d941e113e", json, yahat::Request::Type::PUT);
 
     RestApi api{svr};
 
@@ -1452,7 +1452,7 @@ TEST(ApiRequest, putNewTenant) {
 TEST(ApiRequest, putTenant) {
     MockServer svr;
 
-    auto json = getJsonForNewTenant("testme");
+    auto json = getJsonForNewTenant("40af80e8-6772-11ee-bd63-4f3d941e113e");
     auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
 
     RestApi api{svr};
@@ -1461,7 +1461,7 @@ TEST(ApiRequest, putTenant) {
     auto res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 201);
 
-    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PUT);
+    req = makeRequest(svr, "tenant", "40af80e8-6772-11ee-bd63-4f3d941e113e", json, yahat::Request::Type::PUT);
     parsed = api.parse(req);
     res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 200);
@@ -1470,7 +1470,7 @@ TEST(ApiRequest, putTenant) {
 TEST(ApiRequest, patchTenant) {
     MockServer svr;
 
-    auto json = getJsonForNewTenant("testme");
+    auto json = getJsonForNewTenant("40af80e8-6772-11ee-bd63-4f3d941e113e");
     auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
 
     RestApi api{svr};
@@ -1479,7 +1479,7 @@ TEST(ApiRequest, patchTenant) {
     auto res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 201);
 
-    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::PATCH);
+    req = makeRequest(svr, "tenant", "40af80e8-6772-11ee-bd63-4f3d941e113e", json, yahat::Request::Type::PATCH);
     parsed = api.parse(req);
     res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 200);
@@ -1556,7 +1556,7 @@ TEST(ApiRequest, getTenant) {
 TEST(ApiRequest, deleteTenant) {
     MockServer svr;
 
-    auto json = getJsonForNewTenant("testme");
+    auto json = getJsonForNewTenant("40af80e8-6772-11ee-bd63-4f3d941e113e");
     auto req = makeRequest(svr, "tenant", "", json, yahat::Request::Type::POST);
 
     RestApi api{svr};
@@ -1565,7 +1565,7 @@ TEST(ApiRequest, deleteTenant) {
     auto res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 201);
 
-    req = makeRequest(svr, "tenant", "testme", json, yahat::Request::Type::DELETE);
+    req = makeRequest(svr, "tenant", "40af80e8-6772-11ee-bd63-4f3d941e113e", json, yahat::Request::Type::DELETE);
     parsed = api.parse(req);
     res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 200);
@@ -1587,7 +1587,7 @@ TEST(ApiRequest, createRole) {
     auto res = api.onRole(req, parsed);
     EXPECT_EQ(res.code, 201);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto roleit = tenant->roles().begin();
     EXPECT_EQ(roleit->name(), "Administrator");
@@ -1608,7 +1608,7 @@ TEST(ApiRequest, upsertNewRole) {
     auto res = api.onRole(req, parsed);
     EXPECT_EQ(res.code, 201);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto roleit = tenant->roles().begin();
     EXPECT_EQ(roleit->name(), "Administrator");
@@ -1664,7 +1664,7 @@ TEST(ApiRequest, upsertExistingRole) {
     res = api.onRole(req, parsed);
     EXPECT_EQ(res.code, 200);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto roleit = tenant->roles().begin();
     EXPECT_EQ(roleit->name(), "Administrator");
@@ -1740,7 +1740,7 @@ TEST(ApiRequest, createUser) {
     auto res = api.onReqest(req);
     EXPECT_EQ(res.code, 201);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto Userit = tenant->users().begin();
     EXPECT_EQ(Userit->name(), "admin");
@@ -1760,7 +1760,7 @@ TEST(ApiRequest, upsertNewUser) {
     auto res = api.onReqest(req);
     EXPECT_EQ(res.code, 201);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto Userit = tenant->users().begin();
     EXPECT_EQ(Userit->name(), "admin");
@@ -1824,7 +1824,7 @@ TEST(ApiRequest, upsertExistingUser) {
     res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);
 
-    auto tenant = svr.auth().getTenant("nsblast");
+    auto tenant = svr.auth().getTenant(boost::uuids::to_string(nsblast::lib::nsblastTenantUuid));
     EXPECT_TRUE(tenant);
     auto Userit = tenant->users().begin();
     EXPECT_EQ(Userit->name(), "admin");
@@ -1964,7 +1964,8 @@ TEST(ApiRequest, listZonesAll) {
     EXPECT_FALSE(zones.at("error").as_bool());
     EXPECT_EQ(zones.at("value").as_array().size(), 1);
     EXPECT_EQ(zones.at("value").as_array()[0].as_object().at("zone"), "example.com");
-    EXPECT_EQ(zones.at("value").as_array()[0].as_object().at("tenant"), "nsblast");
+    auto nsblast_tenant = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
+    EXPECT_EQ(zones.at("value").as_array()[0].as_object().at("tenant").as_string(), nsblast_tenant);
 
 }
 
@@ -2049,7 +2050,7 @@ TEST(ApiRequest, listZonesPaginationMultipleTenants) {
 
     // Create zone
     unsigned user_count = 0;
-    string tenant_id = "nsblast";
+    string tenant_id = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
     string current_user;
     for(auto i = 0; i < num_zones; ++i) {
 
