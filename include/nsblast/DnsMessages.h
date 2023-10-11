@@ -11,6 +11,8 @@
 
 namespace nsblast::lib {
 
+constexpr char BUFFER_HEADER_LEN = 8;
+
 static constexpr uint32_t TTL_MAX = 2147483647; // RFC 2181 8
 uint32_t sanitizeTtl(uint32_t ttl) noexcept;
 struct RrInfo;
@@ -323,7 +325,7 @@ public:
     uint32_t retry() const;
     uint32_t expire() const;
     uint32_t minimum() const;
-    static constexpr size_t tenantLen = sizeof(boost::uuids::uuid);
+    static constexpr size_t minRrLen = 22;
 
     /*! Offset of serial from the start of the original buffer */
     uint16_t serialOffset() const;
@@ -969,7 +971,8 @@ struct StorageTypes {
         uint8_t aaaa: 1;
         uint8_t cname: 1;
         uint8_t txt: 1;
-        uint8_t reserved: 2;
+        uint8_t reserved: 1;
+        uint8_t tenantId: 1; // Has tenant id
     };
 
     struct Index {
@@ -987,7 +990,6 @@ struct StorageTypes {
     };
 
 #pragma pack(pop)
-
 };
 
 /*! Wrapper over a storage buffer
@@ -997,6 +999,8 @@ struct StorageTypes {
  */
 class Entry : public StorageTypes {
 public:
+    static constexpr size_t tenantIdLen = 16;
+
     using span_t = boost::span<const char>;
     using index_t = boost::span<const Index>;
 
@@ -1051,17 +1055,23 @@ public:
 
     Entry(boost::span<const char> buffer);
 
-    bool empty() const noexcept{
+    inline bool empty() const noexcept{
         return span_.empty();
     }
 
-    Flags flags() const noexcept {
-        return header_->flags;
+    std::optional<boost::uuids::uuid> tenantId() const noexcept;
+
+    bool hasTenantId() const noexcept {
+        return !empty() && flags().tenantId;
     }
 
-    const Header& header() const noexcept {
-        assert(header_);
-        return *header_;
+    Flags flags() const noexcept {
+        return header().flags;
+    }
+
+    inline const Header& header() const noexcept {
+        assert(span_.size() > BUFFER_HEADER_LEN);
+        return *reinterpret_cast<const Header *>(span_.data());
     }
 
     Iterator begin() const {
@@ -1091,14 +1101,23 @@ public:
 
     RrSoa getSoa() const;
 
+    inline span_t dataSpan() const noexcept {
+        if (empty()) {
+            return {};
+        }
+
+        return span_.subspan(BUFFER_HEADER_LEN + header().flags.tenantId ? tenantIdLen : 0);
+    }
+
 private:
     static index_t mkIndex(span_t b, const Header& h, size_t count) {
          const auto p = b.data() + ntohs(h.ixoffset);
          return {reinterpret_cast<const Index *>(p), count};
     }
 
+    // In span_, first comes the header. Then comes the tenant uuid (if the tenantId flag is set in the header).
+    // After there follows the rr's
     span_t span_;
-    const Header *header_ = {};
     size_t count_ = {};
     index_t index_;
 };
@@ -1178,6 +1197,15 @@ public:
         prepare();
     }
 
+    /*! Set tenant id. */
+    void setTenantId(const boost::uuids::uuid& tid);
+
+    void setTenantId(const std::optional<boost::uuids::uuid> tid) {
+        if (auto id = tid) {
+            setTenantId(*id);
+        }
+    }
+
     /*! Create a SOA record. */
     NewRr createSoa(std::string_view fqdn,
                     uint32_t ttl,
@@ -1187,8 +1215,7 @@ public:
                     uint32_t refresh,
                     uint32_t retry,
                     uint32_t expire,
-                    uint32_t minimum,
-                    boost::uuids::uuid tenant = nsblastTenantUuid);
+                    uint32_t minimum);
 
     /*! Create a CNAME record. */
     NewRr createCname(std::string_view fqdn,
@@ -1484,6 +1511,7 @@ private:
     bool finished_ = false;
     bool sort_ = true;
     bool one_soa_ = true;
+    std::optional<boost::uuids::uuid> tenantId_;
 };
 
 } // ns

@@ -337,5 +337,21 @@ string utf8FoldCase(std::string_view from)
     return utf8_str;
 }
 
+bool isSameZone(std::string_view zone, std::string_view fqdn)
+{
+    if (compareCaseInsensitive(zone, fqdn, false)) {
+        if (zone.size() == fqdn.size()) {
+            return true;
+        }
+
+        assert(zone.size() < fqdn.size());
+        if (fqdn[zone.size()] == '.') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 } // ns

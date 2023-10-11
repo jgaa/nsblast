@@ -802,22 +802,6 @@ TEST(Rr, Soa) {
     EXPECT_EQ(soa.retry(), 1002);
     EXPECT_EQ(soa.expire(), 1003);
     EXPECT_EQ(soa.minimum(), 1004);
-    EXPECT_EQ(soa.tenant(), nsblast::lib::nsblastTenantUuid);
-}
-
-TEST(Rr, SoaTenantUuid) {
-    StorageBuilder sb;
-
-    string_view fqdn = "www.example.com";
-    string_view mname = "ns1.example.com";
-    string_view rname = "hostmaster.example.com";
-    const auto uuid = nsblast::lib::newUuid();
-
-    auto rr = sb.createSoa(fqdn, 9999, mname, rname,
-                           1000, 1001, 1002, 1003, 1004, uuid);
-
-    RrSoa soa{sb.buffer(), rr.offset()};
-    EXPECT_EQ(soa.tenant(), uuid);
 }
 
 
@@ -1559,6 +1543,18 @@ TEST(Entry, Zone) {
         }
         ++it;
     }
+}
+
+TEST(Entry, tenant) {
+    StorageBuilder sb;
+    auto uuid = newUuid();
+    sb.setTenantId(uuid);
+    sb.createCname("example.com", 1000, "teste.example.com");
+    sb.finish();
+
+    Entry entry{sb.buffer()};
+    EXPECT_TRUE(entry.hasTenantId());
+    EXPECT_EQ(entry.tenantId().value(), uuid);
 }
 
 TEST(StorageBuilder, incrementSoaVersionOk) {

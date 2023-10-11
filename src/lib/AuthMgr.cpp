@@ -2,6 +2,7 @@
 #include <memory>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/uuid/string_generator.hpp>
 
 #include "AuthMgr.h"
 #include "nsblast/logging.h"
@@ -592,13 +593,14 @@ void AuthMgr::deleteTenantIndexes(trx_t &trx, const pb::Tenant &tenant)
     trx.remove(key, false, ResourceIf::Category::ACCOUNT);
 }
 
-bool Session::isAllowed(pb::Permission perm, bool throwOnFailure) const {
+bool Session::isAllowed(pb::Permission perm, const Options& opts) const {
     if (!AuthMgr::hasAuth()) {
         return true;
     }
+    assert(!opts.validateZone);
     const auto bit = detail::getBit(perm);
     auto result = (non_zone_perms_ & bit) == bit;
-    if (!result && throwOnFailure) {
+    if (!result && opts.throwOnFailure) {
         auto pname = pb::Permission_Name(perm);
         throw DeniedException{"Access denied for "s + pname + "."};
     }
@@ -609,11 +611,29 @@ string_view Session::tenant() const {
     return tenant_;
 }
 
-bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure) const
+bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, const Options& opts) const
 {
     if (!AuthMgr::hasAuth()) {
         return true;
     }
+
+    if (opts.validateZone) {
+        auto trx = mgr_.server().resource().transaction();
+        auto res = trx->lookupEntryAndSoa(lowercaseFqdn);
+        if (!res.hasSoa()) {
+            LOG_DEBUG_N << "The zone " << lowercaseFqdn << " is unknown.";
+            return false;
+        }
+        if (auto id = res.soa().tenantId()) {
+            if (*id != tenantId()) {
+                LOG_DEBUG_N << "The zone " << lowercaseFqdn
+                            << " is owned by tenant " << *id
+                            << ". Tenant " << tenantId() << " is denied access.";
+                return false;
+            }
+        }
+    }
+
     auto perms = non_zone_perms_;
 
     for(const auto& role : roles_) {
@@ -626,7 +646,7 @@ bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, boo
 
     const auto bit = detail::getBit(perm);
     const auto result = (perms & bit) == bit;
-    if (!result && throwOnFailure) {
+    if (!result && opts.throwOnFailure) {
         auto pname = pb::Permission_Name(perm);
         throw DeniedException{"Access denied for "s + pname + ": " + string{lowercaseFqdn}};
     }
@@ -644,6 +664,8 @@ yahat::Auth Session::getAuth() noexcept
 
 void Session::init(const pb::Tenant& tenant)
 {
+    assert(tenant.has_id());
+    tenant_id_ = boost::uuids::string_generator()(tenant.id());
     auto root = PB_GET(tenant, root, "");
 
     for (auto& role : roles_) {

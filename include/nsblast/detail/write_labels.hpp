@@ -13,7 +13,6 @@ using namespace ::std;
 constexpr int MAX_PTRS_IN_A_ROW = 16;
 constexpr auto START_OF_POINTER_TAG = 0xC0;     // Binary: 11000000
 constexpr auto START_OF_EXT_LABEL_TAG =  0x40;  // Binary: 01000000;
-constexpr char BUFFER_HEADER_LEN = 8;
 
 inline constexpr auto createLookupTableForCharsInLabelName() {
     array<bool, 255> table{};

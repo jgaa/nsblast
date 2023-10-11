@@ -85,7 +85,8 @@ public:
         return path_;
     }
 
-    void createTestZone(const std::string zone = "example.com") {
+    void createTestZone(const std::string zone = "example.com",
+                        const boost::uuids::uuid tid = nsblast::lib::nsblastTenantUuid) {
         StorageBuilder sb;
         string fqdn = zone;
         string nsname = "ns1."s + zone;
@@ -97,6 +98,7 @@ public:
         auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
         // Notice order. Sorting the index must work to iterate in the expected order below
+        sb.setTenantId(tid);
         sb.createA(fqdn, 1000, ip1);
         sb.createA(fqdn, 1000, ip3);
         sb.createA(fqdn, 1000, ip2);

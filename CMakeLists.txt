@@ -78,7 +78,7 @@ endif()
 option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
-    locale
+    #locale
     program_options
     date_time
     coroutine

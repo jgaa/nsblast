@@ -32,6 +32,12 @@ namespace nsblast::lib {
     /*! Validate if a fqdn is valid. */
     bool validateFqdn(std::string_view fqdn);
 
+    /*! Check is a fqdn is equal to or a sub-fqdn (rr) of a zone
+     *
+     *  This is a string comparison operation only.
+     */
+    bool isSameZone(std::string_view zone, std::string_view fqdn);
+
     /*! Read a file into a string
      *
      *  (A funtion like this is part of the Rust standard library because it is so common...)
@@ -145,7 +151,7 @@ namespace nsblast::lib {
      *
      * \param start Character sequence we want to match
      * \param full Character sequence we want to look at
-     * \param fullMatch If true, require the two striungs to be equalk.
+     * \param fullMatch If true, require the two strings to be equal.
      *          If false, require the two strings to be eual until the end of `start`.
      */
     template <typename startT, typename fullT>

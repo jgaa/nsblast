@@ -178,6 +178,10 @@ struct Role {
  */
 class Session : public std::enable_shared_from_this<Session> {
 public:
+    struct Options {
+        bool validateZone = true;
+        bool throwOnFailure = false;
+    };
 
     template <typename T>
     Session(AuthMgr& mgr, const pb::Tenant& tenant, const std::string& who, const T& roles)
@@ -187,20 +191,44 @@ public:
     };
 
     Session(AuthMgr& mgr)
-        : mgr_{mgr}, tenant_{boost::uuids::to_string(nsblastTenantUuid)}, who_{"somebody"} {};
+        : mgr_{mgr}, tenant_{boost::uuids::to_string(nsblastTenantUuid)}, who_{"somebody"}
+        , tenant_id_{nsblastTenantUuid} {};
+
+    Session(const Session& v) = default;
 
     // Check if a non-zone permission is granted
-    bool isAllowed(pb::Permission perm, bool throwOnFailure = false) const;
+    bool isAllowed(pb::Permission perm, const Options& opts) const;
+
+    bool isAllowed(pb::Permission perm) {
+        Options opts;
+        return isAllowed(perm, opts);
+    }
 
     std::string_view tenant() const;
 
     // Check if a zone-permission is granted
-    bool isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, bool throwOnFailure = false) const;
+    bool isAllowed(pb::Permission perm,
+                   std::string_view lowercaseFqdn) const {
+        Options opts;
+        return isAllowed(perm, lowercaseFqdn, opts);
+    }
+
+    bool isAllowed(pb::Permission perm,
+                   std::string_view lowercaseFqdn,
+                   const Options& opts) const;
 
     yahat::Auth getAuth() noexcept;
 
     const std::string& who() const noexcept {
         return who_;
+    }
+
+    const boost::uuids::uuid& tenantId() const noexcept {
+        return tenant_id_;
+    }
+
+    void setTenantId(const boost::uuids::uuid& tid) {
+        tenant_id_ = tid;
     }
 
 private:
@@ -236,6 +264,7 @@ private:
     AuthMgr& mgr_;
     const std::string tenant_;
     const std::string who_;
+    boost::uuids::uuid tenant_id_;
 };
 
 class AuthMgr {
@@ -306,6 +335,10 @@ public:
      *  \param update true to add/update, false to delete.
      */
     void updateZoneRrIx(ResourceIf::TransactionIf& trx, std::string_view fqdn, size_t zoneLen, bool update=true);
+
+    auto& server() {
+        return server_;
+    }
 
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString,

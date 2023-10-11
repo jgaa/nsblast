@@ -1935,7 +1935,7 @@ TEST(ApiRequest, listZones) {
     auto zones = boost::json::parse(res.body);
     EXPECT_FALSE(zones.at("error").as_bool());
     EXPECT_EQ(zones.at("value").as_array().size(), 1);
-    EXPECT_EQ(zones.at("value").as_array()[0].as_object().at("zone"), "example.com");
+    EXPECT_EQ(zones.at("value").as_array()[0].as_string(), "example.com");
 
 }
 
@@ -2006,7 +2006,7 @@ TEST(ApiRequest, listZonesPagination) {
 
     size_t pages = 2;
     for(; pages <= expected_pages; ++pages) {
-        string next_key = string{zones.at("value").as_array().back().as_object().at("zone").as_string()};
+        string next_key = string{zones.at("value").as_array().back().as_string()};
 
         req = makeRequest(svr, "zone", "", {}, yahat::Request::Type::GET);
 

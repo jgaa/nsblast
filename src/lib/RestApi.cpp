@@ -26,7 +26,7 @@ using namespace std::string_literals;
 using namespace yahat;
 
 ostream& operator << (ostream& out, nsblast::lib::Session& session) {
-    return out << " {tenant=" << session.tenant()
+    return out << " {tenant=" << session.tenantId()
                << ", user=" << session.who() << '}';
 }
 
@@ -281,6 +281,10 @@ getSessionAndTenant(const yahat::Request &req, Server& server, bool allowAll = f
                 LOG_INFO << "In request" << req.uuid << ", session "
                          << *session << " the client is impersonating  "
                          << *impersonate;
+
+                // Make a tmp session instance with the impersonated tenant_id.
+                session = make_shared<Session>(*session);
+                session->setTenantId(boost::uuids::string_generator()(tenant_id));
             }
         } else {
             LOG_WARN << "In request" << req.uuid << ", session "
@@ -1005,14 +1009,14 @@ Response RestApi::onTenant(const yahat::Request &req, const Parsed &parsed)
         switch(req.type) {
         case Request::Type::GET:
             if (parsed.target.empty()) {
-                if (!session->isAllowed(pb::Permission::LIST_TENANTS, false)) {
+                if (!session->isAllowed(pb::Permission::LIST_TENANTS)) {
                     return {403, "Access Denied"};
                 }
                 return listTenants(req, parsed);
             }
-            if (!session->isAllowed(pb::Permission::GET_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::GET_TENANT)) {
                 if (lowercaseKey == session->tenant()) {
-                    if (session->isAllowed(pb::Permission::GET_SELF_TENANT, false)) {
+                    if (session->isAllowed(pb::Permission::GET_SELF_TENANT)) {
                         goto return_tenant;
                     }
                 }
@@ -1028,7 +1032,7 @@ return_tenant:
          if (!parsed.target.empty()) {
                 return {400, "Create Tenant does not allow tenant-id in the target."};
             }
-            if (!session->isAllowed(pb::Permission::CREATE_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::CREATE_TENANT)) {
                 return {403, "Access Denied"};
             }
             auto id = server().auth().createTenant(tenant);
@@ -1040,7 +1044,7 @@ return_tenant:
             return {500, "Internal Server Error"};
         } break;
         case Request::Type::PUT:
-            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::UPDATE_TENANT)) {
                 return {403, "Access Denied"};
             }
             if (server().auth().upsertTenant(lowercaseKey, tenant, false)) {
@@ -1048,7 +1052,7 @@ return_tenant:
             }
             goto return_tenant;
         case Request::Type::PATCH:
-            if (!session->isAllowed(pb::Permission::UPDATE_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::UPDATE_TENANT)) {
                 return {403, "Access Denied"};
             }
             if (server().auth().upsertTenant(lowercaseKey, tenant, true)) {
@@ -1056,9 +1060,9 @@ return_tenant:
             }
             goto return_tenant;
         case Request::Type::DELETE:
-            if (!session->isAllowed(pb::Permission::DELETE_TENANT, false)) {
+            if (!session->isAllowed(pb::Permission::DELETE_TENANT)) {
                 if (lowercaseKey == session->tenant()) {
-                    if (session->isAllowed(pb::Permission::DELETE_SELF_TENANT, false)) {
+                    if (session->isAllowed(pb::Permission::DELETE_SELF_TENANT)) {
                         goto delete_tenant;
                     }
                 }
@@ -1109,14 +1113,14 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
     switch(req.type) {
     case Request::Type::GET:
         if (parsed.target.empty()) {
-            if (!session->isAllowed(pb::Permission::LIST_ROLES, false)) {
+            if (!session->isAllowed(pb::Permission::LIST_ROLES)) {
                 return {403, "Access Denied"};
             }
             // List
             return makeReply(tenant->roles());
         }
         // Get one by name
-        if (!session->isAllowed(pb::Permission::GET_ROLE, false)) {
+        if (!session->isAllowed(pb::Permission::GET_ROLE)) {
             return {403, "Access Denied"};
         }
         if (auto existing = getFromList(tenant->roles(), parsed.target)) {
@@ -1125,7 +1129,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         return {404, "Role not found"};
 
     case Request::Type::POST:
-        if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
+        if (!session->isAllowed(pb::Permission::CREATE_ROLE)) {
             return {403, "Access Denied"};
         }
         if (auto existing = getFromList(tenant->roles(), role.name())) {
@@ -1138,12 +1142,12 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
 
     case Request::Type::PUT:
         if (auto existing = getFromList(tenant->roles(), parsed.target)) {
-            if (!session->isAllowed(pb::Permission::UPDATE_ROLE, false)) {
+            if (!session->isAllowed(pb::Permission::UPDATE_ROLE)) {
                 return {403, "Access Denied"};
             }
             removeFromList(tenant->mutable_roles(), parsed.target);
         } else {
-            if (!session->isAllowed(pb::Permission::CREATE_ROLE, false)) {
+            if (!session->isAllowed(pb::Permission::CREATE_ROLE)) {
                 return {403, "Access Denied"};
             }
             rcode = 201;
@@ -1154,7 +1158,7 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         return makeReply(role, rcode);
 
     case Request::Type::DELETE:
-        if (!session->isAllowed(pb::Permission::DELETE_ROLE, false)) {
+        if (!session->isAllowed(pb::Permission::DELETE_ROLE)) {
             return {403, "Access Denied"};
         }
         if (auto existing = getFromList(tenant->roles(), toLower(parsed.target))) {
@@ -1202,14 +1206,14 @@ Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
     switch(req.type) {
     case Request::Type::GET:
         if (parsed.target.empty()) {
-            if (!session->isAllowed(pb::Permission::LIST_USERS, false)) {
+            if (!session->isAllowed(pb::Permission::LIST_USERS)) {
                 return {403, "Access Denied"};
             }
             // List
             return makeReply(tenant->users());
         }
         // Get one by name
-        if (!session->isAllowed(pb::Permission::GET_USER, false)) {
+        if (!session->isAllowed(pb::Permission::GET_USER)) {
             return {403, "Access Denied"};
         }
 
@@ -1220,7 +1224,7 @@ get_user:
         return {404, "User not found"};
 
     case Request::Type::POST:
-        if (!session->isAllowed(pb::Permission::CREATE_USER, false)) {
+        if (!session->isAllowed(pb::Permission::CREATE_USER)) {
             return {403, "Access Denied"};
         }
         if (auto existing = getFromList(tenant->users(), toLower(user.name()))) {
@@ -1240,12 +1244,12 @@ get_user:
 
     case Request::Type::PUT:
         if (auto existing = getFromList(tenant->users(), lcTarget)) {
-            if (!session->isAllowed(pb::Permission::UPDATE_USER, false)) {
+            if (!session->isAllowed(pb::Permission::UPDATE_USER)) {
                 return {403, "Access Denied"};
             }
             removeFromList(tenant->mutable_users(), lcTarget);
         } else {
-            if (!session->isAllowed(pb::Permission::CREATE_USER, false)) {
+            if (!session->isAllowed(pb::Permission::CREATE_USER)) {
                 return {403, "Access Denied"};
             }
             rcode = 201;
@@ -1265,7 +1269,7 @@ get_user:
         goto get_user;
 
     case Request::Type::DELETE:
-        if (!session->isAllowed(pb::Permission::DELETE_USER, false)) {
+        if (!session->isAllowed(pb::Permission::DELETE_USER)) {
             return {403, "Access Denied"};
         }
         if (auto existing = getFromList(tenant->users(), lcTarget)) {
@@ -1289,18 +1293,10 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.target);
     auto exists = trx->zoneExists(lowercaseFqdn);
+
     int rcode = 200;
 
     switch(req.type) {
-//    case Request::Type::GET: {
-//        assert(parsed.target.empty()); // Should have been directed to listZones!
-//        if (!session->isAllowed(pb::Permission::LIST_RRS, lowercaseFqdn)) {
-//            return {403, "Access Denied"};
-//        }
-
-
-
-//    } break;
     case Request::Type::POST: {
         if (!session->isAllowed(pb::Permission::CREATE_ZONE, lowercaseFqdn)) {
             return {403, "Access Denied"};
@@ -1319,6 +1315,13 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
         // Build binary buffer
         StorageBuilder sb;
+        if (tenant) {
+            sb.setTenantId(session->tenantId());
+        } else {
+            // Set nsblast as owner
+            LOG_DEBUG_N << "Setting nsblast as tenant for " << lowercaseFqdn;
+            sb.setTenantId(nsblastTenantUuid);
+        }
         uint32_t ttl = config_.default_ttl;
         build(parsed.target, ttl, sb, json);
 
@@ -1333,7 +1336,8 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
     } break;
     case Request::Type::DELETE: {
-        if (!session->isAllowed(pb::Permission::DELETE_ZONE, lowercaseFqdn)) {
+        Session::Options opts{true};
+        if (!session->isAllowed(pb::Permission::DELETE_ZONE, lowercaseFqdn, opts)) {
             return {403, "Access Denied"};
         }
         if (!exists) {
@@ -1370,7 +1374,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     StorageBuilder sb;
     auto trx = resource_.transaction();
-    const auto lowercaseFqdn = toFqdnKey(parsed.target);
+    const auto lowercaseFqdn = toLower(parsed.target);
     // Get the zone
     auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
@@ -1385,6 +1389,23 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     if (!existing.hasSoa()) {
         return {404, "Not authorative for zone"};
+    }
+
+    if (auto id = existing.soa().tenantId()) {
+        if (*id != session->tenantId()) {
+            LOG_DEBUG_N << *session << " tried to alter zone "
+                        << lowercaseFqdn
+                        << " owned by tenant " << *id;
+            return {403, "Not your zone!"};
+        }
+    } else {
+        LOG_WARN_N << "Unable to establish what tenant who owns zone "
+                   << existing.soa().getSoa().labels().string();
+        return {403, "Unable to establish what tenant who owns this zone"};
+    }
+
+    if (existing.hasRr()) {
+        sb.setTenantId(existing.rr().tenantId());
     }
 
     size_t soa_zone_len = 0; // Part of the fqdn that forms the zone's fqdn. 0 = zone/same.
@@ -1489,6 +1510,8 @@ put:
 
         set<uint16_t> new_types;
         merged.emplace();
+        assert(existing.hasRr());
+        merged->setTenantId(existing.rr().tenantId());
 
         // Add the new rr's to the merged buffer
         for(const auto& rr : newRrs) {
@@ -1531,6 +1554,7 @@ put:
 
         if (!parsed.operation.empty()) {
             merged.emplace();
+            merged->setTenantId(existing.rr().tenantId());
             const auto filter = makeRrFilter(parsed.operation);
             for(auto& rr : existing.rr()) {
                 // Add eveything *not* matching the filter
@@ -1579,6 +1603,7 @@ put:
 
     StorageBuilder soaSb;
     if (need_version_increment) {
+        soaSb.setTenantId(existing.soa().tenantId());
         assert(!existing.isSame());
 
         // We need to copy the Entry containing the soa and then increment the version
@@ -1745,7 +1770,7 @@ void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)
 bool RestApi::hasAccess(const yahat::Request &req, pb::Permission perm) const noexcept
 {
     if (auto session = getSession(req)) {
-        return session->isAllowed(perm, false);
+        return session->isAllowed(perm);
     }
 
     return false;
@@ -1756,7 +1781,7 @@ bool RestApi::hasAccess(const yahat::Request &req,
                         pb::Permission perm) const noexcept
 {
     if (auto session = getSession(req)) {
-        return session->isAllowed(perm, lowercaseFqdn, false);
+        return session->isAllowed(perm, lowercaseFqdn);
     }
 
     return false;
@@ -1764,8 +1789,6 @@ bool RestApi::hasAccess(const yahat::Request &req,
 
 Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*/)
 {
-
-
     auto trx_ = server().resource().transaction();
     auto& trx = dynamic_cast<RocksDbResource::Transaction&>(*trx_);
 
@@ -1839,7 +1862,7 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
 
     auto lowercaseFqdn = toLower(parsed.target);
 
-    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+    if (!session->isAllowed(pb::Permission::LIST_ZONES)) {
         return {403, "Access Denied"};
     }
 
@@ -1911,13 +1934,14 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
                 return false;
             }
 
-            boost::json::object o;
-            o["zone"] = zone;
             if (all) {
+                boost::json::object o;
+                o["zone"] = zone;
                 o["tenant"] = ztenant;
+                zone_list.push_back(std::move(o));
+            } else {
+                zone_list.emplace_back(zone);
             }
-
-            zone_list.push_back(std::move(o));
 
             return true;
         });
@@ -1946,7 +1970,8 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
     auto lowercaseFqdn = toLower(parsed.target);
 
-    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn)) {
+    Session::Options sopts{true};
+    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn, sopts)) {
         return {403, "Access Denied"};
     }
 
@@ -1957,9 +1982,13 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
         if (!validateFqdn(from)) {
             return {400, "Invalid fqdn in 'from' argument"};
         }
+
+        if (!isSameZone(lowercaseFqdn, from)) {
+            return {400, "'from' argument is outside the bounds of the target (zone) argument!"};
+        }
     };
 
-    // Return a list of zones
+    // Return a list of rr's in the zone
     ResourceIf::RealKey key {from, key_class_t::ZRR};
 
     LOG_TRACE_N << "Serch Key: " << key;
