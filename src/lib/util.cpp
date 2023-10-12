@@ -339,13 +339,19 @@ string utf8FoldCase(std::string_view from)
 
 bool isSameZone(std::string_view zone, std::string_view fqdn)
 {
-    if (compareCaseInsensitive(zone, fqdn, false)) {
+    if (fqdn.size() < zone.size()) {
+        return false;
+    }
+
+    const auto start = fqdn.size() - zone.size();
+    const auto overlap = fqdn.substr(start);
+    if (compareCaseInsensitive(zone, overlap, true)) {
         if (zone.size() == fqdn.size()) {
             return true;
         }
 
-        assert(zone.size() < fqdn.size());
-        if (fqdn[zone.size()] == '.') {
+        assert(start > 0);
+        if (fqdn[start - 1] == '.') {
             return true;
         }
     }
