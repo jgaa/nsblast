@@ -5,6 +5,7 @@ import pytest
 import dns.resolver
 import time
 import os
+import uuid
 
 @pytest.fixture(scope = 'module')
 def global_data():
@@ -34,7 +35,8 @@ def global_data():
                 zname = 'z{}-{}.com'.format(z, tname)
             zones[zname] = {}
         tenants[tname] = {
-            'id': tname,
+            'id': str(uuid.uuid4()),
+            'name': tname,
             'zones': zones,
             'auth': {'super': ('admin@{}'.format(tname), 'teste'), 
                      'normal':('normaluser@{}'.format(tname), 'tester'), 
@@ -45,8 +47,8 @@ def global_data():
     return {'master-dns': mresolver,
             'slave1': slave1,
             'slave2': slave2,
-            #'master-url': os.getenv('NSBLAST_URL', 'http://127.0.0.1:8080/api/v1'),
-            'master-url': 'http://localhost:8080/api/v1',
+            'master-url': os.getenv('NSBLAST_URL', 'http://127.0.0.1:8080/api/v1'),
+            #'master-url': 'http://localhost:8080/api/v1',
             'slave1-url': 'http://127.0.0.1:8081/api/v1',
             'slave2-url': 'http://127.0.0.1:8082/api/v1',
             'pass': password,
@@ -97,9 +99,12 @@ def create_tenant(g, tenant, auth=None):
             'READ_VZONE', 'LIST_VZONES', 
             'READ_RR', 'LIST_RRS', 'LIST_APIKEYS', 'GET_APIKEY', 'GET_SELF_USER', 
             'LIST_ROLES', 'GET_ROLE', 'GET_SELF_TENANT']
-        
-    tenant = {
+    
+    print("creating tenant: {}".format(tenant))
+
+    t = {
         'id': tenant['id'],
+        'name': tenant['name'],
         'active': True,
         'allowedPermissions': allperms,
         'roles': [
@@ -135,7 +140,7 @@ def create_tenant(g, tenant, auth=None):
         ]
         }
     url = g['master-url'] + '/tenant'
-    return requests.post(url, data=json.dumps(tenant), auth=('admin', g['pass']), params={'wait': g['wait']})
+    return requests.post(url, json=t, auth=auth, params={'wait': g['wait']})
 
 def list_something(g, what, auth):
     url = '{}/{}'.format(g['master-url'], what)
@@ -279,6 +284,125 @@ def test_users_can_not_access_other_tenants(global_data):
         assert requests.delete(url,
                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
         
-# Let user create zones
-# Let read-only user read but fail to update/create zones
-# Try to access other tenants zones
+def test_admin_can_revoke_perms(global_data):
+    it =  iter(global_data['tenants'].items())
+
+    next(it) # skip first
+
+    # Use second
+    tname, td = next(it)
+    auth=td['auth']['super']
+
+    # Create a new role with api + list zones perms
+    role = {'name': 'myown', 'permissions':["USE_API", "LIST_ZONES"]}
+    url = '{}/role'.format(global_data['master-url'])
+    assert requests.post(url, json=role, auth=auth, params={'wait': global_data['wait']}).status_code == 201
+
+    # Create a new user using this role
+    user={'id': str(uuid.uuid4()),
+          'name': 'testperms',
+          'roles': ['myown'],
+          'auth': {'password' : 'verysecret'}
+          }
+    uauth = (user['name'], user['auth']['password'])
+    url = '{}/user'.format(global_data['master-url'])
+    assert requests.post(url, json=user, auth=auth, params={'wait': global_data['wait']}).status_code == 201
+
+    # Validate that the user can list zones
+    assert list_something(global_data, "zone", uauth).ok
+
+    # Remove the list zone permission from the role
+    role['permissions'] = ["USE_API"]
+    url = '{}/role/{}'.format(global_data['master-url'], role['name'])
+    assert requests.put(url, json=role, auth=auth, params={'wait': global_data['wait']}).ok
+
+    # Validate that user cannot list zones
+    assert list_something(global_data, "zone", uauth).status_code == 403
+
+    # Delete the role
+    url = '{}/role/myown'.format(global_data['master-url'])
+    assert requests.delete(url, auth=auth, params={'wait': global_data['wait']}).ok
+
+    # Delete user
+    url = '{}/user/{}'.format(global_data['master-url'], user['name'])
+    assert requests.delete(url, auth=auth, params={'wait': global_data['wait']}).ok
+
+def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None):
+    it =  iter(g['tenants'].items())
+    next(it) # skip first
+    rval = True
+
+    # Use second
+    tname, td = next(it)
+    auth=td['auth']['super']
+
+    # Create a new role with api + list zones perms
+    role = {'name': 'myown', 'permissions':["USE_API", perm]}
+    url = '{}/role'.format(g['master-url'])
+    assert requests.post(url, json=role, auth=auth, params={'wait': g['wait']}).status_code == 201
+
+    # Create a new user using this role
+    user={'id': str(uuid.uuid4()),
+          'name': 'testperms',
+          'roles': ['myown'],
+          'auth': {'password' : 'verysecret'}
+          }
+    uauth = (user['name'], user['auth']['password'])
+    url = '{}/user'.format(g['master-url'])
+    assert requests.post(url, json=user, auth=auth, params={'wait': g['wait']}).status_code == 201
+
+    if fnsetup:
+        fnsetup(auth)
+
+    # Validate that the user can do what we expect
+    if not fn(uauth).ok:
+        rval = False
+
+    # Remove the list zone permission from the role
+    role['permissions'] = ["USE_API"]
+    url = '{}/role/{}'.format(g['master-url'], role['name'])
+    assert requests.put(url, json=role, auth=auth, params={'wait': g['wait']}).ok
+
+    if fnreset:
+         fnreset(auth)
+
+    # Validate that the user can mno longer do what we expect
+    if fn(uauth).status_code != 403:
+        rval = False
+
+    # Delete the role
+    url = '{}/role/myown'.format(g['master-url'])
+    assert requests.delete(url, auth=auth, params={'wait': g['wait']}).ok
+
+    # Delete user
+    url = '{}/user/{}'.format(g['master-url'], user['name'])
+    assert requests.delete(url, auth=auth, params={'wait': g['wait']}).ok
+
+    if fncleanup:
+        fncleanup(auth)
+
+    return rval
+
+def test_perms_list_zones(global_data):
+    assert validate_permission(global_data, 'LIST_ZONES', lambda auth : list_something(global_data, 'zone', auth))
+
+def test_perms_get_zone(global_data):
+    zone = 'test01.example.com'
+    assert validate_permission(global_data, 'READ_ZONE', lambda auth : get_something(global_data, 'zone', zone, auth),
+                               fnsetup=lambda auth : create_zone(global_data, zone, auth),
+                               fncleanup=lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth))
+
+
+def test_perms_create_zone(global_data):
+    zone = 'test01.example.com'
+    assert validate_permission(global_data, 'CREATE_ZONE', 
+                               lambda auth : create_zone(global_data, zone, auth),
+                               fnreset=lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth))
+    
+def test_perms_delete_zone(global_data):
+    zone = 'test01.example.com'
+    assert validate_permission(global_data, 'DELETE_ZONE', 
+                               lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth),
+                               fnsetup=lambda auth : create_zone(global_data, zone, auth),
+                               fnreset=lambda auth : create_zone(global_data, zone, auth),
+                               fncleanup=lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth))

@@ -179,7 +179,7 @@ struct Role {
 class Session : public std::enable_shared_from_this<Session> {
 public:
     struct Options {
-        bool validateZone = true;
+        bool validateZone = false;
         bool throwOnFailure = false;
     };
 

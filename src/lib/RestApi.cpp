@@ -409,13 +409,15 @@ auto toJson(const lib::Entry& entry) {
 
 enum class KindOfListing {
     DEFAULT,
-    ID
+    ID,
+    BRIEF
 };
 
 KindOfListing getKindOfListing(const yahat::Request &req)
 {
-    static constexpr array<pair<string_view, KindOfListing>, 2> kinds = {
+    static constexpr array<pair<string_view, KindOfListing>, 3> kinds = {
         make_pair("id", KindOfListing::ID),
+        {"brief", KindOfListing::BRIEF},
         {"default", KindOfListing::DEFAULT}};
 
     if (auto it = req.arguments.find("kind"); it != req.arguments.end()) {
@@ -425,6 +427,8 @@ KindOfListing getKindOfListing(const yahat::Request &req)
             }); kit != kinds.end()) {
             return kit->second;
         }
+
+        throw Response{400, format("Unknown 'kind' {}", key)};
     }
 
     return KindOfListing::DEFAULT;
@@ -1152,22 +1156,36 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
             }
             rcode = 201;
         }
+
+        if (!compareCaseInsensitive(role.name(), parsed.target, true)) {
+            return {400, "Rename of roles are not currently implemented."};
+        }
+
         assert(role.has_name());
         *tenant->add_roles() = role;
         server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
         return makeReply(role, rcode);
 
-    case Request::Type::DELETE:
+    case Request::Type::DELETE: {
         if (!session->isAllowed(pb::Permission::DELETE_ROLE)) {
             return {403, "Access Denied"};
         }
-        if (auto existing = getFromList(tenant->roles(), toLower(parsed.target))) {
-            removeFromList(tenant->mutable_roles(), parsed.target);
+
+        const auto lc_rule_name = toLower(parsed.target);
+        if (auto existing = getFromList(tenant->roles(), lc_rule_name)) {
+
+            // Remove the role from the tenant's users to presrve internal integrity
+            for(auto& u : *tenant->mutable_users()) {
+                removeValueFromListOfValues(u.mutable_roles(), lc_rule_name);
+            }
+
+            removeFromList(tenant->mutable_roles(), lc_rule_name);
+
             server().auth().upsertTenant(toLower(tenant->id()), *tenant, false);
             return {};
         }
         return {404, "Role not found"};
-
+    }
     default:
         return {400, "Invalid method"};
     }
@@ -1378,15 +1396,6 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     // Get the zone
     auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
-    if (existing.isSame()) {
-        assert(existing.soa().header().flags.soa);
-        assert(existing.rr().header().flags.soa);
-
-        if (req.type == Request::Type::POST || req.type == Request::Type::DELETE) {
-            return {409, "Please use the 'zone' rather than the 'rr' endpoint to create or delete zones."};
-        }
-    }
-
     if (!existing.hasSoa()) {
         return {404, "Not authorative for zone"};
     }
@@ -1401,7 +1410,16 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     } else {
         LOG_WARN_N << "Unable to establish what tenant who owns zone "
                    << existing.soa().getSoa().labels().string();
-        return {403, "Unable to establish what tenant who owns this zone"};
+        return {500, "Unable to establish what tenant who owns this zone"};
+    }
+
+    if (existing.isSame()) {
+        assert(existing.soa().header().flags.soa);
+        assert(existing.rr().header().flags.soa);
+
+        if (req.type == Request::Type::POST || req.type == Request::Type::DELETE) {
+            return {400, "Please use the 'zone' rather than the 'rr' endpoint to create or delete zones."};
+        }
     }
 
     if (existing.hasRr()) {
@@ -1812,25 +1830,27 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
 
         if (kind == KindOfListing::ID) {
             tenants.as_array().emplace_back(tenant.id());
-        } else {
-            // DEFAULT kind listing
+        } else /* BRIEF and DEFAULT */ {
             boost::json::object item;
             item["id"] = tenant.id();
+            item["name"] = tenant.name();
             item["active"] = tenant.active();
-            item["root"] = tenant.root();
-            auto& users = item["users"] = boost::json::array{};
-            for(const auto& user : tenant.users()) {
-                users.as_array().emplace_back(user.name());
-            }
+            if (kind == KindOfListing::DEFAULT) {
+                item["root"] = tenant.root();
+                auto& users = item["users"] = boost::json::array{};
+                for(const auto& user : tenant.users()) {
+                    users.as_array().emplace_back(user.name());
+                }
 
-            auto& roles = item["roles"] = boost::json::array{};
-            for(const auto& role: tenant.roles()) {
-                roles.as_array().emplace_back(role.name());
-            }
+                auto& roles = item["roles"] = boost::json::array{};
+                for(const auto& role: tenant.roles()) {
+                    roles.as_array().emplace_back(role.name());
+                }
 
-            auto& perms = item["allowedPermissions"] = boost::json::array{};
-            for(auto perm : tenant.allowedpermissions()) {
-                perms.as_array().emplace_back(pb::Permission_Name(perm));
+                auto& perms = item["allowedPermissions"] = boost::json::array{};
+                for(auto perm : tenant.allowedpermissions()) {
+                    perms.as_array().emplace_back(pb::Permission_Name(perm));
+                }
             }
 
             tenants.as_array().emplace_back(item);
@@ -1838,7 +1858,7 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
         return ++count <= page_size;
     };
 
-    if (auto from = getFrom(req); !from.end()) {
+    if (auto from = getFrom(req); !from.empty()) {
         // From last key
         ResourceIf::RealKey key{from, key_class_t::TENANT};
         trx.iterateFromPrevT(key, ResourceIf::Category::ACCOUNT, std::move(on_tenant));
@@ -1971,7 +1991,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
     auto lowercaseFqdn = toLower(parsed.target);
 
     Session::Options sopts{true};
-    if (!session->isAllowed(pb::Permission::LIST_ZONES, lowercaseFqdn, sopts)) {
+    if (!session->isAllowed(pb::Permission::READ_ZONE, lowercaseFqdn, sopts)) {
         return {403, "Access Denied"};
     }
 

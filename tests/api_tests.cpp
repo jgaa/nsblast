@@ -743,7 +743,7 @@ TEST(ApiRequest, postRrOverwriteZone) {
         auto parsed = api.parse(req);
         auto res = api.onResourceRecord(req, parsed);
 
-        EXPECT_EQ(res.code, 409);
+        EXPECT_EQ(res.code, 400);
     }
 }
 
@@ -1210,7 +1210,7 @@ TEST(ApiRequest, deleteZoneViaRrError) {
         req = makeRequest(svr, "rr", soa_fqdn, {}, yahat::Request::Type::DELETE);
         parsed = api.parse(req);
         res = api.onResourceRecord(req, parsed);
-        EXPECT_EQ(res.code, 409);
+        EXPECT_EQ(res.code, 400);
         EXPECT_EQ(getSoaSerial(fqdn, svr->resource()), DEFAULT_SOA_SERIAL + 1);
     }
 }

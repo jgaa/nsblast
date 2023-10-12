@@ -549,6 +549,7 @@ paths:
           description: "What kind of listing the user want in return.
             <br> - *default* A verbose listing
             <br> -  *id* A listing only of the Tenant id's
+            <br> - *brief* A listing with tenant id, name, and active state
             "
           schema:
             type: string
@@ -1739,6 +1740,12 @@ definitions:
   Tenant:
     type: object
     properties:
+      id:
+        type: string
+        description: Unique UUID for this tenant
+      name:
+        type: string
+        description: "Unique name for this tenant.`"
       active:
         type: boolean
         default: true

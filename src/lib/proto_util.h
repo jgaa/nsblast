@@ -52,6 +52,16 @@ void removeFromList(T *list, const nameT& name) {
     }
 }
 
+template <ProtoList T, typename keyT, typename messageT = typename T::value_type>
+void removeValueFromListOfValues(T *list, const keyT& key) {
+    for(auto it = list->begin(); it != list->end(); ++it) {
+        if (*it == key) {
+            list->erase(it);
+            return;
+        }
+    }
+}
+
 template <ProtoMessage T>
 std::string toJson(const T& obj) {
     std::string str;

@@ -483,7 +483,8 @@ void AuthMgr::processUsers(pb::Tenant &tenant, const std::optional<pb::Tenant>& 
                           << " because the user specify a role "
                           << toPrintable(role)
                           << " that don't exist for that tenant.";
-                throw ConstraintException("Role "s + toPrintable(role) + " for user " + " is undefined.");
+                throw ConstraintException{format("Role {} for user {} is undefined.",
+                                                 toPrintable(role), it->name())};
             }
         }
 
