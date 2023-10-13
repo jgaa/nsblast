@@ -105,6 +105,14 @@ public:
 
         bool isSameFqdn(const RealKey& k) const noexcept;
 
+        /*! Checks if a key (fqdn) is equal to or a child of a zone.
+         *
+         *  The comparsion is case sensitive.
+         *
+         *  Only works for Class::ENTRY!
+         */
+        bool isInZone(std::string_view zoneFqdn) const noexcept;
+
         bool operator == (const RealKey& k) const noexcept {
             return bytes_ == k.bytes_;
         }
@@ -117,6 +125,7 @@ public:
          *
          *  Only works for key-types in `type str/str` format
          *  No conversions are performed.
+         *
          */
         std::tuple<std::string_view, std::string_view> getFirstAndSecondStr() const;
 

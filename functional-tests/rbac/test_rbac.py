@@ -406,3 +406,7 @@ def test_perms_delete_zone(global_data):
                                fnsetup=lambda auth : create_zone(global_data, zone, auth),
                                fnreset=lambda auth : create_zone(global_data, zone, auth),
                                fncleanup=lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth))
+
+# def test_perms_list_zones(global_data):
+#     fqdn = "rr.example.com"
+#     assert validate_permission(global_data, 'READ_RR', lambda auth : list_something(global_data, 'zone', auth))

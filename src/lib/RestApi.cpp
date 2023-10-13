@@ -1997,7 +1997,9 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
     auto page_size = getPageSize(req);
     auto from = getFrom(req);
-    if (!from.empty()) {
+    if (from.empty()) {
+        from = lowercaseFqdn;
+    } else {
         // From last key
         if (!validateFqdn(from)) {
             return {400, "Invalid fqdn in 'from' argument"};
@@ -2009,7 +2011,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
     };
 
     // Return a list of rr's in the zone
-    ResourceIf::RealKey key {from, key_class_t::ZRR};
+    ResourceIf::RealKey key {lowercaseFqdn, key_class_t::ENTRY};
 
     LOG_TRACE_N << "Serch Key: " << key;
     size_t count = 0;
@@ -2020,19 +2022,24 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
     {
         boost::json::array list;
         server().db().dbTransaction()->iterateFromPrevT(
-            key, ResourceIf::Category::ACCOUNT,
-            [&list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+            key, ResourceIf::Category::ENTRY,
+            [&lowercaseFqdn, &list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
 
-                auto [zone, fqdn] = key.getFirstAndSecondStr();
+                if (!key.isInZone(lowercaseFqdn)) {
+                    return false;
+                }
+
+                const auto fqdn = key.dataAsString();
+
                 if (++count > page_size) {
-                    LOG_TRACE_N << "Page size full at fqdn " << fqdn << " zone " << zone;
+                    LOG_TRACE_N << "Page size full at fqdn " << fqdn;
                     more = true;
                     return false;
                 }
 
                 list.push_back(boost::json::string{fqdn});
                 return true;
-            });
+            }, false);
 
         boost::json::object json;
         json["rcode"] = 200;

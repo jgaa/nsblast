@@ -57,12 +57,14 @@ public:
          *  key.
          */
         template <typename fnT>
-        void iterateFromPrevT(key_t& key,  Category category, fnT fn) {
+        void iterateFromPrevT(key_t& key,  Category category, fnT fn, bool skipKey = true) {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             it->SeekForPrev(toSlice(key));
             if (it->Valid()) {
-                // Skip the 'last' key.
-                it->Next();
+                if (skipKey) {
+                    // Skip the 'last' key.
+                    it->Next();
+                }
             } else {
                 // The key pointed potentially to an item prior to the first key ion the data.
                 // Fall back to searching for the first key.

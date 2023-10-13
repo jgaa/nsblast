@@ -154,6 +154,34 @@ bool ResourceIf::RealKey::isSameFqdn(const ResourceIf::RealKey &k) const noexcep
     return left == right;
 }
 
+bool ResourceIf::RealKey::isInZone(std::string_view zoneFqdn) const noexcept
+{
+    assert(kClass() == key_class_t::ENTRY);
+    auto z = zoneFqdn.rbegin();
+    auto key = bytes_.substr(1); // Strip the kclass byte
+    auto k = key.begin();
+
+    // keys in Entry has their bytes reversed
+    // For simplicity, we keep the reverse order and compare from end to start,
+    // wrapping the zone with a reverse iterator.
+
+    for(; z != zoneFqdn.rend() && k != key.end(); ++z, ++k) {
+        if (*z != *k) {
+            return false;
+        }
+    }
+
+    if (z != zoneFqdn.rend()) {
+        return false;
+    }
+
+    if (k != key.end() && *k != '.') {
+        return false;
+    }
+
+    return true;
+}
+
 std::tuple<string_view, string_view> ResourceIf::RealKey::getFirstAndSecondStr() const
 {
     assert(kClass() == key_class_t::TZONE

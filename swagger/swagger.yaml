@@ -172,6 +172,11 @@ paths:
         description: "fqdn to change, for example: 'www.example.com' The 'rr' entries contain a, aaa, cname and txt resource records for any fqdn. The Zone and Zone ownership is deduced from the fqdn. You can only uise fqdn's for zones already created under your account."
         required: true
         type: string
+      - name: tenant
+        in: query
+        description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+        schema:
+          type: string
 
     get:
       tags:
