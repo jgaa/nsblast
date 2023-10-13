@@ -120,9 +120,9 @@ using perms_t = uint64_t;
 
 template <typename retT = perms_t, typename eT>
 static retT getBit(const eT perm) noexcept {
-    const auto bitshift =  static_cast<uint8_t>(perm);
+    const auto bitshift =  static_cast<uint32_t>(perm);
     assert(bitshift < sizeof(retT) * 8);
-    return (1 << static_cast<uint8_t>(bitshift));
+    return (retT{1} << bitshift);
 }
 
 template <typename T, typename retT = detail::perms_t>

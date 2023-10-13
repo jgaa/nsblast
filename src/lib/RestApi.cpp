@@ -1494,10 +1494,12 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     } break;
 
     case Request::Type::PUT: {
-        if (!session->isAllowed(pb::Permission::UPDATE_RR, lowercaseFqdn)) {
+put:
+        if (!session->isAllowed(
+                existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR,
+                lowercaseFqdn)) {
             return {403, "Access Denied"};
         }
-put:
         if (existing.isSame()) {
             sb.incrementSoaVersion(existing.soa());
             newSoa = sb.soa();
@@ -1514,12 +1516,13 @@ put:
     } break;
 
     case Request::Type::PATCH: {
-        if (!session->isAllowed(pb::Permission::UPDATE_RR, lowercaseFqdn)) {
-            return {403, "Access Denied"};
-        }
         if (!existing.hasRr()) {
             // No existing data to patch. Just write the new rr's.
             goto put;
+        }
+
+        if (!session->isAllowed(pb::Permission::UPDATE_RR, lowercaseFqdn)) {
+            return {403, "Access Denied"};
         }
 
         // Merge old and newq rr's. All new rr types are replaced.

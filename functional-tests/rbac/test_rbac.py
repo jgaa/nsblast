@@ -142,6 +142,19 @@ def create_tenant(g, tenant, auth=None):
     url = g['master-url'] + '/tenant'
     return requests.post(url, json=t, auth=auth, params={'wait': g['wait']})
 
+def create_default_tenant(g, tname, auth=None):
+    tenant = {
+        'id': str(uuid.uuid4()),
+        'name': tname,
+        'auth': {'super': ('admin@{}'.format(tname), 'teste'), 
+                 'normal':('normaluser@{}'.format(tname), 'tester'), 
+                 'guest': ('rouser@{}'.format(tname), 'xteste')
+                }
+        }
+
+    assert create_tenant(g, tenant, auth=auth).ok
+    return tenant
+
 def list_something(g, what, auth):
     url = '{}/{}'.format(g['master-url'], what)
     return requests.get(url, auth=auth, params={'wait': g['wait']})
@@ -150,6 +163,22 @@ def get_something(g, what, item, auth):
     url = '{}/{}/{}'.format(g['master-url'], what, item)
     return requests.get(url, auth=auth, params={'wait': g['wait']})
 
+def create_something(g, what, item, data, auth):
+    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    return requests.post(url, json=data, auth=auth, params={'wait': g['wait']})
+
+def put_something(g, what, item, data, auth):
+    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    return requests.put(url, json=data, auth=auth, params={'wait': g['wait']})
+
+def patch_something(g, what, item, data, auth):
+    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    return requests.patch(url, json=data, auth=auth, params={'wait': g['wait']})
+
+def delete_something(g, what, item, auth):
+    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    return requests.delete(url, auth=auth, params={'wait': g['wait']})
+
 def test_bootstrap(global_data):
     print('Creating example.com zone owned by nsblast')
     #assert create_zone(global_data, "example.com").ok
@@ -157,7 +186,6 @@ def test_bootstrap(global_data):
     print('Creating tenants as admin')
     for name, tenant in global_data['tenants'].items():
         assert create_tenant(global_data, tenant).ok
-
 
 # Create zones as tenants/super
 def test_create_zones(global_data):
@@ -327,29 +355,50 @@ def test_admin_can_revoke_perms(global_data):
     url = '{}/user/{}'.format(global_data['master-url'], user['name'])
     assert requests.delete(url, auth=auth, params={'wait': global_data['wait']}).ok
 
-def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None):
+def get_second_tenant(g):
     it =  iter(g['tenants'].items())
     next(it) # skip first
     rval = True
 
     # Use second
-    tname, td = next(it)
-    auth=td['auth']['super']
+    _, td = next(it)
+    return td
 
+def create_user_with_permission(g, perm, auth, username='testperms', rolename='myown'):
     # Create a new role with api + list zones perms
-    role = {'name': 'myown', 'permissions':["USE_API", perm]}
+
+    perms = ["USE_API"]
+    if (perm):
+        perms.append(perm)
+
+    role = {'name': rolename, 'permissions': perms}
     url = '{}/role'.format(g['master-url'])
     assert requests.post(url, json=role, auth=auth, params={'wait': g['wait']}).status_code == 201
 
     # Create a new user using this role
     user={'id': str(uuid.uuid4()),
-          'name': 'testperms',
-          'roles': ['myown'],
+          'name': username,
+          'roles': [rolename],
           'auth': {'password' : 'verysecret'}
           }
     uauth = (user['name'], user['auth']['password'])
     url = '{}/user'.format(g['master-url'])
     assert requests.post(url, json=user, auth=auth, params={'wait': g['wait']}).status_code == 201
+    return (role, uauth)
+
+def set_permission_on_role(g, role, auth, perms=["USE_API"], rolename='myown'):
+    role['permissions'] = perms
+    url = '{}/role/{}'.format(g['master-url'], role['name'])
+    assert requests.put(url, json=role, auth=auth, params={'wait': g['wait']}).ok
+
+
+def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None):
+    td = get_second_tenant(g)
+    auth=td['auth']['super']
+    rval = True
+    username = 'testperms'
+
+    (role, uauth) = create_user_with_permission(g, perm, auth, username=username)
 
     if fnsetup:
         fnsetup(auth)
@@ -358,10 +407,7 @@ def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None)
     if not fn(uauth).ok:
         rval = False
 
-    # Remove the list zone permission from the role
-    role['permissions'] = ["USE_API"]
-    url = '{}/role/{}'.format(g['master-url'], role['name'])
-    assert requests.put(url, json=role, auth=auth, params={'wait': g['wait']}).ok
+    set_permission_on_role(g, role, auth)
 
     if fnreset:
          fnreset(auth)
@@ -371,11 +417,11 @@ def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None)
         rval = False
 
     # Delete the role
-    url = '{}/role/myown'.format(g['master-url'])
+    url = '{}/role/{}'.format(g['master-url'], role['name'])
     assert requests.delete(url, auth=auth, params={'wait': g['wait']}).ok
 
     # Delete user
-    url = '{}/user/{}'.format(g['master-url'], user['name'])
+    url = '{}/user/{}'.format(g['master-url'], username)
     assert requests.delete(url, auth=auth, params={'wait': g['wait']}).ok
 
     if fncleanup:
@@ -407,6 +453,105 @@ def test_perms_delete_zone(global_data):
                                fnreset=lambda auth : create_zone(global_data, zone, auth),
                                fncleanup=lambda auth : requests.delete('{}/zone/{}'.format(global_data['master-url'], zone), auth=auth))
 
-# def test_perms_list_zones(global_data):
-#     fqdn = "rr.example.com"
-#     assert validate_permission(global_data, 'READ_RR', lambda auth : list_something(global_data, 'zone', auth))
+def test_perms_get_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'READ_RR', 
+                               lambda auth : get_something(global_data, 'rr', fqdn, auth),
+                               fnsetup=lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fncleanup=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_create_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'CREATE_RR', 
+                               lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_put_new_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'CREATE_RR', 
+                               lambda auth : put_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_put_new_rr_with_update_perms(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert not validate_permission(global_data, 'UPDATE_RR', 
+                               lambda auth : put_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth))
+    
+def test_perms_put_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'UPDATE_RR', 
+                               lambda auth : put_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fnsetup=lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fncleanup=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_patch_new_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'CREATE_RR', 
+                               lambda auth : patch_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_patch_new_rr_with_update_perms(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert not validate_permission(global_data, 'UPDATE_RR', 
+                               lambda auth : patch_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth))
+    
+def test_perms_patch_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'UPDATE_RR', 
+                               lambda auth : patch_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fnsetup=lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fncleanup=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+    
+def test_perms_delete_rr(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert validate_permission(global_data, 'DELETE_RR', 
+                               lambda auth : delete_something(global_data, 'rr', fqdn, auth),
+                               fnsetup=lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth))
+
+def test_perms_delete_rr_with_update_perms(global_data):
+    fqdn = "rr.tenant-1.com"
+    assert not validate_permission(global_data, 'UPDATE_RR', 
+                               lambda auth : delete_something(global_data, 'rr', fqdn, auth),
+                               fnsetup=lambda auth : create_something(global_data, 'rr', fqdn, {'a':['127.0.0.1']}, auth),
+                               fncleanup=lambda auth : delete_something(global_data, 'rr', fqdn, auth))
+
+
+def test_list_tenants_not_allowed(global_data):
+    it =  iter(global_data['tenants'].items())
+    tname, td = next(it)
+    auth=td['auth']['super']
+    assert list_something(global_data, 'tenant', auth).status_code == 403
+
+
+def test_perms_get_self_tenant(global_data):
+    td = get_second_tenant(global_data)
+    tenant_id = td['id']
+    assert validate_permission(global_data, 'GET_SELF_TENANT', 
+                               lambda auth : get_something(global_data, 'tenant', tenant_id, auth))
+
+
+@pytest.mark.skip(reason="Not implemented yet.")
+def test_perms_patch_self_tenant(global_data):
+    td = get_second_tenant(global_data)
+    tenant_id = td['id']
+    assert validate_permission(global_data, 'UPDATE_SELF_TENANT', 
+                               lambda auth : patch_something(global_data, 'tenant', tenant_id, {'properties': [{'key': 'test', 'value': 'ok'}]}, auth))
+
+
+def test_perms_delete_self_tenant(global_data):
+    # create tenant
+    tenant = create_default_tenant(global_data, 'deltenant')
+    tauth = tenant['auth']['super']
+    tid = tenant['id']
+
+    # create user without perms
+    (role, uauth) = create_user_with_permission(global_data, None, tauth)
+    
+    # try to delete tenant
+    assert delete_something(global_data, "tenant", tid, uauth).status_code == 403
+
+    # add delete self tenant to role
+    set_permission_on_role(global_data, role, tauth, perms=["USE_API", "DELETE_SELF_TENANT"])
+
+    # delete tenant
+    assert delete_something(global_data, "tenant", tid, uauth).ok
