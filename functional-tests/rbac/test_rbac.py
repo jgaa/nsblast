@@ -164,7 +164,10 @@ def get_something(g, what, item, auth):
     return requests.get(url, auth=auth, params={'wait': g['wait']})
 
 def create_something(g, what, item, data, auth):
-    url = '{}/{}/{}'.format(g['master-url'], what, item)
+    if item:
+        url = '{}/{}/{}'.format(g['master-url'], what, item)
+    else:
+        url = '{}/{}'.format(g['master-url'], what)
     return requests.post(url, json=data, auth=auth, params={'wait': g['wait']})
 
 def put_something(g, what, item, data, auth):
@@ -392,9 +395,11 @@ def set_permission_on_role(g, role, auth, perms=["USE_API"], rolename='myown'):
     assert requests.put(url, json=role, auth=auth, params={'wait': g['wait']}).ok
 
 
-def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None):
-    td = get_second_tenant(g)
-    auth=td['auth']['super']
+def validate_permission(g, perm, fn, fnsetup=None, fnreset=None, fncleanup=None, auth=None):
+    if not auth:
+        td = get_second_tenant(g)
+        auth=td['auth']['super']
+
     rval = True
     username = 'testperms'
 
@@ -555,3 +560,149 @@ def test_perms_delete_self_tenant(global_data):
 
     # delete tenant
     assert delete_something(global_data, "tenant", tid, uauth).ok
+
+def test_perms_list_users(global_data):
+    assert validate_permission(global_data, 'LIST_USERS', lambda auth : list_something(global_data, 'user', auth))
+
+def test_perms_get_user(global_data):
+    assert validate_permission(global_data, 'GET_USER', lambda auth : get_something(global_data, 'user', 'admin@tenant-1', auth))
+
+def test_perms_create_user(global_data):
+    user = {
+        'name': 'testuser',
+        'auth': {'password': 'beer'}
+    }
+    assert validate_permission(global_data, 'CREATE_USER', lambda auth : create_something(global_data, 'user', None, user, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'user', 'testuser', auth))
+
+def test_perms_put_new_user(global_data):
+    user = {
+        'name': 'testuser',
+        'auth': {'password': 'beer'}
+    }
+    assert validate_permission(global_data, 'CREATE_USER', 
+                                       lambda auth : put_something(global_data, 'user', 'testuser', user, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'user', 'testuser', auth))
+
+
+def test_perms_put_new_user_with_update_perms(global_data):
+    user = {
+        'name': 'testuser',
+        'auth': {'password': 'beer'}
+    }
+    assert not validate_permission(global_data, 'UPDATE_USER', 
+                                       lambda auth : put_something(global_data, 'user', 'testuser', user, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'user', 'testuser', auth))
+
+def test_perms_put_existing_user(global_data):
+    user = {
+        'id': '6ebc95de-6a83-11ee-b2f7-83402d892b87',
+        'name': 'testuser',
+        'auth': {'password': 'beer'}
+    }
+
+    updated_user = user
+    updated_user['properties'] = [{'key':'kind', 'value': 'dog'}]
+    
+
+    assert validate_permission(global_data, 'UPDATE_USER', 
+                                           lambda auth : put_something(global_data, 'user', 'testuser', updated_user, auth),
+                               fnsetup   = lambda auth : create_something(global_data, 'user', None, user, auth),
+                               fncleanup = lambda auth : delete_something(global_data, 'user', 'testuser', auth))
+
+
+def test_perms_delete_user(global_data):
+    user = {
+        'id': '6ebc95de-6a83-11ee-b2f7-83402d892b87',
+        'name': 'testuser',
+        'auth': {'password': 'beer'}
+    }
+
+    updated_user = user
+    
+    assert validate_permission(global_data, 'DELETE_USER', 
+                                           lambda auth : delete_something(global_data, 'user', 'testuser', auth),
+                               fnsetup   = lambda auth : create_something(global_data, 'user', None, user, auth),
+                               fnreset   = lambda auth : create_something(global_data, 'user', None, user, auth),
+                               fncleanup = lambda auth : delete_something(global_data, 'user', 'testuser', auth))
+
+# Normal tenants should have no access to the config interface
+def test_no_config(global_data):
+    td = get_second_tenant(global_data)
+    auth=td['auth']['super']
+
+    assert create_something(global_data, 'config', 'tenant-1.com/master', {}, auth).status_code == 403
+    assert put_something(global_data, 'config', 'tenant-1.com/master', {}, auth).status_code == 403
+    assert patch_something(global_data, 'config', 'tenant-1.com/master', {}, auth).status_code == 403
+    assert delete_something(global_data, 'config', 'tenant-1.com/master', auth).status_code == 403
+
+
+def test_perms_list_roles(global_data):
+    assert validate_permission(global_data, 'LIST_ROLES', 
+                               lambda auth : list_something(global_data, 'role', auth))
+
+def test_perms_get_role(global_data):
+    assert validate_permission(global_data, 'GET_ROLE', 
+                               lambda auth : get_something(global_data, 'role', 'super', auth))
+
+def test_perms_create_role(global_data):
+    role = {
+        'name': 'testrole',
+        'permissions': ["USE_API"]
+    }
+    assert validate_permission(global_data, 'CREATE_ROLE', 
+                               lambda auth : create_something(global_data, 'role', None, role, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'role', role['name'], auth))
+    
+def test_perms_put_new_role(global_data):
+    role = {
+        'name': 'testrole',
+        'permissions': ["USE_API"]
+    }
+    assert validate_permission(global_data, 'CREATE_ROLE', 
+                               lambda auth : put_something(global_data, 'role', role['name'], role, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'role', role['name'], auth))
+    
+def test_perms_put_new_role_perms_to_update(global_data):
+    role = {
+        'name': 'testrole',
+        'permissions': ["USE_API"]
+    }
+    assert not validate_permission(global_data, 'UPDATE_ROLE', 
+                               lambda auth : put_something(global_data, 'role', role['name'], role, auth),
+                               fnreset=lambda auth : delete_something(global_data, 'role', role['name'], auth))
+    
+def test_perms_delete_role(global_data):
+    role = {
+        'name': 'testrole',
+        'permissions': ["USE_API"]
+    }
+    assert validate_permission(global_data, 'DELETE_ROLE', 
+                                           lambda auth : delete_something(global_data, 'role', role['name'], auth),
+                               fnsetup   = lambda auth : create_something(global_data, 'role', None, role, auth),
+                               fnreset   = lambda auth : create_something(global_data, 'role', None, role, auth),
+                               fncleanup = lambda auth : delete_something(global_data, 'role', role['name'], auth))
+    
+def test_perms_create_backup(global_data):
+    adm_auth=('admin', global_data['pass'])
+
+    assert validate_permission(global_data, 'CREATE_BACKUP', 
+                               lambda auth : create_something(global_data, 'backup', None, {}, auth), auth=adm_auth)
+
+def test_perms_list_backup(global_data):
+    adm_auth=('admin', global_data['pass'])
+
+    assert validate_permission(global_data, 'LIST_BACKUPS', 
+                               lambda auth : list_something(global_data, 'backup', auth), auth=adm_auth)
+
+def test_perms_verify_backup(global_data):
+    adm_auth=('admin', global_data['pass'])
+
+    assert validate_permission(global_data, 'VERIFY_BACKUP', 
+                               lambda auth : create_something(global_data, 'backup', '1/verify', {}, auth), auth=adm_auth)
+
+def test_perms_delete_backup(global_data):
+    adm_auth=('admin', global_data['pass'])
+
+    assert validate_permission(global_data, 'DELETE_BACKUP', 
+                               lambda auth : delete_something(global_data, 'backup', '1', auth), auth=adm_auth)
