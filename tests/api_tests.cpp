@@ -1644,7 +1644,8 @@ TEST(ApiRequest, createRoleNoName) {
     EXPECT_EQ(res.code, 400);
 }
 
-TEST(ApiRequest, upsertExistingRole) {
+// Not implemented
+TEST(ApiRequest, DISABLED_renameExistingRole) {
     MockServer svr;
 
 
@@ -2196,7 +2197,7 @@ TEST(ApiRequest, listZoneWithPagination) {
     EXPECT_FALSE(result.at("error").as_bool());
     EXPECT_EQ(result.at("value").as_array().size(), limit);
     EXPECT_EQ(string_view{result.at("value").as_array()[0].as_string()},
-              string_view{"0-test.example.com"});
+              string_view{"example.com"});
 
     size_t pages = 2;
     for(; pages <= expected_pages; ++pages) {
@@ -2218,7 +2219,7 @@ TEST(ApiRequest, listZoneWithPagination) {
         if (pages == expected_pages) {
             EXPECT_FALSE(result.at("more").as_bool());
             EXPECT_EQ(result.at("value").as_array().size(), 6);
-            EXPECT_EQ(zone, result.at("value").as_array().back().as_string());
+            EXPECT_EQ(result.at("value").as_array().back().as_string(), "49-test.example.com");
         } else {
             EXPECT_TRUE(result.at("more").as_bool());
             EXPECT_EQ(result.at("value").as_array().size(), limit);

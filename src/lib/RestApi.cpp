@@ -2000,6 +2000,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
     auto page_size = getPageSize(req);
     auto from = getFrom(req);
+    const bool is_followup_page = !from.empty();
     if (from.empty()) {
         from = lowercaseFqdn;
     } else {
@@ -2014,7 +2015,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
     };
 
     // Return a list of rr's in the zone
-    ResourceIf::RealKey key {lowercaseFqdn, key_class_t::ENTRY};
+    ResourceIf::RealKey key {from, key_class_t::ENTRY};
 
     LOG_TRACE_N << "Serch Key: " << key;
     size_t count = 0;
@@ -2042,7 +2043,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
                 list.push_back(boost::json::string{fqdn});
                 return true;
-            }, false);
+            }, is_followup_page);
 
         boost::json::object json;
         json["rcode"] = 200;
