@@ -14,6 +14,8 @@ basePath: "/api/v1"
 tags:
 - name: "zone"
   description: "DNS Zone"
+- name: vzone
+  description: Operations about a virtual zone (a super-zone on top on an existing zone that can be maintained by a tenant not owning the actual zone).
 - name: rr
   description: Operations about an individual DNS entry's resource record(s)
 - name: "tenant"
@@ -164,6 +166,156 @@ paths:
                 $ref: "#/definitions/Returns"
         "404":
           description: "Zone not found"
+
+  /vzone:
+    parameters:
+    - name: tenant
+      in: query
+      description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission. If you use '*' as the tenant value, all vzones for all tenants are returned.
+      schema:
+        type: string
+    get:
+      tags:
+        - vzone
+      summary: List Virtual Zones
+      parameters:
+        - name: limit
+          in: query
+          description: Limits the number of items on a page
+          schema:
+            type: integer
+          default: 100
+        - name: from
+          in: query
+          description: Start the listing after this fqdn. This can be used to paginate a listing of more items than the first page (max 1000 items) is available.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+  /vzone/{zonename}:
+    parameters:
+    - in: path
+      name: zonename
+      description: "Zone to create vzone in. This must be an existing zone."
+      required: true
+      type: string
+    - name: tenant
+      in: query
+      description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+      schema:
+        type: string
+
+    post:
+      tags:
+      - vzone
+      summary: "Create a new vzone"
+      description: "A new vzone is added if the fqdn is available (in nsblasts internal database)."
+      operationId: "addVzone"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Settings for the Vzone. Resource Records can be set using the 'rr' resources just qas with a normal zone, once the vzone is created."
+        required: true
+        schema:
+          $ref: "#/definitions/VzoneEntry"
+      responses:
+        "201":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "400":
+          description: "Invalid input"
+        "404":
+          description: "Zone not found"
+        "409":
+          description: "Vzone already exist"
+
+  /vzone/{vzonename}:
+    parameters:
+    - in: path
+      name: vzonename
+      description: "Unique fqdn of a vzone, for example: 'user1.vzones.example.com'"
+      required: true
+      type: string
+    - name: tenant
+      in: query
+      description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+      schema:
+        type: string
+    get:
+      tags:
+        - vzone
+      summary: List Resource Records in a vzone
+      parameters:
+        - name: limit
+          in: query
+          description: Limits the number of items on a page
+          schema:
+            type: integer
+          default: 100
+        - name: from
+          in: query
+          description: Start the listing after this fqdn. This can be used to paginate a listing of more items than the first page (max 1000 items) is available.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized.)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+    delete:
+      tags:
+      - vzone
+      summary: Deletes an existing vzone
+      description: "Deletes a vzone and all it's entries."
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "404":
+          description: "Vzone not found"
 
   /rr/{fqdn}:
     parameters:
@@ -1654,6 +1806,19 @@ definitions:
         $ref: "#/definitions/Base64"
       rr:
         $ref: "#/definitions/Rr"
+
+  VzoneEntry:
+    type: object
+    properties:
+      id:
+        type: string
+        description: uuid for the vzone
+      fqdn:
+        type: string
+        description: "The *full* fqdn for the vzone. For example 'user1.vzones.example.com' if the zone is 'vzones.example.com'"
+      name:
+        type: string
+        description: Optional name for the vzone
 
   ZoneFilter:
     type: object
