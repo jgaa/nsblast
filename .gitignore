@@ -40,3 +40,6 @@ build
 __pycache__
 .kdev4
 *.pyi
+
+book
+
