@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <atomic>
 
 #include <boost/unordered/unordered_flat_set.hpp>
@@ -41,8 +41,18 @@ public:
         CLUSTER_FOLLOWER
     };
 
+    struct VersionInfo {
+        std::string appname;
+        std::string nsblast;
+        std::vector<std::pair<std::string, std::string>> components;
+
+        boost::json::object toJson() const;
+    };
+
     Server(const Config& config);
     ~Server();
+
+    static VersionInfo getVersionInfo();
 
     /*! Starts the API and DNS server.
      *
@@ -233,3 +243,6 @@ protected:
 } // ns
 
 std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role);
+std::ostream& operator << (std::ostream& out, const nsblast::Server::VersionInfo& vi);
+
+

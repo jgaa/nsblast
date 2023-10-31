@@ -42,7 +42,7 @@ ExternalProject_Add(glad
 ExternalProject_Add(externalYahat
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/yahat-cpp.git"
-    GIT_TAG "main"
+    GIT_TAG "cors"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}

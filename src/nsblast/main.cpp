@@ -4,8 +4,6 @@
 #include <boost/program_options.hpp>
 #include <boost/version.hpp>
 
-#include "rocksdb/db.h"
-
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
 #include "nsblast/Server.h"
@@ -15,16 +13,16 @@ using namespace nsblast;
 
 namespace {
 
-string_view cppStrandard() {
-    if constexpr (__cplusplus == 202101L)
-        return "C++23";
-    if constexpr (__cplusplus == 202002L)
-        return "C++20";
-    if constexpr (__cplusplus == 201703L)
-        return "C++17";
+//string_view cppStrandard() {
+//    if constexpr (__cplusplus == 202101L)
+//        return "C++23";
+//    if constexpr (__cplusplus == 202002L)
+//        return "C++20";
+//    if constexpr (__cplusplus == 201703L)
+//        return "C++17";
 
-    return "unknown";
-}
+//    return "unknown";
+//}
 
 optional<logfault::LogLevel> toLogLevel(string_view name) {
     if (name.empty() || name == "off" || name == "false") {
@@ -237,19 +235,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (vm.count("help")) {
-        std::cout << appname << " [options]";
-        std::cout << cmdline_options << std::endl;
+        cout << appname << " [options]";
+        cout << cmdline_options << std::endl;
         return -2;
     }
 
     if (vm.count("version")) {
-        std::cout << appname << ' '  << NSBLAST_VERSION << endl
-                  << "Boost " << BOOST_LIB_VERSION << endl
-                  << "Rocksdb " << rocksdb::GetRocksVersionAsString() << endl
-                  << "Using C++ standard " << cppStrandard() << endl
-                  << "Platform " << BOOST_PLATFORM << endl
-                  << "Compiler " << BOOST_COMPILER << endl
-                  << "Build date " << __DATE__ << endl;
+        cout << Server::getVersionInfo();
         return -3;
     }
 

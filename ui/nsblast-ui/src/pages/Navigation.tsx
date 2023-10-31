@@ -18,7 +18,7 @@ export interface INavigationProps {
 
 export function Navigation(props: INavigationProps) {
   return (
-    <div className='w3-theme-d4 w3-sidebar w3-bar-block ' style={{width:"20%"}}>
+    <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block ' style={{width:"20%"}}>
       <h1>nsBLAST</h1>
       <nav>
         <Link className='w3-bar-item w3-button' to="dashboard"><FaChartSimple/> Dashboard</Link>

@@ -34,9 +34,31 @@ std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role)
     return out << names.at(static_cast<size_t>(role));
 }
 
+std::ostream& operator << (std::ostream& out, const nsblast::Server::VersionInfo& v) {
+    out << v.appname << ": " << v.nsblast << endl;
+    for(const auto& [n, v]: v.components) {
+        out << n << ": " << v << endl;
+    }
+    return out;
+}
+
+
 namespace nsblast {
 using namespace ::nsblast::lib;
 using namespace yahat;
+
+namespace {
+string_view cppStrandard() {
+    if constexpr (__cplusplus == 202101L)
+        return "C++23";
+    if constexpr (__cplusplus == 202002L)
+        return "C++20";
+    if constexpr (__cplusplus == 201703L)
+        return "C++17";
+
+    return "unknown";
+}
+} // anon ns
 
 Server::Server(const Config &config)
     : config_{config}
@@ -61,6 +83,21 @@ Server::~Server()
         }
         LOG_DEBUG << "~Server(): Done Waiting for HTTP server.";
     }
+}
+
+Server::VersionInfo Server::getVersionInfo()
+{
+    VersionInfo v;
+    v.appname = NSBLAST_APPNAME;
+    v.nsblast = NSBLAST_VERSION;
+    v.components.emplace_back("Boost", BOOST_LIB_VERSION);
+    v.components.emplace_back("RocksDB", rocksdb::GetRocksVersionAsString());
+    v.components.emplace_back("C++ standard", cppStrandard());
+    v.components.emplace_back("Platform", BOOST_PLATFORM);
+    v.components.emplace_back("Compiler", BOOST_COMPILER);
+    v.components.emplace_back("Build date", __DATE__);
+
+    return v;
 }
 
 void Server::start()
@@ -396,6 +433,18 @@ void Server::handleSignals()
 
         handleSignals();
     });
+}
+
+boost::json::object Server::VersionInfo::toJson() const
+{
+    boost::json::object vi;
+    vi["app"] = appname;
+    vi["version"] = nsblast;
+    for(const auto& [n, v]: components) {
+        vi[n] = v;
+    }
+
+    return vi;
 }
 
 } // ns

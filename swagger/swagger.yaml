@@ -12,6 +12,8 @@ info:
 #host: "petstore.swagger.io"
 basePath: "/api/v1"
 tags:
+- name: version
+  description: Version information
 - name: "zone"
   description: "DNS Zone"
 - name: vzone
@@ -32,6 +34,32 @@ schemes:
  - "http"
 
 paths:
+  /version:
+    get:
+      tags:
+        - version
+      summary: Get the version information for nsblast and components.
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+
+
   /zone:
     parameters:
     - name: tenant
@@ -2036,6 +2064,22 @@ definitions:
       path:
         type: string
         description: Path to the backup on storage. If unset, it use the same path as the database use,  and put the backup in the subfolder 'backup'
+
+  VersionInfo:
+    type: object
+    properties:
+      nsblast:
+        type: string
+        description: Version of nsblast
+      yahat:
+        type: string
+        description: Version of the HTTP server
+      boost:
+        type: string
+        description: Version of the boost library
+      rocksdb:
+        type: string
+        description: Version of the Rocksdb data engine.
 
 externalDocs:
   description: "Find out more about nsBLAST and ready to go hosting options"

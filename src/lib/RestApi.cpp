@@ -489,6 +489,10 @@ Response RestApi::onReqest(const Request &req)
         if (p.what == "backup") {
             return onBackup(req, p);
         }
+
+        if (p.what == "version") {
+            return onVersion(req, p);
+        }
     } catch(const nsblast::Exception& ex) {
         LOG_DEBUG << "RestApi::onReqest: Cautht exception while processing request "
               << req.uuid << ": " << ex.what();
@@ -1749,6 +1753,20 @@ Response RestApi::onBackup(const yahat::Request &req, const Parsed &parsed)
 
     return {404, "Not Found"};
 
+}
+
+Response RestApi::onVersion(const yahat::Request &req, const Parsed &parsed)
+{
+    auto session = getSession(req);
+    assert(session);
+
+    boost::json::object json;
+    json["rcode"] = 200;
+    json["error"] = false;
+    json["message"] = "";
+    json["value"] = Server::getVersionInfo().toJson();
+
+    return {200, "OK", boost::json::serialize(json)};
 }
 
 void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)

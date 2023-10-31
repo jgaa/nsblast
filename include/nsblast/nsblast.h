@@ -12,6 +12,10 @@
 
 namespace nsblast {
 
+#ifndef NSBLAST_APPNAME
+#  define NSBLAST_APPNAME "nsblast"
+#endif
+
 using span_t = boost::span<const char>;
 
 static constexpr uint32_t DEFAULT_TTL = 2592000; // 30 days
