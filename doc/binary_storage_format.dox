@@ -19,6 +19,7 @@
     - zonelen     Offset to the start of labels that identifies the zone
     - rrcount     Number of RR's in the RRSet
     - indexoffset Offset to the start of the index.
+    - Tenant id:  UUID of the tenant that owns the fqdn. Usedf on zone boundaries. 
 
     \verbatim
     0                   1
