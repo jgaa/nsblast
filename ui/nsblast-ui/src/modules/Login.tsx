@@ -1,41 +1,72 @@
-import React, { useRef, Suspense, Dispatch } from 'react';
+import React, { useRef, useState } from 'react';
+import { useAppState } from './AppState';
+import ErrorBoundary from './ErrorBoundary';
+
 
 interface LoginInterface {
     setToken: ((token: string) => any);
   }
 
-export default function Login({setToken} : LoginInterface) {
+export default function Login() {
 
     const loginName = useRef<HTMLInputElement>(null);
     const loginPasswd = useRef<HTMLInputElement>(null);
+    const [hasError, setHasError] = useState(false);
+    const [errorMsg, setError] = useState("");
+    const {getUrl, getAuthHeader, setToken} = useAppState();
 
-    console.log(`setToken is: ${setToken}`)
-
-    const submit = (e: React.FormEvent) => {
+    const submit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         let name :string = loginName.current ? loginName.current.value : "";
         let pass :string = loginPasswd.current ? loginPasswd.current.value : "";
 
-        console.log(`Login event: ${name} : ${pass}`)
-
         const token = window.btoa(`${name}:${pass}`);
-        const authHeader = `basic ${token}`;
-        console.log(`auth header: ${authHeader}`);
+        const authValue = `basic ${token}`;
 
-        fetch(`http://127.0.0.1:8080/api/v1/version`, {
-            method: "get",
-            headers: {
-                Authorization: authHeader
+
+        /* Try to access an endpoint using HTTP Basic authentication. If ok,
+           the credentials are valid.
+        */
+        try {
+            const res = await fetch(getUrl('/version'), {
+                method: "get",
+                headers: { Authorization: authValue}
+                });
+
+            console.log("fetch res: ", res)
+
+            if (res.ok) {
+                setToken(token)
             }
-        })
-        .then(response => response.json())
-        .then(setToken(authHeader))
-        .catch(console.error)
+
+        } catch(error) {
+            console.log("Fatch failed: ", error)
+            //throw new Error("Failed to validate authentication with server")
+            setHasError(true)
+
+            if (error instanceof Error) {
+                setError(error.message)
+            }
+        }
+    }
+
+    if (hasError) {
+        return (
+            <>
+            <div className="w3-row" style={{ marginLeft: "20%" }}>
+            <div className=' w3-red'>
+            <h3>Failed to validate authentication with server</h3>
+            <p >{errorMsg}</p>
+            </div>
+            <p>Refresh to try again!</p>
+            </div>
+            </>
+        )
     }
 
     return (
-        <div className="w3-row" style={{ marginLeft: "25%", width:"30%" }}>
+        <div className="w3-row" style={{ marginLeft: "22%", width:"30%" }}>
 
             <div className='w3-card' style={{marginTop: "5%"}}>
                 <header className="w3-container w3-blue">
