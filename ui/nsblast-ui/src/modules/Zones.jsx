@@ -5,8 +5,8 @@ import ErrorBoundary from './ErrorBoundary';
 /* 
  v Create layout for table
  v Create layout for one item
- ~ Fetch one page
- - Update when data is available
+ v Fetch one page
+ v Update when data is available
  - add next button
  - allow user to browse forward
  - add prev button
@@ -20,34 +20,35 @@ import ErrorBoundary from './ErrorBoundary';
    - dialog with basic info; SOA
 */
 
-export function FetchZones(props) {
+export function ListZones({max}) {
   
   const [zones, setZones] = useState(null)
   let { isLoggedIn, getAuthHeader, getUrl } = useAppState()
   const [error, setError] = useState();
 
-  useEffect(() => {
-      if (!isLoggedIn()) {
-        return (<p>Not logged in</p>);
-      }
+  const reload = () => {
+    fetch(getUrl(`/zone?limit=${max}`), {
+      method: "get",
+      headers: getAuthHeader()
+      })
+      .then(res => {
+        if (res.ok) {
+          console.log(`fetched: `, res);
+          res.json().then(data => {
+          console.log(`fetched json: `, data);
+          setZones(data.value);
+          });
+        } else {
+          setError(`Fetch failed ${res.status}: ${res.statusText}`)
+        }
+      })
+      .catch(setError);
+  }
 
-      fetch(getUrl('/zone'), {
-        method: "get",
-        headers: getAuthHeader()
-        })
-        .then(res => {
-          if (res.ok) {
-            console.log(`fetched: `, res);
-            res.json().then(data => {
-            console.log(`fetched json: `, data);
-            setZones(data.value);
-            });
-          } else {
-            setError(`Fetch failed ${res.status}: ${res.statusText}`)
-          }
-        })
-        .catch(setError);
+  useEffect(() => {
+    reload();
   }, []);
+
 
 
   if (error) {
@@ -85,6 +86,9 @@ export function FetchZones(props) {
           ))}
         </tbody>
         </table>
+        <div style={{marginTop:"6px"}}>
+                  <button className='w3-button w3-green' onClick={reload} >Reload</button>
+        </div>
     </div>
    );
 }
@@ -94,7 +98,7 @@ export function Zones(props) {
   return (
 
     <ErrorBoundary fallback={<h1>Failed with error</h1>}>
-      <FetchZones/>
+      <ListZones max={10}/> 
     </ErrorBoundary>
   );
 }
