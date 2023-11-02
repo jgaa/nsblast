@@ -1,14 +1,19 @@
 import React, {useState, useEffect} from 'react';
 import { useAppState } from './AppState'
 import ErrorBoundary from './ErrorBoundary';
+import {
+  FaBackwardStep,
+  FaRepeat,
+  FaForward
+} from "react-icons/fa6"
 
 /* 
  v Create layout for table
  v Create layout for one item
  v Fetch one page
  v Update when data is available
- - add next button
- - allow user to browse forward
+ v add next button
+ v allow user to browse forward
  - add prev button
  - allow user to browse backward
  - add buttons on items to edit a zone 
@@ -23,11 +28,16 @@ import ErrorBoundary from './ErrorBoundary';
 export function ListZones({max}) {
   
   const [zones, setZones] = useState(null)
+  const [current, setCurrent] = useState(null) 
   let { isLoggedIn, getAuthHeader, getUrl } = useAppState()
   const [error, setError] = useState();
 
-  const reload = () => {
-    fetch(getUrl(`/zone?limit=${max}`), {
+  const reload = (from=null) => {
+    let extra = ""
+    if (from) {
+       extra = `&from=${from}`;
+    } 
+    fetch(getUrl(`/zone?limit=${max}${extra}`), {
       method: "get",
       headers: getAuthHeader()
       })
@@ -45,6 +55,24 @@ export function ListZones({max}) {
       .catch(setError);
   }
 
+  const reloadCurrent = () => {
+    reload(current);
+  }
+
+  const moveFirst = () => {
+    setCurrent(null);
+    reload();
+  }
+
+  const moveNext = () => {
+      if (zones && zones.length) {
+        const last = zones.at(-1);
+        reload(last)
+        setCurrent(last)
+      }
+  }
+
+  // Load once
   useEffect(() => {
     reload();
   }, []);
@@ -87,7 +115,9 @@ export function ListZones({max}) {
         </tbody>
         </table>
         <div style={{marginTop:"6px"}}>
-                  <button className='w3-button w3-green' onClick={reload} >Reload</button>
+            <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep/> From Start</button>
+            <button className='w3-button w3-green' onClick={reloadCurrent} ><FaRepeat/> Reload</button>
+            <button className='w3-button w3-blue' onClick={moveNext} ><FaForward/> Next</button>
         </div>
     </div>
    );
