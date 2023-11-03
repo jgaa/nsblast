@@ -10,10 +10,10 @@ export default function App() {
   return (
     <Router>
       <AppState>
-        <ErrorBoundary fallback={ErrorScreen}>
+        
           <Navigation />
           <RightPane />
-        </ErrorBoundary>
+        
       </AppState>
     </Router>
   )

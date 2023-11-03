@@ -6,6 +6,9 @@ import {
   FaRepeat,
   FaForward
 } from "react-icons/fa6"
+import ErrorScreen from './ErrorScreen';
+import { BeatLoader} from 'react-spinners';
+
 
 /* 
  v Create layout for table
@@ -32,28 +35,39 @@ export function ListZones({max}) {
   let { isLoggedIn, getAuthHeader, getUrl } = useAppState()
   const [error, setError] = useState();
 
-  const reload = (from=null) => {
-    let extra = ""
-    if (from) {
-       extra = `&from=${from}`;
-    } 
-    fetch(getUrl(`/zone?limit=${max}${extra}`), {
-      method: "get",
-      headers: getAuthHeader()
-      })
-      .then(res => {
-        if (res.ok) {
-          console.log(`fetched: `, res);
-          res.json().then(data => {
-          console.log(`fetched json: `, data);
-          setZones(data.value);
-          });
-        } else {
-          setError(`Fetch failed ${res.status}: ${res.statusText}`)
-        }
-      })
-      .catch(setError);
+  const qargs = (from) => {
+    let q = []
+    if (max > 0) q.push(`limit=${max}`);
+    if (from) q.push(`from=${from}`)
+    if (q.length === 0)
+      return "";
+    return "?" + q.join('&')
   }
+
+  const reload = async (from=null) => {
+
+    setZones(null);
+
+    try {
+      let res = await fetch(getUrl('/zone' + qargs(from)), {
+        method: "get",
+        headers: getAuthHeader()
+      });
+
+      if (res.ok) {
+        console.log(`fetched: `, res);
+        let z = await res.json();
+        console.log(`fetched json: `, z);
+        setZones(z.value);
+      } else {
+        setError(Error(`Failed to fetch zones: ${res.statusText}`))
+      }
+    } catch (err) {
+      console.log(`Caught error: `, err)
+      setError(err)
+    }
+  } 
+
 
   const reloadCurrent = () => {
     reload(current);
@@ -80,10 +94,13 @@ export function ListZones({max}) {
 
 
   if (error) {
-    return (<h1>Failed with error</h1>)
+    console.log("Got error err: ", error)
+    throw Error("Error!")
+    //throw Error(error.message);
+    //return (<p>{error.message}</p>)
   } 
 
-  if (!zones) return <h1>loading...</h1>;;
+  if (!zones) return (<BeatLoader/>);
 
   console.log("Zones when rendering: ", zones)
   
@@ -127,7 +144,7 @@ export function Zones(props) {
 
   return (
 
-    <ErrorBoundary fallback={<h1>Failed with error</h1>}>
+    <ErrorBoundary fallback={<p>Something went wrong</p>}>
       <ListZones max={10}/> 
     </ErrorBoundary>
   );
