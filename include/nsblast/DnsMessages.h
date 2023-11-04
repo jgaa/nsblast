@@ -329,6 +329,9 @@ public:
 
     /*! Offset of serial from the start of the original buffer */
     uint16_t serialOffset() const;
+
+    /*! Helper function to convert an ordinary email to a rname */
+    static std::string fromEmail(const std::string_view& email);
 };
 
 class MutableRrSoa : public RrSoa {

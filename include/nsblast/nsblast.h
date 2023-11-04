@@ -212,6 +212,9 @@ struct Config {
     /*! TTL for HINFO response */
     uint32_t dns_hinfo_ttl = 86400; // one day
 
+    /*! Default nameserver configuration for new zones. First server is primary */
+    std::vector<std::string> default_name_servers;
+
     ///@}
 
     /*! \name HTTP */

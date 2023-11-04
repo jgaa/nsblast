@@ -1440,6 +1440,34 @@ uint16_t RrSoa::serialOffset() const
     return static_cast<uint16_t>(offset);
 }
 
+string RrSoa::fromEmail(const std::string_view &email)
+{
+    std::string rname;
+    rname.reserve(email.size()+2 /* reasonable guess */);
+
+    bool seen_alpha = false;
+    for(auto ch : email) {
+        if (!seen_alpha) {
+            if (ch == '.') {
+                rname += R"(\.)";
+                continue;
+            }
+            if (ch == '@') {
+                seen_alpha = true;
+                rname += '.';
+                continue;
+            }
+        }
+        if (ch == '@') {
+            throw runtime_error{"An email can only contain one '@'"};
+        }
+
+        rname += ch;
+    }
+
+    return rname;
+}
+
 Labels RrCname::cname() const
 {
     if (type() != TYPE_CNAME) {

@@ -73,6 +73,8 @@ private:
     yahat::Response listBackups(const yahat::Request &req, const Parsed& parsed);
     yahat::Response deleteBackups(const yahat::Request &req, const Parsed& parsed);
 
+    void refactorZone(boost::json::object& zone);
+
     const Config& config_;
     ResourceIf& resource_;
     Server *server_ = {};

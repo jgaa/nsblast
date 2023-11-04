@@ -624,6 +624,37 @@ void RestApi::validateZone(const boost::json::value &json)
     }
 }
 
+void RestApi::refactorZone(boost::json::object &zone)
+{
+    if (auto sv = zone.if_contains("soa") ; sv && sv->is_object()) {
+        auto& soa = sv->as_object();
+
+        if (auto ev = soa.if_contains("email"); ev && ev->is_string()) {
+            const auto& email = ev->as_string();
+
+            const auto rname = RrSoa::fromEmail(email);
+            soa["rname"] = rname;
+            soa.erase("email");
+        }
+
+        if (config_.default_name_servers.empty()) {
+            return;
+        }
+
+        if (!soa.contains("mname")) {
+            soa["mname"] = config_.default_name_servers.front();
+        }
+
+        if (!zone.contains("ns")) {
+            boost::json::array ns;
+            for(const auto& n : config_.default_name_servers) {
+                ns.emplace_back(n);
+            }
+            zone["ns"] = ns;
+        }
+    }
+}
+
 void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                     const boost::json::value& json, bool finish)
 {
@@ -1328,6 +1359,9 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
         }
 
         auto json = parseJson(req.body);
+
+        assert(json.is_object());
+        refactorZone(json.as_object());
 
         // check that the rrs include soa and 2 ns (and that one is primary in soa)
         validateZone(json);
@@ -2228,6 +2262,7 @@ Response RestApi::deleteBackups(const yahat::Request &req, const Parsed &parsed)
 
     return {404, format("Backup id {} not found", id)};
 }
+
 
 
 } // ns

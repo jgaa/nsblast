@@ -190,6 +190,10 @@ int main(int argc, char* argv[]) {
         ("dns-notify-port",
             po::value<uint16_t>(&config.dns_notify_to_port)->default_value(config.dns_notify_to_port),
            "Port number to send NOTIFY messages to when a zone change")
+        ("default-nameserver",
+          po::value(&config.default_name_servers),
+          "Default name-servers to use for new zones. The first definition will be used as the primary."
+        )
         ;
 
     po::options_description rocksdb("RocksDB");
