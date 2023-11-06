@@ -13,6 +13,8 @@ import {
 import ErrorScreen from './ErrorScreen';
 import { BeatLoader } from 'react-spinners';
 import PopupDialog, { usePopupDialog } from './PopupDialog';
+import { Link } from "react-router-dom";
+import qargs from './qargs';
 
 
 /* 
@@ -47,10 +49,7 @@ function EditZone({ zone, caption }) {
   const {getUrl, getAuthHeader, setToken} = useAppState();
   const {close} = usePopupDialog();
 
-  // const [fqdn, setFqdn] = useState(z.fqdn)
-  // const [email, setEmail] = useState(z.email)
-  // const [refrest, setRefresh] = useState(z.refresh)
-  // const [retry, setRetry] = useState(z.retry)
+  
   const [errorMsg, setError] = useState("");
 
   const fqdnRef = useRef(z.fqdn)
@@ -152,26 +151,27 @@ export function ListZones({ max }) {
 
   const [zones, setZones] = useState(null)
   const [current, setCurrent] = useState(null)
-  let { isLoggedIn, getAuthHeader, getUrl } = useAppState()
+  const { getAuthHeader, getUrl } = useAppState()
   const [error, setError] = useState();
   const [isedit, setEditOpen] = useState(false)
   const [editZoneCaption, setEditZoneCaption] = useState("Add Zone")
+  const [hasMore, setHasMore] = useState(false)
 
-  const qargs = (from) => {
-    let q = []
-    if (max > 0) q.push(`limit=${max}`);
-    if (from) q.push(`from=${from}`)
-    if (q.length === 0)
-      return "";
-    return "?" + q.join('&')
-  }
+  // const qargs = (from) => {
+  //   let q = []
+  //   if (max > 0) q.push(`limit=${max}`);
+  //   if (from) q.push(`from=${from}`)
+  //   if (q.length === 0)
+  //     return "";
+  //   return "?" + q.join('&')
+  // }
 
   const reload = async (from = null) => {
 
     setZones(null);
 
     try {
-      let res = await fetch(getUrl('/zone' + qargs(from)), {
+      let res = await fetch(getUrl('/zone' + qargs(from, max)), {
         method: "get",
         headers: getAuthHeader()
       });
@@ -181,6 +181,7 @@ export function ListZones({ max }) {
         let z = await res.json();
         console.log(`fetched json: `, z);
         setZones(z.value);
+        setHasMore(z.more)
       } else {
         setError(Error(`Failed to fetch zones: ${res.statusText}`))
       }
@@ -233,8 +234,6 @@ export function ListZones({ max }) {
   if (error) {
     console.log("Got error err: ", error)
     throw Error("Error!")
-    //throw Error(error.message);
-    //return (<p>{error.message}</p>)
   }
 
   if (!zones) return (<BeatLoader />);
@@ -263,7 +262,7 @@ export function ListZones({ max }) {
               </td>
               <td>zone</td>
               <td>-</td>
-              <td>edit|rr|delete</td>
+              <td><Link to={`rr?z=${name}`} className='w3-button w3-blue'>Manage</Link> |delete</td>
             </tr>
           ))}
         </tbody>
@@ -271,7 +270,7 @@ export function ListZones({ max }) {
       <div style={{ marginTop: "6px" }}>
         <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep /> From Start</button>
         <button className='w3-button w3-green' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
-        <button className='w3-button w3-blue' onClick={moveNext} ><FaForward /> Next</button>
+        <button className='w3-button w3-blue' onClick={moveNext} disabled={!hasMore}><FaForward /> Next</button>
         <button className='w3-button w3-orange' onClick={addZone} ><FaPlus /> Add</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
