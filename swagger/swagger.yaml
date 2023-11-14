@@ -115,6 +115,15 @@ paths:
       description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
       schema:
         type: string
+    - name: kind
+      in: query
+      description: "What kind of listing the user want in return.
+          <br> - *default* A listing with fqdn's for the zone
+          <br> - *verbose* A listing with fqdn's with the resource record for each entry.
+          "
+      schema:
+        type: string
+      default: brief
     get:
       tags:
         - zone
