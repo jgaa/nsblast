@@ -1,5 +1,7 @@
 
 #include <set>
+#include <ranges>
+#include <algorithm>
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
@@ -410,21 +412,31 @@ auto toJson(const lib::Entry& entry) {
 enum class KindOfListing {
     DEFAULT,
     ID,
-    BRIEF
+    BRIEF,
+    VERBOSE
 };
 
-KindOfListing getKindOfListing(const yahat::Request &req)
+template <typename T = initializer_list<KindOfListing>>
+KindOfListing getKindOfListing(const yahat::Request &req, const T& valid,
+                               KindOfListing defautlValue = KindOfListing::DEFAULT)
 {
-    static constexpr array<pair<string_view, KindOfListing>, 3> kinds = {
+    static constexpr array<pair<string_view, KindOfListing>, 4> kinds = {
         make_pair("id", KindOfListing::ID),
         {"brief", KindOfListing::BRIEF},
-        {"default", KindOfListing::DEFAULT}};
+        {"default", KindOfListing::DEFAULT},
+        {"verbose", KindOfListing::VERBOSE}};
 
     if (auto it = req.arguments.find("kind"); it != req.arguments.end()) {
         const auto key = it->second;
         if (auto kit = find_if(kinds.begin(), kinds.end(), [&key](const auto& p ) {
                 return p.first == key;
             }); kit != kinds.end()) {
+
+            if (!ranges::any_of(valid, [v=kit->second](auto k) {
+                    return k == v;})) {
+                throw Response{400, format("Unknown 'kind' {} here", key)};
+            }
+
             return kit->second;
         }
 
@@ -1871,7 +1883,7 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
     auto& tenants = out["value"] = boost::json::array{};
 
     const auto page_size = getPageSize(req);
-    const auto kind = getKindOfListing(req);
+    const auto kind = getKindOfListing(req, {KindOfListing::DEFAULT, KindOfListing::BRIEF, KindOfListing::ID});
 
     size_t count = 0;
 
@@ -2041,6 +2053,8 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
         return *res;
     }
 
+    const auto kind = getKindOfListing(req, {KindOfListing::DEFAULT, KindOfListing::VERBOSE});
+
     const auto tenant_id = tenant->id();
 
     auto lowercaseFqdn = toLower(parsed.target);
@@ -2079,7 +2093,7 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
         boost::json::array list;
         server().db().dbTransaction()->iterateFromPrevT(
             key, ResourceIf::Category::ENTRY,
-            [&lowercaseFqdn, &list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+            [&lowercaseFqdn, &list, &tenant_id, all, page_size, &count, &more, kind, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
 
                 if (!key.isInZone(lowercaseFqdn)) {
                     return false;
@@ -2093,7 +2107,12 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
                     return false;
                 }
 
-                list.push_back(boost::json::string{fqdn});
+                if (kind == KindOfListing::VERBOSE) {
+                    const Entry entry{value};
+                    list.push_back(toJson(entry));
+                } else {
+                    list.push_back(boost::json::string{fqdn});
+                }
                 return true;
             }, is_followup_page);
 
