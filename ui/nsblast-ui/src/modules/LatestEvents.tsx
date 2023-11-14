@@ -11,9 +11,9 @@ export default function LatestEvents (props: ILatestEventsProps) {
     </header>
 
     <ul className='w3-ul'>
-        <li>Added zone example.com with many resource records</li>
-        <li>Added user John Conner</li>
-        <li>Deleted API key 'tmp'</li>
+        <li key="1">Added zone example.com with many resource records</li>
+        <li key="2">Added user John Conner</li>
+        <li key="3">Deleted API key 'tmp'</li>
     </ul>
     </div> 
   );

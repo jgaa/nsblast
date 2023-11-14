@@ -26,17 +26,151 @@ function useQuery() {
     return React.useMemo(() => new URLSearchParams(search), [search]);
 }
 
-function EditRr(zone, name, caption, edit=true) {
+function getRrRows(rr) {
+  let rows = 0
+  for (const [key, value] of Object.entries(rr)) {
+    if (key == 'ttl' || key == 'fqdn') {
+      continue
+    }
+    if (Array.isArray(value)) {
+      rows += value.length
+    } else {
+      rows += 1
+    }
+  }
+
+  //return 2
+  return rows ? rows : 1
+}
+
+function AddRrData({type, entry}) {
+
+  console.log('type=', type, " entry=", entry)
+
+  if (Array.isArray(entry)) {
+      return (
+        <>
+        {entry.map((value) => (
+          <AddRrData type={type} entry={value}/>
+        ))}
+        </>
+      )
+  }
+
+  switch(type) {
+    case 'ttl':
+    case 'fqdn':
+      return (<></>)
+    case 'ns':
+    case 'txt':
+    case 'a':
+      return (
+        <tr>
+          <td>{type}</td>
+          <td>{entry}</td>
+          <td>edit|delete</td>
+        </tr>
+      )
+    case 'soa':
+      return (
+        <tr>
+          <td>{type}</td>
+          <td>email={entry.email}<br/>
+              expire={entry.expire}<br/>
+              minimum={entry.minimum}<br/>
+              refresh={entry.refresh}<br/>
+              serial={entry.serial}
+          </td>
+          <td>edit|delete</td>
+        </tr>
+      )
+    
+      default:
+        return (<p>Undefined {type}</p>)
+  }
+}
+
+function RrCells({rr}) {
+
+  if (!rr) {
+    return (<p>Empty</p>)
+  }
+
+  //let r = []
+  const rows = getRrRows(rr)
+  // console.log(`in rrCell ${rr.fqdn} rows=${rows}`)
+
+  // r.push((<td rowspan="1">{rr.fqdn}</td>))
+ 
+  // for (const [key, value] of Object.entries(rr)) {
+  //   switch(key) {
+  //     case 'fqdn':
+  //     case 'ttl':
+  //       continue;
+  //     case 'a':
+  //       value.map((ip, ix) => {
+  //         r.push(<tr key={`${key}-${ix}`}>
+  //           <td>{key}</td>
+  //           <td>{ip}</td>
+  //           <td>edit|delete</td>
+  //         </tr>)
+  //       })
+  //       break
+  //     case 'ns':
+  //         value.map((host, ix) => {
+  //           r.push((<tr key={`${key}-${ix}`}>
+  //             <td>{key}</td>
+  //             <td>{host}</td>
+  //             <td>edit|delete</td>
+  //           </tr>))
+  //         })
+  //         break
+  //     case 'soa':
+  //       r.push((<tr key={`${key}`}>
+  //             <td>{key}</td>
+  //             <td>email={value.email}<br/>
+  //             expire={value.expire}<br/>
+  //             minimum={value.minimum}<br/>
+  //             refresh={value.refresh}<br/>
+  //             serial={value.serial}
+  //             </td>
+  //             <td>edit|delete</td>
+  //           </tr>))
+  //           break
+  //     default:
+  //       r.push(<tr key={`${key}`}>
+  //           <td>{key}</td>
+  //           <td>--</td>
+  //           <td>delete</td>
+  //         </tr>)
+  //   }
+  // }
+
+  return (
+    <>
+    <tr>
+      <td rowSpan={rows + 1}>{rr.fqdn}</td>
+    </tr>
+      {Object.entries(rr).map((array) => (
+        <AddRrData type={array[0]} entry={array[1]} />
+      ))}
+    </>
+  )
+}
+
+function EditRr({zone, name, caption, edit}) {
     const {getUrl, getAuthHeader, setToken} = useAppState();
     const {close} = usePopupDialog();
     const [errorMsg, setError] = useState("");
     const [rr, setRr] = useState(null)
     const nameRef = useRef(name)
 
+    console.log(`Entering EditRr. zone=${zone}, name=${name}, edit=${edit}`)
+
     const submit = async (e) => {
         e.preventDefault();
     
-        const fqdn =  name.length ? `${name}.zone` : zone;
+        const fqdn = name
     
         console.log(`EditRr submit zone ${fqdn} rr=${rr}: `, e)
     
@@ -72,11 +206,35 @@ function EditRr(zone, name, caption, edit=true) {
         }
       }
 
-      const fetchExisting = () => {
+      const fetchExisting = async () => {
 
+        const fqdn = name
+
+        console.log(`fetchExisting called for fqdn ${fqdn}`)
+
+        try {
+          let res = await fetch(getUrl(`/rr/${fqdn}`), {
+            method: "get",
+            headers: getAuthHeader()
+          });
+    
+          if (res.ok) {
+            console.log(`fetched rr res: `, res);
+            let z = await res.json();
+            console.log(`fetched rr json: `, z);
+            setRr(z.value);
+          } else {
+            setError(Error(`Failed to fetch resource records for ${fqdn}: ${res.statusText}`))
+          }
+        } catch (err) {
+          console.log(`Caught error: `, err)
+          setError(err)
+        }
       } 
 
       useEffect(() => {
+
+        console.log(`EditRr: init useEffect: edit= ${edit} name=${name}`)
         if (edit) {
             fetchExisting();
         } else {
@@ -86,7 +244,7 @@ function EditRr(zone, name, caption, edit=true) {
       }, []);
     
       const onCancel = () => {
-        console.log('EditZone: onCancel called.')
+        console.log('EditRr: onCancel called.')
         close();
       }
 
@@ -122,8 +280,12 @@ function EditRr(zone, name, caption, edit=true) {
           </div>
           <form className="w3-container" onSubmit={submit}>
     
-            <label>Name</label>
-            <input ref={nameRef} className="w3-input" type="text" required disabled={edit}/>
+            <label hidden={edit}>Name</label >
+            <input ref={nameRef} className="w3-input" type={edit ? "hidden" : "text"} required={!edit}/>
+
+            <br/>
+            <RrCells rr={rr}/>
+            <br/>
     
             <button className="w3-button w3-green w3-padding" type="submit" ><FaFloppyDisk /> Save</button>
             <button className="w3-button w3-gray w3-padding" style={{ marginLeft: "1em" }}
@@ -144,13 +306,14 @@ function ListResourceRecords({ max, zone }) {
     const [editRrCaption, setEditRrCaption] = useState("Add Record")
     const [rrName, setRrName] = useState("")
     const [isEditMode, setEditMode] = useState(false)
+    const [currentZone, _] = useState(zone)
 
     const reload = async (from = null) => {
 
         setRrs(null);
     
         try {
-          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from)), {
+          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, 30, 'verbose')), {
             method: "get",
             headers: getAuthHeader()
           });
@@ -209,11 +372,11 @@ function ListResourceRecords({ max, zone }) {
       }
     
     const editRr = (name) => {
-        console.log("editRr name=", name)
+        console.log(`editRr zone=${zone}, name=${name} =`)
         setEditRrCaption(`Edit Resource ${name}`)
         setRrName(name)
-        setEditOpen(true)
         setEditMode(true)
+        setEditOpen(true)
     }
 
     if (!rrs) return (<BeatLoader />);
@@ -227,18 +390,15 @@ function ListResourceRecords({ max, zone }) {
       <table className='w3-table-all'>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Actions</th>
+            <th>fqdn</th>
+            <th>type</th>
+            <th>value</th>
+            <th>actions</th>
           </tr>
         </thead>
         <tbody>
-          {rrs.map((name) => (
-            <tr>
-              <td>
-                {name}
-              </td>
-              <td><button onClick={() => {editRr(name)}} className='w3-button w3-blue'>Edit</button> |delete</td>
-            </tr>
+          {rrs.map((entry, id) => (           
+              <RrCells rr={entry}/>
           ))}
         </tbody>
       </table>
@@ -251,7 +411,7 @@ function ListResourceRecords({ max, zone }) {
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isEditOpen}
         onClosed={onEditClosed}>
-        {/* <EditRr zone={zone} name={rrName} caption={editRrCaption} edit={isEditMode}/> */}
+        <EditRr zone={zone} name={rrName} caption={editRrCaption} edit={isEditMode}/> 
       </PopupDialog>
     </div>
     )

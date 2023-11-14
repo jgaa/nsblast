@@ -51,6 +51,10 @@ export default function PopupDialog({ children, isOpen, onClosed }) {
         handleClosed()
     }
 
+    if (!isOpen) {
+        return (<></>)
+    }
+
     return (
         <dialog ref={modalRef} 
             onKeyDown={handleKeyDown}

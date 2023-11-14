@@ -255,8 +255,8 @@ export function ListZones({ max }) {
           </tr>
         </thead>
         <tbody>
-          {zones.map((name) => (
-            <tr>
+          {zones.map((name, id) => (
+            <tr key={id}>
               <td>
                 {name}
               </td>
