@@ -1073,7 +1073,7 @@ public:
     }
 
     inline const Header& header() const noexcept {
-        assert(span_.size() > BUFFER_HEADER_LEN);
+        assert(span_.size() >= BUFFER_HEADER_LEN);
         return *reinterpret_cast<const Header *>(span_.data());
     }
 

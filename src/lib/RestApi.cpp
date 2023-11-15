@@ -99,25 +99,9 @@ auto test_glad(boost::asio::io_context& ctx) {
 
 optional<uint32_t> getTtl(const boost::json::value& json) {
     if (json.is_object()) {
-        try {
-            auto ttl = json.at("ttl");
-            // This is BS! The json library must be able to convert a fucking integer
-            // to unsinged or signed values, unless the actual value in
-            // the json payload is a negative integer!
-            if (ttl.is_int64()) {
-                return static_cast<uint32_t>(ttl.as_int64());
-            }
-
-            if (ttl.is_uint64()) {
-                return static_cast<uint32_t>(ttl.as_uint64());
-            }
-
-            const string kname = boost::json::to_string(ttl.kind());
-            throw Response{400, "ttl must be an unsigned integer, not a "s + kname};
-        } catch(const std::exception& ex) {
-            LOG_TRACE << "Caught exception while extracting ttl: " << ex.what();
+        if (const auto ttl = json.as_object().if_contains("ttl")) {
+            return ttl->as_uint64();
         }
-
     }
 
     return {};
@@ -691,6 +675,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
         uint32_t serial = 1;
         string_view mname;
         string_view rname;
+        string email_buf;
 
         boost::unordered_flat_map<string_view, uint32_t *> nentries = {
             {"refresh", &refresh},
@@ -708,13 +693,15 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 mname = a.value().as_string();
             } else if (a.key() == "rname") {
                 rname = a.value().as_string();
+            } else if (a.key() == "email") {
+                rname = email_buf = RrSoa::fromEmail(a.value().as_string());
             } else {
                 throw Response{400, "Unknown soa entity: "s + string(a.key())};
             }
         }
 
         string rname_buf;
-        sb.createSoa(fqdn, ttl, mname, toDnsEmail(rname, rname_buf), serial, refresh, retry, expire, minimum);
+        sb.createSoa(fqdn, ttl, mname, rname, serial, refresh, retry, expire, minimum);
     }},
     {"srv", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
@@ -2115,7 +2102,14 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
                 if (kind == KindOfListing::VERBOSE) {
                     const Entry entry{value};
-                    list.push_back(toJson(entry));
+                    if (!entry.count()) {
+                        // The fqdn is in the first rr. If the entry is empty, there are no RR's and no fqdn in the data.
+                        boost::json::object o;
+                        o["fqdn"] = boost::json::string{fqdn};
+                        list.push_back(o);
+                    } else {
+                        list.push_back(toJson(entry));
+                    }
                 } else {
                     list.push_back(boost::json::string{fqdn});
                 }

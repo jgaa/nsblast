@@ -1515,8 +1515,8 @@ Entry::Entry(boost::span<const char> buffer)
 std::optional<boost::uuids::uuid> Entry::tenantId() const noexcept
 {
     constexpr size_t min_size = sizeof(Header) + tenantIdLen;
-    assert(span_.size() >= min_size);
     if (header().flags.tenantId) {
+        assert(span_.size() >= min_size);
         return *reinterpret_cast<const boost::uuids::uuid *>(span_.data() + sizeof(Header));
     }
 

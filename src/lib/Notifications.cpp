@@ -132,9 +132,14 @@ void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
             udp_t::resolver resolver{yield.get_executor()};
 
             // TODO-MAYBE: Would be better to resolve the hosts in parallel.
+            boost::system::error_code ec;
             const auto res = resolver.async_resolve(host,
                                                     to_string(parent_.server().config().dns_notify_to_port),
-                                                    yield);
+                                                    yield[ec]);
+            if (ec.failed()) {
+                LOG_DEBUG_N << "Failed to resolve host " << host << " for DNS NOTIFY message";
+                continue;
+            }
             for(const auto& r : res) {
                 pending_.emplace_back(udp_t::endpoint{r.endpoint()});
             }
@@ -154,7 +159,6 @@ void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
     if (pending_.empty()) {
         LOG_WARN << "Notifications::Notifier::process - Noone to notify for "
                  << fqdn_ << "/" << id_;
-        throw runtime_error{"Noone to notify"};
     }
 }
 
