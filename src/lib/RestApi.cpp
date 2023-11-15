@@ -384,6 +384,12 @@ void toJson(const span_t buffer, const Rr& rr, boost::json::object& obj) {
         o["os"] = hi.os();
         obj["hinfo"] = std::move(o);
     } break;
+    case TYPE_DHCID:
+        obj["dhcid"] = Base64Encode(rr.rdata());
+        break;
+    case TYPE_OPENPGPKEY:
+        obj["openpgpkey"] = Base64Encode(rr.rdata());
+        break;
     default:
         const auto name = format("#{}", rr.type());
         asArray(obj, name).emplace_back(Base64Encode(rr.rdata()));
@@ -1843,7 +1849,7 @@ void RestApi::checkSrv(span_t span, ResourceIf::TransactionIf& trx)
         }
 \
         LOG_DEBUG << "RestApi::checkSrv target " << target
-                  << " in Srv for " << e.begin()->labels().string()
+                  << " in Srv for " << (e.empty() ? "*** NOT FOUND ***"s : e.begin()->labels().string())
                   << " is not pointing to a fqdn with A or AAAA records on this server.";
 
         if (!found_adress_rr) {
