@@ -8,7 +8,8 @@ import {
   FaPlus,
   FaFloppyDisk,
   FaCross,
-  FaXmark
+  FaXmark,
+  FaTrashCan
 } from "react-icons/fa6"
 //import ErrorScreen from '../modules/ErrorScreen';
 import { BeatLoader } from 'react-spinners';
@@ -43,6 +44,14 @@ function getRrRows(rr) {
   return rows ? rows : 1
 }
 
+function RrObject({name, value}) {
+  return (
+    <>
+    {name}={value}<br/>
+    </>
+  )
+}
+
 function AddRrData({type, entry}) {
 
   console.log('type=', type, " entry=", entry)
@@ -61,21 +70,12 @@ function AddRrData({type, entry}) {
     case 'ttl':
     case 'fqdn':
       return (<></>)
-    case 'ns':
-    case 'txt':
-    case 'a':
-      return (
-        <tr>
-          <td>{type}</td>
-          <td>{entry}</td>
-          <td>edit|delete</td>
-        </tr>
-      )
     case 'soa':
       return (
         <tr>
           <td>{type}</td>
           <td>email={entry.email}<br/>
+              mname={entry.mname}<br/>
               expire={entry.expire}<br/>
               minimum={entry.minimum}<br/>
               refresh={entry.refresh}<br/>
@@ -84,9 +84,31 @@ function AddRrData({type, entry}) {
           <td>edit|delete</td>
         </tr>
       )
+    default:
+      if (entry === Object(entry)) {
+        return (
+          <tr>
+          <td>{type}</td>
+          <td>
+          {Object.entries(entry).map((array) => (
+            <RrObject name={array[0]} value={array[1]} />
+          ))}
+          </td>
+          <td>edit|delete</td>
+          </tr>  
+        )
+      }
+
+      return (
+        <tr>
+          <td>{type}</td>
+          <td>{entry}</td>
+          <td>edit|delete</td>
+        </tr>
+      )
     
-      default:
-        return (<p>Undefined {type}</p>)
+      // default:
+      //   return (<p>Undefined {type}</p>)
   }
 }
 
@@ -96,64 +118,24 @@ function RrCells({rr}) {
     return (<p>Empty</p>)
   }
 
-  //let r = []
   const rows = getRrRows(rr)
-  // console.log(`in rrCell ${rr.fqdn} rows=${rows}`)
-
-  // r.push((<td rowspan="1">{rr.fqdn}</td>))
  
-  // for (const [key, value] of Object.entries(rr)) {
-  //   switch(key) {
-  //     case 'fqdn':
-  //     case 'ttl':
-  //       continue;
-  //     case 'a':
-  //       value.map((ip, ix) => {
-  //         r.push(<tr key={`${key}-${ix}`}>
-  //           <td>{key}</td>
-  //           <td>{ip}</td>
-  //           <td>edit|delete</td>
-  //         </tr>)
-  //       })
-  //       break
-  //     case 'ns':
-  //         value.map((host, ix) => {
-  //           r.push((<tr key={`${key}-${ix}`}>
-  //             <td>{key}</td>
-  //             <td>{host}</td>
-  //             <td>edit|delete</td>
-  //           </tr>))
-  //         })
-  //         break
-  //     case 'soa':
-  //       r.push((<tr key={`${key}`}>
-  //             <td>{key}</td>
-  //             <td>email={value.email}<br/>
-  //             expire={value.expire}<br/>
-  //             minimum={value.minimum}<br/>
-  //             refresh={value.refresh}<br/>
-  //             serial={value.serial}
-  //             </td>
-  //             <td>edit|delete</td>
-  //           </tr>))
-  //           break
-  //     default:
-  //       r.push(<tr key={`${key}`}>
-  //           <td>{key}</td>
-  //           <td>--</td>
-  //           <td>delete</td>
-  //         </tr>)
-  //   }
-  // }
-
   return (
     <>
     <tr>
-      <td rowSpan={rows + 1}>{rr.fqdn}</td>
+      <td rowSpan={rows + 2}>{rr.fqdn}</td>
     </tr>
       {Object.entries(rr).map((array) => (
         <AddRrData type={array[0]} entry={array[1]} />
       ))}
+    <tr>
+      <td colSpan="3">
+      <button className="w3-button w3-red w3-padding" style={{ marginLeft: "1em" }}
+              type="button"> <FaTrashCan/>Delete fqdn</button>
+      <button className="w3-button w3-green w3-padding" style={{ marginLeft: "1em" }}
+              type="button"> <FaPlus/>Add Resource Record</button>
+      </td>
+    </tr>
     </>
   )
 }
@@ -313,7 +295,7 @@ function ListResourceRecords({ max, zone }) {
         setRrs(null);
     
         try {
-          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, 30, 'verbose')), {
+          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, max, 'verbose')), {
             method: "get",
             headers: getAuthHeader()
           });
@@ -344,7 +326,7 @@ function ListResourceRecords({ max, zone }) {
     
       const moveNext = () => {
         if (rrs && rrs.length) {
-          const last = rrs.at(-1);
+          const last = rrs.at(-1).fqdn;
           reload(last)
           setCurrent(last)
         }
@@ -404,9 +386,9 @@ function ListResourceRecords({ max, zone }) {
       </table>
       <div style={{ marginTop: "6px" }}>
         <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep /> From Start</button>
-        <button className='w3-button w3-green' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
+        <button className='w3-button w3-yellow' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
         <button className='w3-button w3-blue' onClick={moveNext} disabled={!hasMore}><FaForward /> Next</button>
-        <button className='w3-button w3-orange' onClick={addRr} ><FaPlus /> Add</button>
+        <button className='w3-button w3-green' onClick={addRr} ><FaPlus />Add fqdn</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isEditOpen}
