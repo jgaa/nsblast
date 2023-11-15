@@ -7,7 +7,7 @@ import {
   FaForward,
   FaPlus,
   FaFloppyDisk,
-  FaCross,
+  FaPen,
   FaXmark,
   FaTrashCan
 } from "react-icons/fa6"
@@ -52,18 +52,33 @@ function RrObject({name, value}) {
   )
 }
 
-function AddRrData({type, entry}) {
+function EditDeleteBtn({onDelete}) {
+  return (
+    <>
+      <button className="w3-button w3-yellow w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
+    type="button"> <FaPen/>Edit</button>
+      <button className="w3-button w3-red w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
+    type="button" onClick={onDelete}> <FaTrashCan/>Delete</button>
+    </>
+  )
+}
+
+function AddRrData({type, entry, deleteRr, ix=0}) {
 
   console.log('type=', type, " entry=", entry)
 
   if (Array.isArray(entry)) {
       return (
         <>
-        {entry.map((value) => (
-          <AddRrData type={type} entry={value}/>
+        {entry.map((value, i) => (
+          <AddRrData type={type} entry={value} deleteRr={deleteRr} ix={i}/>
         ))}
         </>
       )
+  }
+
+  const onDelete = () => {
+    deleteRr(type, ix)
   }
 
   switch(type) {
@@ -81,7 +96,7 @@ function AddRrData({type, entry}) {
               refresh={entry.refresh}<br/>
               serial={entry.serial}
           </td>
-          <td>edit|delete</td>
+          <td><EditDeleteBtn onDelete={onDelete}/></td>
         </tr>
       )
     default:
@@ -94,7 +109,7 @@ function AddRrData({type, entry}) {
             <RrObject name={array[0]} value={array[1]} />
           ))}
           </td>
-          <td>edit|delete</td>
+          <td><EditDeleteBtn onDelete={onDelete}/></td>
           </tr>  
         )
       }
@@ -103,7 +118,7 @@ function AddRrData({type, entry}) {
         <tr>
           <td>{type}</td>
           <td>{entry}</td>
-          <td>edit|delete</td>
+          <td><EditDeleteBtn onDelete={onDelete}/></td>
         </tr>
       )
     
@@ -112,27 +127,109 @@ function AddRrData({type, entry}) {
   }
 }
 
-function RrCells({rr}) {
+function RrCells({rr, onChange}) {
+  const {getUrl, getAuthHeader} = useAppState();
 
   if (!rr) {
     return (<p>Empty</p>)
   }
 
   const rows = getRrRows(rr)
+
+  const deleteFqdn = async () => {
+    if (window.confirm(`Do you really want to delete fqdn ${rr.fqdn} ?`)) {
+      console.log(`deleting fqdn ${rr.fqdn}`)
+
+      try {
+        const res = await fetch(getUrl(`/rr/${rr.fqdn}`), {
+            method: "delete",
+            headers: {...getAuthHeader()}
+            });
+
+        console.log("fetch delete res: ", res)
+
+        if (!res.ok) {
+          throw Error(res.statusText)
+        }
+        onChange()
+
+    } catch(error) {
+        console.log("Delete failed: ", error)
+        window.alert(`Deletion of fqdn ${rr.fqdn} failed\n\r${error.message}`)
+      }
+    }
+  }
+
+  const deleteRr = async (type, ix=0) => {
+    let rr_obj = {...rr}
+    delete rr_obj.ttl
+    delete rr_obj.fqdn
+
+    // We should not send both rname and email.
+    if ('soa' in rr_obj) {
+      delete rr_obj.soa.rname
+    }
+
+    let found = false
+
+    console.log(`rr_obj is ${rr_obj}: `, rr_obj)
+
+    for (const [key, value] of Object.entries(rr_obj)) {
+      if (key === type) {
+        if (Array.isArray(value) && value.length > 1) {
+          rr_obj[key].splice(ix, 1)
+        } else {
+          delete rr_obj[key]
+        }
+
+        found = true
+        break;
+      }
+    }
+
+    if (!found) {
+      console.log(`The rr item was not found!`)
+      return
+    }
+
+    if (window.confirm(`Do you really want to delete this "${type}" Resorce Record?`)) {
+      console.log(`deleting rr type=${type}, ix=${ix}, new rr: `, rr_obj)
+
+      try {
+        const res = await fetch(getUrl(`/rr/${rr.fqdn}`), {
+          method: "put",
+          headers: {...getAuthHeader(), 
+            'Content-Type':'application/json'},
+          body: JSON.stringify(rr_obj)
+          });
+
+        console.log("fetch delete rr res: ", res)
+
+        if (!res.ok) {
+          throw Error(res.statusText)
+        }
+        onChange()
+
+    } catch(error) {
+        console.log("Delete failed: ", error)
+        window.alert(`Deletion of fqdn ${rr.fqdn} failed\n\r${error.message}`)
+      }
+    }
+  }
  
   return (
     <>
     <tr>
       <td rowSpan={rows + 2}>{rr.fqdn}</td>
     </tr>
-      {Object.entries(rr).map((array) => (
-        <AddRrData type={array[0]} entry={array[1]} />
+      {Object.entries(rr).map((array, ix) => (
+        <AddRrData type={array[0]} entry={array[1]} deleteRr={deleteRr} />
       ))}
     <tr>
       <td colSpan="3">
-      <button className="w3-button w3-red w3-padding" style={{ marginLeft: "1em" }}
-              type="button"> <FaTrashCan/>Delete fqdn</button>
-      <button className="w3-button w3-green w3-padding" style={{ marginLeft: "1em" }}
+      <button className="w3-button w3-red w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
+              type="button" onClick={deleteFqdn}> <FaTrashCan/>Delete fqdn</button>
+      <button className="w3-button w3-green w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
               type="button"> <FaPlus/>Add Resource Record</button>
       </td>
     </tr>
@@ -380,7 +477,7 @@ function ListResourceRecords({ max, zone }) {
         </thead>
         <tbody>
           {rrs.map((entry, id) => (           
-              <RrCells rr={entry}/>
+              <RrCells rr={entry} onChange={reloadCurrent}/>
           ))}
         </tbody>
       </table>
@@ -388,7 +485,7 @@ function ListResourceRecords({ max, zone }) {
         <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep /> From Start</button>
         <button className='w3-button w3-yellow' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
         <button className='w3-button w3-blue' onClick={moveNext} disabled={!hasMore}><FaForward /> Next</button>
-        <button className='w3-button w3-green' onClick={addRr} ><FaPlus />Add fqdn</button>
+        <button className='w3-button w3-green w3-round-large w3-tiny' onClick={addRr} style={{ marginLeft: "1em" }}><FaPlus />Add fqdn</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isEditOpen}
