@@ -209,14 +209,7 @@ RocksDbResource::Transaction::lookupEntryAndSoa(string_view fqdn)
 ResourceIf::TransactionIf::EntryWithBuffer
 RocksDbResource::Transaction::lookup(std::string_view fqdn)
 {
-    try {
-        auto buffer = read(RealKey{fqdn, key_class_t::ENTRY});
-        return {std::move(buffer)};
-    }  catch (const NotFoundException&) {
-        ;
-    }
-
-    return {}; // Not found
+    return read(RealKey{fqdn, key_class_t::ENTRY}, Category::ENTRY, false);
 }
 
 void RocksDbResource::Transaction::iterate(ResourceIf::TransactionIf::key_t key,

@@ -1505,9 +1505,11 @@ uint32_t RrMx::priority() const
 
 Entry::Entry(boost::span<const char> buffer)
     : span_(buffer)
-    , count_{ntohs(header().rrcount)}
-    , index_{mkIndex(span_, header(), count_)}
 {
+    if (!buffer.empty()) {
+        count_ = ntohs(header().rrcount);
+        index_ = mkIndex(span_, header(), count_);
+    }
 }
 
 std::optional<boost::uuids::uuid> Entry::tenantId() const noexcept

@@ -184,8 +184,10 @@ public:
             }
 
             EntryWithBuffer(read_ptr_t && buffer)
-                : Entry{buffer->data()} {
-                buffer_ptr_ = {std::move(buffer)};
+                : Entry{buffer ? buffer->data() : span_t{}} {
+                if (buffer) {
+                    buffer_ptr_ = {std::move(buffer)};
+                }
             }
 
             /// Allow if (instance) { }
