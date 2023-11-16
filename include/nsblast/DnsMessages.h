@@ -332,6 +332,9 @@ public:
 
     /*! Helper function to convert an ordinary email to a rname */
     static std::string fromEmail(const std::string_view& email);
+
+    /*! Helper function to convert an rname to email */
+    static std::string ToEmail(const std::string_view& rname);
 };
 
 class MutableRrSoa : public RrSoa {

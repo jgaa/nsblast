@@ -1361,30 +1361,7 @@ Labels RrSoa::mname() const
 
 string RrSoa::email() const
 {
-    auto rn = rname().string();
-    string email;
-    email.reserve(rn.size());
-    char prev = 0;
-    for(auto it = rn.begin(); it != rn.end(); ++it) {
-        const char ch = *it;
-        if (ch == '.') [[unlikely]] {
-            if (prev == '\\') {
-                ; // escaped
-            } else {
-                // end of segment.
-                email += '@';
-                ++it;
-                copy(it, rn.end(), back_inserter(email));
-                break;
-            }
-        }
-        prev = ch;
-        if (ch != '\\') [[likely]] {
-            email += ch;
-        }
-    }
-
-    return email;
+    return ToEmail(rname().string());
 }
 
 Labels RrSoa::rname() const
@@ -1466,6 +1443,34 @@ string RrSoa::fromEmail(const std::string_view &email)
     }
 
     return rname;
+}
+
+string RrSoa::ToEmail(const std::string_view &rname)
+{
+    auto rn = rname;
+    string email;
+    email.reserve(rn.size());
+    char prev = 0;
+    for(auto it = rn.begin(); it != rn.end(); ++it) {
+        const char ch = *it;
+        if (ch == '.') [[unlikely]] {
+            if (prev == '\\') {
+                ; // escaped
+            } else {
+                // end of segment.
+                email += '@';
+                ++it;
+                copy(it, rn.end(), back_inserter(email));
+                break;
+            }
+        }
+        prev = ch;
+        if (ch != '\\') [[likely]] {
+            email += ch;
+        }
+    }
+
+    return email;
 }
 
 Labels RrCname::cname() const

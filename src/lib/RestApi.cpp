@@ -100,7 +100,7 @@ auto test_glad(boost::asio::io_context& ctx) {
 optional<uint32_t> getTtl(const boost::json::value& json) {
     if (json.is_object()) {
         if (const auto ttl = json.as_object().if_contains("ttl")) {
-            return ttl->as_uint64();
+            return ttl->as_int64();
         }
     }
 
@@ -333,7 +333,7 @@ void toJson(const span_t buffer, const Rr& rr, boost::json::object& obj) {
         const RrMx mx(buffer, rr.offset());
         o["host"] = mx.host().string();
         o["priority"] = mx.priority();
-        obj["mx"] = std::move(o);
+        asArray(obj, "mx").emplace_back(std::move(o));
     } break;
     case TYPE_TXT:
         asArray(obj, "txt").emplace_back(RrTxt(buffer, rr.offset()).string());
@@ -345,20 +345,20 @@ void toJson(const span_t buffer, const Rr& rr, boost::json::object& obj) {
         o["priority"] = srv.priority();
         o["weight"] = srv.weight();
         o["port"] = srv.port();
-        obj["srv"] = std::move(o);
+        asArray(obj, "srv").emplace_back(std::move(o));
     } break;
     case TYPE_AFSDB: {
         boost::json::object o;
         const RrAfsdb ad(buffer, rr.offset());
         o["host"] = ad.host().string();
         o["subtype"] = ad.subtype();
-        obj["afsdb"] = std::move(o);
+        asArray(obj, "afsdb").emplace_back(std::move(o));
     } break;
     case TYPE_RP: {
         boost::json::object o;
         const RrRp rp(buffer, rr.offset());
-        o["mbox"] = rp.mbox().string();
-        o["txt"] = rp.txt().size();
+        o["mbox"] = RrSoa::ToEmail(rp.mbox().string());
+        o["txt"] = rp.txt().string();
         obj["rp"] = std::move(o);
     } break;
     case TYPE_HINFO: {
@@ -660,6 +660,32 @@ void RestApi::refactorZone(boost::json::object &zone)
 void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                     const boost::json::value& json, bool finish)
 {
+    if (auto jttl = getTtl(json)) {
+        ttl = *jttl;
+    }
+
+    const auto addRr = [ttl](StorageBuilder& sb, string_view fqdn, uint64_t type, boost::json::value rdata) {
+        static const array<int, 3> forbidden = {TYPE_SOA, TYPE_NS, TYPE_MX};
+
+        if (type < 0 ||  static_cast<size_t>(type) > numeric_limits<uint16_t>::max()) {
+            throw Response{400, format("Invalid type (type must be an unsigned 16 bit integer): {}", type)};
+        }
+
+        if (std::ranges::any_of(forbidden, [type](auto v) {return v == type;})) {
+            throw Response{400, format("RR type {} can only be accepted by its type name, and with proper json format", type)};
+        }
+
+        if (type == TYPE_OPT) {
+            throw Response{400, "OPT (41) is not a valid RR-type for storage"};
+        }
+
+        if (!rdata.is_string()) {
+            throw Response{400, format("RR type #{} must have a value consisting of a base-64 encoded string.",
+                                       type)};
+        }
+        sb.createBase64(fqdn, type, ttl, rdata.as_string());
+    };
+
     static const boost::unordered_flat_map<string_view, function<void(string_view, uint32_t, StorageBuilder&, const boost::json::value&)>>
         handlers = {
     { "ttl", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
@@ -812,7 +838,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 
             for(const auto& a : v.as_object()) {
                  if (a.key() == "mbox") {
-                    mbox = a.value().as_string();
+                    mbox = RrSoa::fromEmail(a.value().as_string());
                  } else if (a.key() == "txt") {
                     txt = a.value().as_string();
                  } else {
@@ -901,7 +927,7 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             sb.createAfsdb(fqdn, ttl, subtype, host);
         }
     }},
-    { "rr", [](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
+    { "rr", [&addRr](string_view fqdn, uint32_t ttl, StorageBuilder& sb, const boost::json::value& v) {
 
         if (!v.is_array()) {
             throw Response{400, "Json element 'rr' must be an array of objects(s)"};
@@ -914,11 +940,11 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             }
 
             uint16_t type = 0;
-            string_view rdata;
+            boost::json::value rdata;
 
             for(const auto& e : rr.as_object()) {
                 if (e.key() == "rdata") {
-                    rdata = e.value().as_string();
+                    rdata = e.value();
                 } else if (e.key() == "type") {
                     const auto val = e.value().as_int64();
                     if (val < 0 ||  static_cast<size_t>(val) > numeric_limits<uint16_t>::max()) {
@@ -934,22 +960,16 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 throw Response{400, "Invalid or missing type in rr in "s + string{fqdn}};
             }
 
-            if (type == TYPE_OPT) {
-                throw Response{400, "OPT (41) is not a valid RR-type for storage"};
-            }
-
-            sb.createBase64(fqdn, type, ttl, rdata);
+            addRr(sb , fqdn, type, rdata);
         }
     }}
     };
 
+
+
     LOG_TRACE << "RestApi::build - json is_object=" << json.is_object()
               << ", kind=" << json.kind()
               << ", json=" << boost::json::serialize(json);
-
-    if (auto jttl = getTtl(json)) {
-        ttl = *jttl;
-    }
 
     for(const auto& obj : json.as_object()) {
         if (auto it = handlers.find(obj.key()); it != handlers.end()) {
@@ -961,6 +981,24 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
                 throw Response{400, "Failed converting '"s + string{obj.key()} + "' from json payload to internal format."};
             }
         } else {
+            const auto key = obj.key();
+            // Handle `#id` type entries
+            // The '#' is followed by a number identifying the RR type.
+            // The payload for the rrdata must be a base64 encoded string
+            if (!key.empty() && key.front() == '#') {
+                if (const auto id = stoi(key.substr(1))) {
+
+                    if (!obj.value().is_array()) {
+                        throw Response{400, format("#{} type must carry an array of values.", id)};
+                    }
+
+                    for(const auto& v: obj.value().as_array()) {
+                        addRr(sb, fqdn, id, v);
+                    }
+                    continue;
+                }
+            }
+
             throw Response{400, "Unknown entity: "s + string(obj.key())};
         }
     }
