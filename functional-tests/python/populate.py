@@ -134,4 +134,4 @@ def test_create_all_rrs(global_data):
     create_zone(global_data, zone)
     create_all_rrs(global_data, 'all.' + zone, zone)
     for i in range(20):
-        create_a_rrs(global_data, 'test{}.{}'.format(i, zone), zone)
+        create_a_rrs(global_data, 'test-{}x.{}'.format(i, zone), zone)
