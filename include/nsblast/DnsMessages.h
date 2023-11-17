@@ -333,6 +333,8 @@ public:
     /*! Helper function to convert an ordinary email to a rname */
     static std::string fromEmail(const std::string_view& email);
 
+    static std::string_view fromEmailIfEmail(std::string_view rname, std::string& storage);
+
     /*! Helper function to convert an rname to email */
     static std::string ToEmail(const std::string_view& rname);
 };

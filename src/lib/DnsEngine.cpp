@@ -284,7 +284,6 @@ createBuilder(const DnsEngine::Request &request, const Message& message,
 
             // Use whatever the OPT asked for, in the
             // range from MAX_UDP_QUERY_BUFFER to maxBufferSizeWithOpt
-            auto opt_len = opt.maxBufferLen();
             use_buffer_size = max<uint16_t>(
                         min<uint16_t>(opt.maxBufferLen(), maxBufferSizeWithOpt),
                         MAX_UDP_QUERY_BUFFER);

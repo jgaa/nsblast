@@ -11,11 +11,13 @@ project(nsblast-all
     VERSION ${NSBLAST_VERSION}
     LANGUAGES CXX)
 
+
+
 set(NSBLAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(NSBLAST_WITH_TESTS "Enable Tests" ON)
-option(NSBLAST_WITH_DOCS "Generate documentation" ON)
+option(NSBLAST_WITH_DOCS "Generate documentation" OFF)
 option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
 option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" OFF)
 option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)

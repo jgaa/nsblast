@@ -4,6 +4,7 @@
 #include <string>
 #include <boost/asio.hpp>
 #include <algorithm>
+#include <ranges>
 
 #include "nsblast/DnsMessages.h"
 #include "nsblast/detail/write_labels.hpp"
@@ -1036,7 +1037,7 @@ void Labels::parse(boost::span<const char> buffer, size_t startOffset)
                 }
 
                 auto ptr = resolvePtr(buffer, offset);
-                if (ptr >= buffer.size() || ptr < 0) {
+                if (ptr >= buffer.size()) {
                     throw runtime_error("Labels::parse: Pointer tried to escape buffer");
                 }
 
@@ -1166,9 +1167,7 @@ void Labels::Iterator::followPointers()
             const auto ptr = resolvePtr(buffer_, current_loc_);
 
             // The parsing validated the pointers. But to avoid coding errors...
-            assert(ptr >= 0);
             assert(ptr < buffer_.size());
-
             current_loc_ = ptr;
         }
     }
@@ -1440,6 +1439,16 @@ string RrSoa::fromEmail(const std::string_view &email)
         }
 
         rname += ch;
+    }
+
+    return rname;
+}
+
+string_view RrSoa::fromEmailIfEmail(std::string_view rname, std::string &storage)
+{
+    if (contains(rname, '@')) {
+        storage = fromEmail(rname);
+        return storage;
     }
 
     return rname;
@@ -1836,9 +1845,9 @@ void Entry::Iterator::update()
         const auto pos = ntohs(ix_->offset);
         assert(pos < entry_->buffer().size() + 10);
         crr_ = {entry_->buffer(), pos};
-        auto crr_t = crr_.type();
-        auto ix_t_raw = ix_->type;
-        auto ix_t = htons(ix_->type);
+//        auto crr_t = crr_.type();
+//        auto ix_t_raw = ix_->type;
+//        auto ix_t = htons(ix_->type);
         //auto ix_xx = boost::endian::big_to_native(ix_->type);
         assert(crr_.type() == ntohs(ix_->type));
         return;

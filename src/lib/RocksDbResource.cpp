@@ -149,7 +149,7 @@ RocksDbResource::Transaction::~Transaction()
     LOG_TRACE << "Ending " << (trx_ ? "actual" : "closed/failed")  << " transaction " << uuid();
     if (trx_) {
         try {
-            rollback();
+            rollback_();
         }  catch (const runtime_error& ex) {
             LOG_WARN << "RocksDbResource::Transaction::~Transaction - Caught exception from rollback(): "
                      << ex.what();
@@ -436,18 +436,7 @@ void RocksDbResource::Transaction::commit()
 
 void RocksDbResource::Transaction::rollback()
 {
-    call_once(once_, [&] {
-        if (dirty_) {
-            LOG_TRACE << "Rolling back transaction " << uuid();
-        } else {
-            LOG_TRACE << "Closing clean transaction " << uuid();
-        }
-        auto status = trx_->Rollback();
-        if (!status.ok()) {
-            LOG_ERROR << "Transaction rollback failed " << uuid() << " : " << status.ToString();
-            throw InternalErrorException{"Failed to rollback transaction", "Database error/rollback"};
-        }
-    });
+    rollback_();
 }
 
 string RocksDbResource::Transaction::getRocksdbVersion()
@@ -497,6 +486,22 @@ void RocksDbResource::Transaction::addDeletedToTrxlog(span_t key, Category categ
             part->set_columnfamilyix(static_cast<int32_t>(category));
         }
     }
+}
+
+void RocksDbResource::Transaction::rollback_()
+{
+    call_once(once_, [&] {
+        if (dirty_) {
+            LOG_TRACE << "Rolling back transaction " << uuid();
+        } else {
+            LOG_TRACE << "Closing clean transaction " << uuid();
+        }
+        auto status = trx_->Rollback();
+        if (!status.ok()) {
+            LOG_ERROR << "Transaction rollback failed " << uuid() << " : " << status.ToString();
+            throw InternalErrorException{"Failed to rollback transaction", "Database error/rollback"};
+        }
+    });
 }
 
 RocksDbResource::RocksDbResource(const Config &config)

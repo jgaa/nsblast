@@ -71,7 +71,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
+#set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 add_dependencies(${PROJECT_NAME} rocksdb logfault mkres externalYahat glad ${GRPC_LIBS})
 target_link_libraries(${PROJECT_NAME}
     PRIVATE

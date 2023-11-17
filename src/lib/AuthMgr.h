@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <numeric>
+#include <ranges>
 #include <set>
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <chrono>
@@ -36,7 +39,7 @@ public:
         keyT key_;
     };
 
-    Lru(size_t capacity) : capacity_{capacity} {}
+    explicit Lru(size_t capacity) : capacity_{capacity} {}
 
     void emplace(keyT key, dataT data) {
         auto instance = std::make_unique<Item>(std::move(key), std::move(data));
@@ -125,13 +128,11 @@ static retT getBit(const eT perm) noexcept {
     return (retT{1} << bitshift);
 }
 
-template <typename T, typename retT = detail::perms_t>
+template <range_of<int> T, typename retT = detail::perms_t>
 static detail::perms_t getPerms(const T& perms) noexcept {
-    retT perm = {};
-    for(const auto p : perms) {
-        perm |= getBit<retT>(p);
-    }
-    return perm;
+    return std::ranges::fold_left(perms, retT{0}, [](auto s, auto v) {
+        return s |= getBit<retT>(v);
+    });
 }
 
 struct ZoneFilter {
@@ -154,7 +155,7 @@ struct Role {
 
     Role() = default;
 
-    Role(std::string name)
+    explicit Role(std::string name)
         : name_{std::move(name)} {}
 
     bool appliesToAll() const noexcept {
@@ -190,7 +191,7 @@ public:
         init(tenant);
     };
 
-    Session(AuthMgr& mgr)
+    explicit Session(AuthMgr& mgr)
         : mgr_{mgr}, tenant_{boost::uuids::to_string(nsblastTenantUuid)}, who_{"somebody"}
         , tenant_id_{nsblastTenantUuid} {};
 
@@ -269,7 +270,7 @@ private:
 
 class AuthMgr {
 public:
-    AuthMgr(Server& server);
+    explicit AuthMgr(Server& server);
 
     yahat::Auth authorize(const yahat::AuthReq& ar);
 

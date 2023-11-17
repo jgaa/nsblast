@@ -602,7 +602,6 @@ void Slave::handleIxfrPayloads(ResourceIf::TransactionIf &trx,
                               << ". I expected " << fqdn_;
                     throw runtime_error{"Slave::sync - Invalid AXFR payload. Unexpected fqdn in first SOA."};
                 }
-                id = reply.header().id();
                 firstSoa = soa;
                 stage = Stage::HAVE_FIRST_SOA;
                 continue;

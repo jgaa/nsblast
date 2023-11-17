@@ -34,7 +34,7 @@ auto getZoneJson(string_view zone = "example.com") {
     "serial": 1000,
     "minimum": 1004,
     "mname": "ns1.{}",
-    "rname": "hostmaster@{}"
+    "rname": "hostmaster.{}"
     }},
     "ns": [
     "ns1.{}",

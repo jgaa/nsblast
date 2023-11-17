@@ -50,14 +50,12 @@ int main(int argc, char* argv[]) {
         setenv("LC_ALL", "C", 1);
     }
 
-
     Config config;
     config.http.http_basic_auth_realm = "nsBLAST";
     std::string log_level = "info";
     std::string log_level_console = "info";
     std::string log_file;
     bool trunc_log = true;
-    bool reset_auth = false;
     int restore_backup_id = 0;
     int validate_backup_id = 0;
 

@@ -1,8 +1,9 @@
 
+#include <format>
+
 #include <boost/json.hpp>
 
 #include "nsblast/DnsEngine.h"
-#include "nsblast/ResourceIf.h"
 #include "nsblast/logging.h"
 #include "nsblast/util.h"
 #include "Notifications.h"
@@ -36,8 +37,8 @@ std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role)
 
 std::ostream& operator << (std::ostream& out, const nsblast::Server::VersionInfo& v) {
     out << v.appname << ": " << v.nsblast << endl;
-    for(const auto& [n, v]: v.components) {
-        out << n << ": " << v << endl;
+    for(const auto& [name, value]: v.components) {
+        out << name << ": " << value << endl;
     }
     return out;
 }
@@ -48,15 +49,17 @@ using namespace ::nsblast::lib;
 using namespace yahat;
 
 namespace {
-string_view cppStrandard() {
-    if constexpr (__cplusplus == 202101L)
+string cppStrandard() {
+    if constexpr (__cplusplus == 202302L)
         return "C++23";
+    if constexpr (__cplusplus > 202002L && __cplusplus < 202302)
+        return "C++23 (partially)";
     if constexpr (__cplusplus == 202002L)
         return "C++20";
     if constexpr (__cplusplus == 201703L)
         return "C++17";
 
-    return "unknown";
+    return std::format("unknown ({})", __cplusplus);
 }
 } // anon ns
 

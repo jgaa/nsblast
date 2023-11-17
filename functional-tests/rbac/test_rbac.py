@@ -689,11 +689,15 @@ def test_perms_create_backup(global_data):
     assert validate_permission(global_data, 'CREATE_BACKUP', 
                                lambda auth : create_something(global_data, 'backup', None, {}, auth), auth=adm_auth)
 
+    time.sleep(1)
+
 def test_perms_list_backup(global_data):
     adm_auth=('admin', global_data['pass'])
 
     assert validate_permission(global_data, 'LIST_BACKUPS', 
                                lambda auth : list_something(global_data, 'backup', auth), auth=adm_auth)
+
+    time.sleep(1)
 
 def test_perms_verify_backup(global_data):
     adm_auth=('admin', global_data['pass'])
@@ -701,8 +705,12 @@ def test_perms_verify_backup(global_data):
     assert validate_permission(global_data, 'VERIFY_BACKUP', 
                                lambda auth : create_something(global_data, 'backup', '1/verify', {}, auth), auth=adm_auth)
 
+    time.sleep(1)
+
 def test_perms_delete_backup(global_data):
     adm_auth=('admin', global_data['pass'])
 
     assert validate_permission(global_data, 'DELETE_BACKUP', 
                                lambda auth : delete_something(global_data, 'backup', '1', auth), auth=adm_auth)
+
+    time.sleep(1)

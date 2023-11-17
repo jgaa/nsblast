@@ -92,11 +92,6 @@ string_view getQueryArg(const yahat::Request& req, const std::string& name, stri
     return defaultVal;
 }
 
-auto test_glad(boost::asio::io_context& ctx) {
-    jgaa::glad::AsyncCache<string, string> cache([](const string& key, const auto& cb){;}, ctx);
-    cache.get("teste", [](const auto& err, const auto& value) {});
-}
-
 optional<uint32_t> getTtl(const boost::json::value& json) {
     if (json.is_object()) {
         if (const auto ttl = json.as_object().if_contains("ttl")) {
@@ -835,10 +830,11 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
 
             string_view mbox;
             string_view txt;
+            std::string email;
 
             for(const auto& a : v.as_object()) {
                  if (a.key() == "mbox") {
-                    mbox = RrSoa::fromEmail(a.value().as_string());
+                    mbox = RrSoa::fromEmailIfEmail(a.value().as_string(), email);
                  } else if (a.key() == "txt") {
                     txt = a.value().as_string();
                  } else {
@@ -2012,7 +2008,7 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
 
         server().db().dbTransaction()->iterateFromPrevT(
             *key, ResourceIf::Category::ACCOUNT,
-            [&zone_list, &tenant_id, all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
+            [&zone_list, &tenant_id, all=all, page_size, &count, &more, this](ResourceIf::TransactionIf::key_t key, span_t value) mutable {
 
             /* In the normal case, we are listig zones for a tenant.
              * In that case we can use string_view directly to the data in the key.

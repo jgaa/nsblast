@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <ranges>
 #include <variant>
 #include <locale>
 
@@ -17,6 +19,9 @@
 #include "nsblast/DnsMessages.h"
 
 namespace nsblast::lib {
+    template <class T, class V>
+    concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
+
     boost::uuids::uuid newUuid();
     std::string newUuidStr();
     bool isValidUuid(std::string_view uuid);
@@ -85,6 +90,12 @@ namespace nsblast::lib {
      */
     std::string sha256(span_t what, bool encodeToBase64 = true);
 
+    /*! Contains algortithm; to see if a value exist in a range */
+    template <typename V>
+    bool contains(const range_of<V> auto& r, const V&& what) {
+        return std::ranges::find_if(r, [&what](auto v) { return what == v;});
+    }
+
     template <typename T>
     auto makeUniqueFrom(T *ptr) {
         return std::unique_ptr<T>{ptr};
@@ -95,7 +106,7 @@ namespace nsblast::lib {
         return std::shared_ptr<T>{ptr};
     }
 
-    template <typename I, typename T>
+    template <typename I, std::ranges::range T>
     I getValueAt(const T& b, size_t loc) {
         const auto tlen = sizeof(I);
         if (loc + (tlen -1) >= b.size()) {
@@ -106,17 +117,17 @@ namespace nsblast::lib {
         return boost::endian::big_to_native(*v);
     }
 
-    template <typename T>
+    template <std::ranges::range T>
     auto get16bValueAt(const T& b, size_t loc) {
         return getValueAt<uint16_t>(b, loc);
     }
 
-    template <typename T>
+    template <std::ranges::range T>
     auto get32bValueAt(const T& b, size_t loc) {
         return getValueAt<uint32_t>(b, loc);
     }
 
-    template <typename T, typename I>
+    template <std::ranges::range T, typename I>
     void setValueAt(const T& b, size_t loc, I value) {
         if (loc + (sizeof(I) -1) >= b.size()) {
             throw std::runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
@@ -127,8 +138,7 @@ namespace nsblast::lib {
     }
 
     // ASCII tolower
-    template <typename T>
-    std::string toLower(const T& v) {
+    std::string toLower(const range_of<char> auto& v) {
         std::string out;
         out.resize(v.size());
         auto p = out.begin();
@@ -154,8 +164,9 @@ namespace nsblast::lib {
      * \param fullMatch If true, require the two strings to be equal.
      *          If false, require the two strings to be eual until the end of `start`.
      */
-    template <typename startT, typename fullT>
-    bool compareCaseInsensitive(const startT& start, const fullT& full, bool fullMatch = true) {
+    bool compareCaseInsensitive(const range_of<char> auto& start,
+                                const range_of<char> auto& full,
+                                bool fullMatch = true) {
         static const std::locale loc{"C"};
 
         auto r = full.begin();
@@ -178,8 +189,7 @@ namespace nsblast::lib {
         return true;
     }
 
-    template <typename T>
-    void trim(T& str) {
+    void trim(range_of<char> auto& str) {
         static const std::locale loc{"C"};
 
         size_t num_front = 0, num_end = 0;
@@ -266,8 +276,7 @@ namespace nsblast::lib {
         data_t d_;
     };
 
-    template <typename T>
-    bool hasUppercase(const T& str) noexcept {
+    bool hasUppercase(const range_of<char> auto& str) noexcept {
         for(char ch : str) {
             if (ch >= 'A' && ch <= 'Z') {
                 return true;
@@ -277,8 +286,7 @@ namespace nsblast::lib {
     }
 
     // Get a key for a fqdn
-    template <typename T>
-    FqdnKey toFqdnKey(T && w) {
+    FqdnKey toFqdnKey(range_of<char> auto && w) {
         if (hasUppercase(w)) {
             return FqdnKey{toLower(w)};
         }
@@ -294,17 +302,18 @@ namespace nsblast::lib {
      */
     span_t getNextKey(span_t fqdn) noexcept;
 
-    template <typename T> auto to_asio_buffer(T& b) {
+    template <std::ranges::range T>
+    auto to_asio_buffer(T& b) {
         return boost::asio::mutable_buffer{b.data(), b.size()};
     }
 
-    template <typename T> auto to_asio_buffer(const T& b) {
+    template <std::ranges::range T>
+    auto to_asio_buffer(const T& b) {
         return boost::asio::const_buffer{b.data(), b.size()};
     }
 
     // Very simple, does not handle utf8
-    template<typename T>
-    std::string toPrintable(const T& data) {
+    std::string toPrintable(const range_of<char> auto& data) {
         std::ostringstream o;
 
         for(auto ch : data) {
@@ -354,11 +363,9 @@ namespace nsblast::lib {
      */
     template <size_t Num>
     Labels getLabelsFromRdata(span_t rd, size_t index) {
-        size_t offset = 0;
         if (index >= Num) {
             throw std::runtime_error{"getTLabelsFromRdata: Index out of range"};
         }
-        std::string_view rval;
         Labels label;
         for(size_t i = 0; i <= index; ++i) {
             if (rd.empty()) {
@@ -383,7 +390,7 @@ namespace nsblast::lib {
     // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
     template <typename T>
     struct ScopedExit {
-        ScopedExit(T&& fn)
+        explicit ScopedExit(T&& fn)
             : fn_{std::move(fn)} {}
 
         ~ScopedExit() {
