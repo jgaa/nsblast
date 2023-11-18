@@ -11,7 +11,6 @@ import {
   FaXmark,
   FaTrashCan
 } from "react-icons/fa6"
-//import ErrorScreen from '../modules/ErrorScreen';
 import { BeatLoader } from 'react-spinners';
 import PopupDialog, { usePopupDialog } from '../modules/PopupDialog';
 import {
@@ -20,7 +19,89 @@ import {
     useLocation
   } from "react-router-dom";
 import qargs from '../modules/qargs';
-  
+
+const rrProto =
+// Defines valid RR's and their format
+ {
+  soa: {
+    brief: "Zone info",
+    canAdd: false,
+    proto: {
+        mname: "",
+        rname: "",
+        email: "",
+        refresh: 0,
+        retry: 0,
+        expire: 0,
+        minimum: 0
+      },
+    },
+  ns: {
+    brief: "Name Server",
+    canAdd: false,
+    proto: [""],
+    },
+  a: {
+    brief: "IP number v4 or v6",
+    canAdd: true,
+    proto: [""],
+    },
+  mx: {
+    brief: "Mail Server info",
+    canAdd: true,
+    proto: [
+      {
+        host: "",
+        priority: 0
+      }
+      ],
+    },
+  txt: {
+    brief: "Text record",
+    canAdd: true,
+    proto: [""],
+    },
+  hinfo: {
+    brief: "",
+    canAdd: true,
+    proto: {
+      cpu: "",
+      os: ""
+      },
+    },
+  rp: {
+    brief: "",
+    canAdd: true,
+    proto: {
+      mbox: "",
+      txt: ""
+      },
+    },
+  afsdb: {
+    brief: "",
+    canAdd: true,
+    proto: [
+      {
+        host: "",
+        subtype: 0
+      }
+    ],
+    },
+  srv: {
+    brief: "",
+    canAdd: true,
+    proto: [
+      {
+        target: "",
+        priority: 0,
+        weight: 0,
+        port: 0
+      }
+    ],
+    }
+  }
+
+
 function useQuery() { 
     const { search } = useLocation();
   
@@ -40,8 +121,7 @@ function getRrRows(rr) {
     }
   }
 
-  //return 2
-  return rows ? rows : 1
+  return rows ? rows + 2 : 2
 }
 
 function RrObject({name, value}) {
@@ -131,7 +211,7 @@ function AddRrData({type, entry, deleteRr, editRr, ix=0}) {
   }
 }
 
-function RrCells({rr, onChange, onEdit, rrIx}) {
+function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
   const {getUrl, getAuthHeader} = useAppState();
 
   if (!rr) {
@@ -227,11 +307,15 @@ function RrCells({rr, onChange, onEdit, rrIx}) {
       }
     }
   }
+
+  const addRr = () => {
+    onAdd(rrIx, rr.fqdn)
+  }
  
   return (
     <>
     <tr>
-      <td rowSpan={rows + 2}>{rr.fqdn}</td>
+      <td rowSpan={rows}>{rr.fqdn}</td>
     </tr>
       {Object.entries(rr).map((array, ix) => (
         <AddRrData type={array[0]} entry={array[1]} deleteRr={deleteRr} editRr={editRr}/>
@@ -239,9 +323,9 @@ function RrCells({rr, onChange, onEdit, rrIx}) {
     <tr>
       <td colSpan="3">
       <button className="w3-button w3-red w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
-              type="button" onClick={deleteFqdn}> <FaTrashCan/>Delete fqdn</button>
+              type="button" onClick={deleteFqdn}> <FaTrashCan/> Delete fqdn</button>
       <button className="w3-button w3-green w3-padding w3-round-large w3-tiny" style={{ marginLeft: "1em" }}
-              type="button"> <FaPlus/>Add Resource Record</button>
+              type="button" onClick={addRr}> <FaPlus/> Add Resource Record</button>
       </td>
     </tr>
     </>
@@ -365,12 +449,13 @@ function InputTable({children}) {
   )
 }
 
-function RrInputs({args, registerRef}) {
+function RrInputs({args, registerRef, proto=null}) {
   // Take the object we want to edit from 'rr'
-  let val = args.rr[args.type]
+  
+  let val = proto ? proto : args.rr[args.type]
   
   if (Array.isArray(val)) {
-    val = val[args.ix]
+    val = val[proto ? 0 : args.ix]
   }
 
   // 'args.type' is the DNS resource type we are editing
@@ -395,7 +480,6 @@ function RrInputs({args, registerRef}) {
 
   console.log(`RrInputs val: `, val)
 
-  
   return (
     <InputTable>
     <RrInputText name="value" value={val} registerRef={registerRef}/>
@@ -476,10 +560,29 @@ function castStringToType(type, newVar) {
 }
 
 function setValueInRr(rr, type, ix, value) {
-  if (Array.isArray(rr[type])) {
-    rr[type][ix] = value
+
+  const isAdding = ix === -1
+  const destType = Object.hasOwn(rr, type) ? rr[type] : rrProto[type].proto
+
+  console.log(`setValueInRr type=${type} ix=${ix} value=${value} isAdding=${isAdding} rr=`, rr, 'dstType=', destType)
+
+  if (Array.isArray(destType)) {
+    if (isAdding) {
+      // add
+      if (!Object.hasOwn(rr, type)) {
+        rr[type] = []
+      } 
+      
+      rr[type].push(value)
+    } else {
+      rr[type][ix] = value
+    }
   } else {
-    rr[type] = value
+    if (isAdding && Object.hasOwn(rr, type)) {
+      throw Error(`There is already a resource-type ${type} in this fqdn.`)
+    } else {
+      rr[type] = value
+    }
   }
 
   return rr
@@ -490,12 +593,80 @@ function prepareRrForUpdate(rr) {
   return rr
 }
 
-function EditRr({args}) {
+function SelectRr({onSelectionChanged, enable, filter}) {
+  const [all] =  useState(rrProto)
+
+  if (!enable) {
+    return (<></>);
+  }
+
+  let types = Object.keys(all).filter((name) => (all[name].canAdd)).filter((name) => (!filter.includes(name)))
+  types.sort();
+
+  const onChange = (event) => {
+
+    let name = ""
+    let proto = {}
+
+    const selection = event.target.value
+
+    if (selection !== "select") {
+        proto = all[selection].proto
+        name = selection
+    }
+
+    console.log(`SelectRr selextion=${selection} proto=`, proto)
+
+    onSelectionChanged(name, proto)
+  }
+
+  return (
+    <div class="w3-row w3-section">
+    <div class="w3-col" style={{width:"10em"}}>Resource type</div>
+    <div class="w3-rest">
+    <select className='w3-select w3-border' onChange={onChange}>
+      <option value="select"> -- Select a Resource type -- </option>
+
+    {types.map((name) => (
+      <option value={name}>{name} {all[name].brief}</option>
+    ))}
+    </select>
+    </div>
+    </div>
+  )
+}
+
+// Some rr types can only occur once (non arrays)
+// Prevent us from allowing the user to select such a type from the current rr
+// if it is already used.
+function filterUsedRrTypes(rr) {
+  let filter = []
+
+  const names = Object.keys(rr)
+  names.map((name) => {
+    const isArray = Array.isArray(rr[name])
+    console.log(`fitering: name=${name}, rr=`, rr, ' is array=', isArray)
+    if (!isArray) {
+      filter.push(name)
+    }
+  })
+
+  console.log(`filterUsedRrTypes: filter=`, filter, ' rr:', rr)
+
+  return filter;
+}
+
+function AddRr({args}) {
+  const isEditing = args.mode === 'editRr'
   const {getUrl, getAuthHeader, setToken} = useAppState();
   const {close} = usePopupDialog();
   const [formRefs, setFormRefs] = useState({})
+  const [proto, setProto] = useState({})
+  const [inputIsValid, setInputIsValid] = useState(isEditing)
+  const [rrType, setRrType] = useState(isEditing ? args.type : "")
+  const [filteredRrs, setFilteredRrs] = useState(filterUsedRrTypes(args.rr))
 
-  console.log(`EditRr args: `, args)
+  console.log(`AddRr args: `, args)
 
   // Let the individual inputs register their refs here
   // We will collect the updated values on submit
@@ -509,8 +680,36 @@ function EditRr({args}) {
     setFormRefs(formRefs)
   }
 
+  const onSelectinChanged = (name, selectedProto) => {
+    let cleared = formRefs
+    const keys = Object.keys(cleared)
+    keys.map((key) => {
+      if (Object.hasOwn(cleared[key], 'current') && cleared[key].current !== null) {
+        cleared[key].current.value = ""
+      }
+    })
+    setFormRefs(cleared)
+
+    console.log(`onSelectinChanged: selectedProto for ${name} is `, selectedProto)
+    setProto(selectedProto)
+
+    setInputIsValid(name !== '')
+    setRrType(name)
+  }
+
   const submit = async (e) => {
     e.preventDefault();
+
+    let orig = isEditing ? args.rr[rrType] : proto 
+
+    // If we are using a type that is not in the current orig (used to determine the new values type)
+    // use the RR's prototype.
+    if (!Object.hasOwn(orig, rrType)) {
+      console.log(`submit: !Object.hasOwn(${rrType}) orig=`, orig)
+      orig = rrProto[rrType].proto
+    }
+
+    console.log(`submit: isEditing=${isEditing}, rrType=${rrType} orig=`, orig, ' proto=', proto)
 
     let edited_value = {}
 
@@ -527,13 +726,13 @@ function EditRr({args}) {
 
       // What is the original type?
       let orgType = null
-      if (Array.isArray(args.rr[args.type])) {
-        orgType = typeof args.rr[args.type][0][name]
+      if (Array.isArray(orig)) {
+        orgType = typeof orig[0][name]
       } else {
-        orgType = typeof args.rr[args.type][name]
+        orgType = typeof orig[name]
       }
 
-      console.log(`submit: orgType=${orgType} args.type=${args.type} name=${name} value=${value}`)
+      console.log(`submit: orgType=${orgType} type=${rrType} name=${name} value=${value}`)
 
       // Build an object
       edited_value[name] = castStringToType(orgType, value)
@@ -542,7 +741,8 @@ function EditRr({args}) {
     console.log(`edited_value: `, edited_value)
 
     // Now, update the rr with the edited entry
-    const new_rr = prepareRrForUpdate(setValueInRr(args.rr, args.type, args.ix, edited_value))
+    const ix = isEditing ? args.ix : -1
+    const new_rr = prepareRrForUpdate(setValueInRr(args.rr, rrType, ix, edited_value))
     console.log(`new_rr: `, new_rr)
 
     const fqdn = args.fqdn
@@ -558,7 +758,6 @@ function EditRr({args}) {
       console.log("fetch res: ", res)
 
       if (res.ok) {
-          // Todo - some OK effect
           close()
       } else {
         throw Error(res.statusText)
@@ -582,11 +781,9 @@ function EditRr({args}) {
       </div>
       <form className="w3-container" onSubmit={submit}>
 
-        {/* <label>Some Data</label >
-        <div><input ref={nameRef} className="w3-input" type="text" required="true" /><span>.{args.zone}</span></div> */}
-        <RrInputs args={args} registerRef={registerRef}/>
-
-        <button className="w3-button w3-green w3-padding" type="submit" ><FaFloppyDisk /> Save</button>
+        <RrInputs args={args} proto={isEditing ? null : proto} registerRef={registerRef}/>
+        <SelectRr onSelectionChanged={onSelectinChanged} enable={!isEditing} filter={filteredRrs}/>
+        <button className="w3-button w3-green w3-padding" type="submit" disabled={!inputIsValid} ><FaFloppyDisk /> Save</button>
         <button className="w3-button w3-gray w3-padding" style={{ marginLeft: "1em" }}
           type="button" onClick={onCancel}><FaXmark />Cancel</button>
       </form>
@@ -594,13 +791,18 @@ function EditRr({args}) {
   )
 }
 
-function AddPopup({args}) {
-  if (args.mode === 'addFqdn') {
-    return (<AddFqdn zone={args.zone} caption={args.caption}/>)
-  }
 
-  if (args.mode === 'editRr') {
-    return (<EditRr args={args}/>)
+function AddPopup({args}) {
+
+  switch(args.mode) {
+    case 'addFqdn':
+      return (<AddFqdn args={args}/>)
+    case 'editRr':
+      return (<AddRr args={args}/>) 
+    case 'addRr':
+      return (<AddRr args={args}/>) 
+    default:
+      throw Error(`AddPopup: Unknown mode ${args.mode}`)
   }
 }
 
@@ -665,6 +867,11 @@ function ListResourceRecords({ max, zone }) {
         setEditOpen(true)
       }
 
+      const addRr = (rrIx, fqdn) => {
+        setDlgArgs({mode: 'addRr', zone:zone, fqdn:fqdn, caption: 'Add Resource Record', rr:rrs[rrIx]})
+        setEditOpen(true)
+      }
+
       const onEditClosed = () => {
         console.log('Edit rr dialog closed')
         setEditOpen(false)
@@ -700,7 +907,7 @@ function ListResourceRecords({ max, zone }) {
         </thead>
         <tbody>
           {rrs.map((entry, ix) => (           
-              <RrCells rr={entry} onChange={reloadCurrent} onEdit={editRr} rrIx={ix}/>
+              <RrCells rr={entry} onChange={reloadCurrent} onEdit={editRr} onAdd={addRr} rrIx={ix}/>
           ))}
         </tbody>
       </table>
