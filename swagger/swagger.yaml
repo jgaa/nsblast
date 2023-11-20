@@ -83,6 +83,12 @@ paths:
           description: Start the listing after this fqdn. This can be used to paginate a listing of more items than the first page (max 1000 items) is available.
           schema:
             type: string
+        - name: direction
+          in: query
+          description: Iterate `forward` or `backward`. The direction is ignored unless `from` is set.
+          schema:
+              type: string
+          default: forward
       responses:
         "200":
           description: "Success"

@@ -22,6 +22,19 @@ namespace nsblast::lib {
     template <class T, class V>
     concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
+    // Takes a range of json values (typically an json::array) and sorts them.
+    // If the values are objects, the element named 'key' is used to sort.
+    // It is assumed that `json[i][key].is_string()`.
+    // If not, the algorithm expect the values to be strings.
+    void sort_json(range_of<boost::json::value> auto& json, std::string_view key = "") {
+        std::ranges::sort(json, [key](const auto& left, const auto& right) {
+            if (left.is_object()) {
+                return left.as_object().at(key).as_string() < right.as_object().at(key).as_string();
+            }
+            return left.as_string() < right.as_string();
+        });
+    }
+
     boost::uuids::uuid newUuid();
     std::string newUuidStr();
     bool isValidUuid(std::string_view uuid);

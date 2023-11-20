@@ -57,21 +57,32 @@ public:
          *  key.
          */
         template <typename fnT>
-        void iterateFromPrevT(key_t& key,  Category category, fnT fn, bool skipKey = true) {
+        void iterateFromPrevT(key_t& key,  Category category, fnT fn, bool skipKey = true, bool iterateForward = true) {
             auto it = makeUniqueFrom(trx_->GetIterator({}, owner_.handle(category)));
             it->SeekForPrev(toSlice(key));
+
+            const auto next = [&it, iterateForward] {
+                if (iterateForward)
+                    return it->Next();
+                return it->Prev();
+            };
+
             if (it->Valid()) {
                 if (skipKey) {
                     // Skip the 'last' key.
-                    it->Next();
+                    next();
                 }
             } else {
                 // The key pointed potentially to an item prior to the first key ion the data.
                 // Fall back to searching for the first key.
-                it->SeekToFirst();
+                if (iterateForward) {
+                    it->SeekToFirst();
+                } else {
+                    it->SeekToLast();
+                }
             }
 
-            for(; it->Valid(); it->Next()) {
+            for(; it->Valid(); next()) {
                 const auto& k = it->key();
                 if (!key.isSameKeyClass(k)) [[unlikely]] {
                     return;

@@ -54,6 +54,8 @@ public:
 private:
     size_t getPageSize(const yahat::Request &req) const;
     std::string_view getFrom(const yahat::Request &req) const;
+    // Forward is true, backwards is false
+    bool getDirection(const yahat::Request &req) const;
 
     Server& server() noexcept {
         assert(server_);

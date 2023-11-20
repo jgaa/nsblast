@@ -1982,7 +1982,9 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
 
     auto page_size = getPageSize(req);
     auto from = getFrom(req);
+    bool forward = true;
     if (!from.empty()) {
+        forward = getDirection(req);
         // From last key
         if (!validateFqdn(from)) {
             return {400, "Invalid fqdn in 'from' argument"};
@@ -2058,7 +2060,11 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
             }
 
             return true;
-        });
+        }, true, forward);
+
+        if (!forward) {
+            sort_json(zone_list, "zone");
+        }
 
         boost::json::object json;
         json["rcode"] = 200;
@@ -2181,6 +2187,22 @@ string_view RestApi::getFrom(const yahat::Request &req) const
         return it->second;
     }
     return {};
+}
+
+bool RestApi::getDirection(const yahat::Request &req) const
+{
+    if (auto it = req.arguments.find("direction"); it != req.arguments.end()) {
+        // From last key
+        if (it->second == "forward)") {
+            return true;
+        }
+        if (it->second == "backward") {
+            return false;
+        }
+
+        throw Response{400, format("direction must be `forward` or `backward`, not `{}`", it->second)};
+    }
+    return true; // default is forward
 }
 
 std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint64_t trxid)
