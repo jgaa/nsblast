@@ -147,8 +147,17 @@ function EditZone({ zone, caption }) {
   )
 }
 
-export function ListZones({ max }) {
+export function MetaButton({onClick, style, className, children, meta}) {
+  const [metaVal] = useState(meta)
 
+  const onClickHandler = (e) => {
+    onClick(metaVal, e)
+  }
+
+  return (<button onClick={onClickHandler} style={style} className={className}>{children}</button>)
+}
+
+export function ListZones({ max }) {
   const [zones, setZones] = useState(null)
   const [current, setCurrent] = useState(null)
   const { getAuthHeader, getUrl } = useAppState()
@@ -230,6 +239,36 @@ export function ListZones({ max }) {
     reloadCurrent()
   }
 
+  const deleteZone = async (zoneName) => {
+    
+    if (window.confirm(`Do you really want to delete the zone ${zoneName}?\r\nThis cannot be un-done.`)) {
+
+      try {
+      const res = await fetch(getUrl(`/zone/${zoneName}`), {
+        method: "delete",
+        headers: getAuthHeader()});
+
+        console.log("fetch delete: ", res)
+
+        if (res.ok) {
+            // Todo - some OK effect
+          reloadCurrent()
+          return
+        }
+
+        throw Error(res.statusText)
+
+      } catch(error) {
+        console.log("Fatch failed: ", error)
+        //throw new Error("Failed to validate authentication with server")
+        setError("Request failed")
+
+        if (error instanceof Error) {
+            setError(error.message)
+        }
+      }
+    }
+  }
 
   if (error) {
     console.log("Got error err: ", error)
@@ -262,7 +301,8 @@ export function ListZones({ max }) {
               </td>
               <td>zone</td>
               <td>-</td>
-              <td><Link to={`rr?z=${name}`} className='w3-button w3-blue'>Manage</Link> |delete</td>
+              <td><Link to={`rr?z=${name}`} className='w3-button w3-blue w3-padding w3-round-large w3-tiny'>Manage</Link>
+              <MetaButton meta={name} onClick={deleteZone} className='w3-button w3-red w3-padding w3-round-large w3-tiny' style={{ marginLeft: "1em" }}>delete</MetaButton></td>
             </tr>
           ))}
         </tbody>
