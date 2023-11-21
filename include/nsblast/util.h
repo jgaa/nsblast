@@ -106,7 +106,7 @@ namespace nsblast::lib {
     /*! Contains algortithm; to see if a value exist in a range */
     template <typename V>
     bool contains(const range_of<V> auto& r, const V&& what) {
-        return std::ranges::find_if(r, [&what](auto val) { return what == val;});
+        return std::ranges::find_if(r, [&what](auto val) { return what == val;}) != r.end();
     }
 
     template <typename T>
