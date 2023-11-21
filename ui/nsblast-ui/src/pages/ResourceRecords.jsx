@@ -5,6 +5,7 @@ import {
   FaBackwardStep,
   FaRepeat,
   FaForward,
+  FaBackward,
   FaPlus,
   FaFloppyDisk,
   FaPen,
@@ -828,15 +829,20 @@ function ListResourceRecords({ max, zone }) {
     const {getAuthHeader, getUrl } = useAppState()
     const [error, setError] = useState();
     const [isEditOpen, setEditOpen] = useState(false)
-    const [hasMore, setHasMore] = useState(false)
     const [dlgArgs, setDlgArgs] = useState({})
+    const [currentDirection, setCurrentDirection] = useState("forward")
+    const [canMoveForward, setCanMoveForward] = useState(false)
+    const [canMoveBackward, setCanMoveBackward] = useState(false)
+    const [navKeys, setNavKeys] = useState(null)
 
-    const reload = async (from = null) => {
+
+    const reload = async (from = null, direction="forward") => {
 
         setRrs(null);
+        setCurrentDirection(direction)
     
         try {
-          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, max, 'verbose')), {
+          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, max, 'verbose', direction)), {
             method: "get",
             headers: getAuthHeader()
           });
@@ -846,7 +852,23 @@ function ListResourceRecords({ max, zone }) {
             let z = await res.json();
             console.log(`fetched json: `, z);
             setRrs(z.value);
-            setHasMore(z.more)
+            setNavKeys({kfirst: z.kfirst, klast: z.klast})
+
+            if (direction == "forward") {
+              setCanMoveBackward(from !== null)
+              setCanMoveForward(z.more)
+            } else {
+              if (!z.more) {
+                // We have moved back  to the start.
+                setCurrent(null)
+                setCanMoveBackward(false)  
+                console.log(`z.value.length=${z.value.length} max=${max}`)
+                setCanMoveForward(z.value.length === max)
+              } else {
+                setCanMoveBackward(true)
+                setCanMoveForward(true)
+              }
+            }
           } else {
             setError(Error(`Failed to fetch rr's: ${res.statusText}`))
           }
@@ -857,19 +879,29 @@ function ListResourceRecords({ max, zone }) {
       }
 
       const reloadCurrent = () => {
-        reload(current);
+        reload(current, currentDirection);
       }
     
       const moveFirst = () => {
         setCurrent(null);
+        setNavKeys(null)
+        setCanMoveBackward(false)
         reload();
       }
     
       const moveNext = () => {
-        if (rrs && rrs.length) {
-          const last = rrs.at(-1).fqdn;
-          reload(last)
+        if (rrs && rrs.length && navKeys) {
+          const last = navKeys.klast
           setCurrent(last)
+          reload(last)
+        }
+      }
+
+      const movePrev= () => {
+        if (rrs && rrs.length && navKeys) {
+          const first =  navKeys.kfirst
+          setCurrent(first)
+          reload(first, "backward")
         }
       }
 
@@ -929,8 +961,9 @@ function ListResourceRecords({ max, zone }) {
       </table>
       <div style={{ marginTop: "6px" }}>
         <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep /> From Start</button>
-        <button className='w3-button w3-yellow' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
-        <button className='w3-button w3-blue' onClick={moveNext} disabled={!hasMore}><FaForward /> Next</button>
+        <button className='w3-button w3-blue' onClick={movePrev} disabled={!canMoveBackward}><FaBackward /> Prev</button>
+        <button className='w3-button w3-teal' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
+        <button className='w3-button w3-blue' onClick={moveNext} disabled={!canMoveForward}><FaForward /> Next</button>
         <button className='w3-button w3-green w3-round-large w3-tiny' onClick={addFqdn} style={{ marginLeft: "1em" }}><FaPlus />Add fqdn</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}

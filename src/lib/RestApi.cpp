@@ -64,6 +64,29 @@ auto makeRrFilter(string_view tokens) {
     return filter;
 }
 
+// Get the keys prev/next from an unsorted json array populated by iterating the database
+pair<string, string> getKeys(boost::json::array& json, std::string_view key = "", bool forward = true) {
+    const auto val = [key](const boost::json::value& v) -> string {
+        if (v.is_object()) {
+            return string{v.as_object().at(key).as_string()};
+        }
+        assert(v.is_string());
+        return string{v.as_string()};
+    };
+
+    if (json.empty()) {
+        return {};
+    }
+
+    if (forward) {
+        return {val(json.front()), val(json.back())};
+    }
+
+    // When we iterate backwards, the data is logically reversed, so in order to
+    // use a key to move forward or backward, we need the order to look the same.
+    return {val(json.back()), val(json.front())};
+}
+
 std::shared_ptr<Session> getSession(const yahat::Request& req) {
     try {
         if (auto session = any_cast<std::shared_ptr<Session>>(req.auth.extra)) {
@@ -2062,9 +2085,9 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
             return true;
         }, true, forward);
 
-        if (!forward) {
-            sort_json(zone_list, "zone");
-        }
+        const auto [kfirst, klast] = getKeys(zone_list, "zone", forward);
+
+        sort_json(zone_list, "zone");
 
         boost::json::object json;
         json["rcode"] = 200;
@@ -2072,6 +2095,8 @@ Response RestApi::listZones(const yahat::Request &req, const Parsed &parsed)
         json["message"] = "";
         json["more"] = more;
         json["limit"] = page_size;
+        json["kfirst"] = kfirst;
+        json["klast"] = klast;
         json["value"] = std::move(zone_list);
         body = boost::json::serialize(json);
     }
@@ -2099,11 +2124,13 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 
     auto page_size = getPageSize(req);
     auto from = getFrom(req);
+    bool forward = true;
     const bool is_followup_page = !from.empty();
     if (from.empty()) {
         from = lowercaseFqdn;
     } else {
         // From last key
+        forward = getDirection(req);
         if (!validateFqdn(from)) {
             return {400, "Invalid fqdn in 'from' argument"};
         }
@@ -2119,7 +2146,6 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
     LOG_TRACE_N << "Serch Key: " << key;
     size_t count = 0;
     bool more = false;
-    string last_key;
 
     string body;
     {
@@ -2154,7 +2180,11 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
                     list.push_back(boost::json::string{fqdn});
                 }
                 return true;
-            }, is_followup_page);
+            }, is_followup_page, forward);
+
+        const auto [kfirst, klast] = getKeys(list, "fqdn", forward);
+
+        sort_json(list, "fqdn");
 
         boost::json::object json;
         json["rcode"] = 200;
@@ -2162,6 +2192,8 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
         json["message"] = "";
         json["more"] = more;
         json["limit"] = page_size;
+        json["kfirst"] = kfirst;
+        json["klast"] = klast;
         json["value"] = std::move(list);
         body = boost::json::serialize(json);
     }

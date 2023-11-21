@@ -9,7 +9,9 @@ import {
   FaFloppyDisk,
   FaCross,
   FaXmark,
-  FaBackward
+  FaBackward,
+  FaPenToSquare,
+  FaTrashCan
 } from "react-icons/fa6"
 import ErrorScreen from './ErrorScreen';
 import { BeatLoader } from 'react-spinners';
@@ -161,13 +163,14 @@ export function MetaButton({onClick, style, className, children, meta}) {
 export function ListZones({ max }) {
   const [zones, setZones] = useState(null)
   const [current, setCurrent] = useState(null)
-  const { getAuthHeader, getUrl } = useAppState()
+  const {getAuthHeader, getUrl } = useAppState()
   const [error, setError] = useState();
   const [isedit, setEditOpen] = useState(false)
   const [editZoneCaption, setEditZoneCaption] = useState("Add Zone")
   const [currentDirection, setCurrentDirection] = useState("forward")
   const [canMoveForward, setCanMoveForward] = useState(false)
   const [canMoveBackward, setCanMoveBackward] = useState(false)
+  const [navKeys, setNavKeys] = useState(null)
 
   const reload = async (from = null, direction="forward") => {
 
@@ -185,6 +188,7 @@ export function ListZones({ max }) {
         console.log(`fetched: current="${current}" from=${from} direction=${direction} canFwd=${canMoveForward}, canBackw=${canMoveBackward} more=${z.more}: `, res);
         console.log(`fetched json: `, z);
         setZones(z.value);
+        setNavKeys({kfirst: z.kfirst, klast: z.klast})
 
         if (direction == "forward") {
           setCanMoveBackward(from !== null)
@@ -217,13 +221,14 @@ export function ListZones({ max }) {
 
   const moveFirst = () => {
     setCurrent(null);
+    setNavKeys(null)
     setCanMoveBackward(false)
     reload();
   }
 
   const moveNext = () => {
-    if (zones && zones.length) {
-      const last = zones.length ? zones.at(-1) : null
+    if (zones && zones.length && navKeys) {
+      const last = navKeys.klast
       setCurrent(last)
       reload(last)
     }
@@ -231,9 +236,9 @@ export function ListZones({ max }) {
 
   const movePrev = () => {
     if (zones && zones.length) {
-      const last = zones.length ? zones.at(0) : null
-      setCurrent(last)
-      reload(last, "backward")
+      const first = navKeys.kfirst
+      setCurrent(first)
+      reload(first, "backward")
     }
   }
 
@@ -319,8 +324,8 @@ export function ListZones({ max }) {
               </td>
               <td>zone</td>
               <td>-</td>
-              <td><Link to={`rr?z=${name}`} className='w3-button w3-blue w3-padding w3-round-large w3-tiny'>Manage</Link>
-              <MetaButton meta={name} onClick={deleteZone} className='w3-button w3-red w3-padding w3-round-large w3-tiny' style={{ marginLeft: "1em" }}>delete</MetaButton></td>
+              <td><Link to={`rr?z=${name}`} className='w3-button w3-blue w3-padding w3-round-large w3-tiny'><FaPenToSquare/> Manage</Link>
+              <MetaButton meta={name} onClick={deleteZone} className='w3-button w3-red w3-padding w3-round-large w3-tiny' style={{ marginLeft: "1em" }}><FaTrashCan/> delete</MetaButton></td>
             </tr>
           ))}
         </tbody>
@@ -330,7 +335,7 @@ export function ListZones({ max }) {
         <button className='w3-button w3-blue' onClick={movePrev} disabled={!canMoveBackward}><FaBackward /> Prev</button>
         <button className='w3-button w3-teal' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
         <button className='w3-button w3-blue' onClick={moveNext} disabled={!canMoveForward}><FaForward /> Next</button>
-        <button className='w3-button w3-green w3-padding w3-round-large w3-tiny' onClick={addZone} ><FaPlus /> Add</button>
+        <button className='w3-button w3-green w3-padding w3-round-large w3-tiny' onClick={addZone} ><FaPlus /> Add Zone</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isedit}
