@@ -10,7 +10,8 @@ import {
   FaFloppyDisk,
   FaPen,
   FaXmark,
-  FaTrashCan
+  FaTrashCan,
+  FaArrowLeft
 } from "react-icons/fa6"
 import { BeatLoader } from 'react-spinners';
 import PopupDialog, { usePopupDialog } from '../modules/PopupDialog';
@@ -964,7 +965,8 @@ function ListResourceRecords({ max, zone }) {
         <button className='w3-button w3-blue' onClick={movePrev} disabled={!canMoveBackward}><FaBackward /> Prev</button>
         <button className='w3-button w3-teal' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
         <button className='w3-button w3-blue' onClick={moveNext} disabled={!canMoveForward}><FaForward /> Next</button>
-        <button className='w3-button w3-green w3-round-large w3-tiny' onClick={addFqdn} style={{ marginLeft: "1em" }}><FaPlus />Add fqdn</button>
+        <button className='w3-button w3-green w3-round-large w3-tiny' onClick={addFqdn} style={{ marginLeft: "1em" }}><FaPlus />Add fqdn</button><br/>
+        <Link className='w3-button w3-blue' to='..' ><FaArrowLeft /> Back to Zones</Link>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isEditOpen}
