@@ -171,6 +171,7 @@ export function ListZones({ max }) {
   const [canMoveForward, setCanMoveForward] = useState(false)
   const [canMoveBackward, setCanMoveBackward] = useState(false)
   const [navKeys, setNavKeys] = useState(null)
+  const initialized = useRef(false)
 
   const reload = async (from = null, direction="forward") => {
 
@@ -235,7 +236,7 @@ export function ListZones({ max }) {
   }
 
   const movePrev = () => {
-    if (zones && zones.length) {
+    if (zones && zones.length && navKeys) {
       const first = navKeys.kfirst
       setCurrent(first)
       reload(first, "backward")
@@ -244,8 +245,43 @@ export function ListZones({ max }) {
 
   // Load once
   useEffect(() => {
-    reload();
+
+    // Avoid double initialization by "React.StrictMode"
+    if (initialized.current) {
+      return
+    }
+
+    initialized.current = true;
+
+    const savedCurrent = window.localStorage.getItem('zones.current')
+    const savedDirection = window.localStorage.getItem('zones.direction')
+    console.log('Saved current is: ', savedCurrent)
+
+    let dir = null;
+    if (savedDirection) {
+      dir = savedDirection
+      setCurrentDirection(savedDirection)
+    }
+
+    if (savedCurrent && savedCurrent.length) {
+      console.log("if (savedCurrent): ", savedCurrent)
+      setCurrent(savedCurrent)
+      reload(savedCurrent, dir)
+    } else {
+      console.log('no saveCurrent! Calling pure reload()')
+      reload();
+    }
   }, []);
+
+  useEffect(() => {
+    console.log('saving current: ', current)
+    window.localStorage.setItem('zones.current', current ? current : "")
+  },[current])
+
+  useEffect(() => {
+    console.log('saving direction: ', currentDirection)
+    window.localStorage.setItem('zones.direction', currentDirection)
+  },[current])
 
   const openEdit = () => {
     setEditOpen(true)
