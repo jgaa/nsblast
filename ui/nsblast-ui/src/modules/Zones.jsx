@@ -8,7 +8,8 @@ import {
   FaPlus,
   FaFloppyDisk,
   FaCross,
-  FaXmark
+  FaXmark,
+  FaBackward
 } from "react-icons/fa6"
 import ErrorScreen from './ErrorScreen';
 import { BeatLoader } from 'react-spinners';
@@ -164,33 +165,42 @@ export function ListZones({ max }) {
   const [error, setError] = useState();
   const [isedit, setEditOpen] = useState(false)
   const [editZoneCaption, setEditZoneCaption] = useState("Add Zone")
-  const [hasMore, setHasMore] = useState(false)
+  const [currentDirection, setCurrentDirection] = useState("forward")
+  const [canMoveForward, setCanMoveForward] = useState(false)
+  const [canMoveBackward, setCanMoveBackward] = useState(false)
 
-  // const qargs = (from) => {
-  //   let q = []
-  //   if (max > 0) q.push(`limit=${max}`);
-  //   if (from) q.push(`from=${from}`)
-  //   if (q.length === 0)
-  //     return "";
-  //   return "?" + q.join('&')
-  // }
-
-  const reload = async (from = null) => {
+  const reload = async (from = null, direction="forward") => {
 
     setZones(null);
-
+    setCurrentDirection(direction)
+  
     try {
-      let res = await fetch(getUrl('/zone' + qargs(from, max)), {
+      let res = await fetch(getUrl('/zone' + qargs(from, max, null, direction)), {
         method: "get",
         headers: getAuthHeader()
       });
 
       if (res.ok) {
-        console.log(`fetched: `, res);
-        let z = await res.json();
+        const z = await res.json();
+        console.log(`fetched: current="${current}" from=${from} direction=${direction} canFwd=${canMoveForward}, canBackw=${canMoveBackward} more=${z.more}: `, res);
         console.log(`fetched json: `, z);
         setZones(z.value);
-        setHasMore(z.more)
+
+        if (direction == "forward") {
+          setCanMoveBackward(from !== null)
+          setCanMoveForward(z.more)
+        } else {
+          if (!z.more) {
+            // We have moved back  to the start.
+            setCurrent(null)
+            setCanMoveBackward(false)  
+            setCanMoveForward(zones.length === max)
+          } else {
+            setCanMoveBackward(true)
+            setCanMoveForward(true)
+          }
+        }
+
       } else {
         setError(Error(`Failed to fetch zones: ${res.statusText}`))
       }
@@ -202,22 +212,30 @@ export function ListZones({ max }) {
 
 
   const reloadCurrent = () => {
-    reload(current);
+    reload(current, currentDirection);
   }
 
   const moveFirst = () => {
     setCurrent(null);
+    setCanMoveBackward(false)
     reload();
   }
 
   const moveNext = () => {
     if (zones && zones.length) {
-      const last = zones.at(-1);
-      reload(last)
+      const last = zones.length ? zones.at(-1) : null
       setCurrent(last)
+      reload(last)
     }
   }
 
+  const movePrev = () => {
+    if (zones && zones.length) {
+      const last = zones.length ? zones.at(0) : null
+      setCurrent(last)
+      reload(last, "backward")
+    }
+  }
 
   // Load once
   useEffect(() => {
@@ -309,9 +327,10 @@ export function ListZones({ max }) {
       </table>
       <div style={{ marginTop: "6px" }}>
         <button className='w3-button w3-blue' onClick={moveFirst} ><FaBackwardStep /> From Start</button>
-        <button className='w3-button w3-green' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
-        <button className='w3-button w3-blue' onClick={moveNext} disabled={!hasMore}><FaForward /> Next</button>
-        <button className='w3-button w3-orange' onClick={addZone} ><FaPlus /> Add</button>
+        <button className='w3-button w3-blue' onClick={movePrev} disabled={!canMoveBackward}><FaBackward /> Prev</button>
+        <button className='w3-button w3-teal' onClick={reloadCurrent} ><FaRepeat /> Reload</button>
+        <button className='w3-button w3-blue' onClick={moveNext} disabled={!canMoveForward}><FaForward /> Next</button>
+        <button className='w3-button w3-green w3-padding w3-round-large w3-tiny' onClick={addZone} ><FaPlus /> Add</button>
       </div>
       <PopupDialog zone={{ fqdn: 'example.com' }}
         isOpen={isedit}
