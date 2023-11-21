@@ -2193,7 +2193,7 @@ bool RestApi::getDirection(const yahat::Request &req) const
 {
     if (auto it = req.arguments.find("direction"); it != req.arguments.end()) {
         // From last key
-        if (it->second == "forward)") {
+        if (it->second == "forward") {
             return true;
         }
         if (it->second == "backward") {
