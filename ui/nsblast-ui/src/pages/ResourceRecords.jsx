@@ -98,6 +98,17 @@ const rrProto =
         port: 0
       }
     ],
+    },
+    openpgpkey: {
+      brief: "Open PGP key",
+      canAdd: true,
+      proto: ""
+    },
+    // Generated types, like #42
+    default: {
+      brief: "",
+      canAdd: false,
+      proto: [""]
     }
   }
 
@@ -706,7 +717,12 @@ function AddRr({args}) {
     // use the RR's prototype.
     if (!Object.hasOwn(orig, rrType)) {
       console.log(`submit: !Object.hasOwn(${rrType}) orig=`, orig)
-      orig = rrProto[rrType].proto
+      if (Object.hasOwn(rrProto, rrType)) {
+        orig = rrProto[rrType].proto
+      } else {
+        // Default proto for 
+        orig= rrProto.default.proto
+      }
     }
 
     console.log(`submit: isEditing=${isEditing}, rrType=${rrType} orig=`, orig, ' proto=', proto)
