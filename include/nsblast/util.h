@@ -78,7 +78,7 @@ namespace nsblast::lib {
      *      file is created in a text editor.
      *  \param seed Seed to use. If empty, a 16 byte seed is created.
      */
-    HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed = {});
+    HashedKey getHashFromKeyInFile(const std::filesystem::path& file, std::string seed = {});
 
     /*! Calculate sha256 hash from content of an environment variable
      *
@@ -90,7 +90,7 @@ namespace nsblast::lib {
      */
     HashedKey getHashFromKeyInEnvVar(const std::string& name, std::string seed = {});
 
-    HashedKey getHashFromKeyInFileOrEnvVar(std::filesystem::path file,
+    HashedKey getHashFromKeyInFileOrEnvVar(const std::filesystem::path& file,
                                            const std::string& envName,
                                            std::string seed = {});
 
@@ -106,7 +106,7 @@ namespace nsblast::lib {
     /*! Contains algortithm; to see if a value exist in a range */
     template <typename V>
     bool contains(const range_of<V> auto& r, const V&& what) {
-        return std::ranges::find_if(r, [&what](auto v) { return what == v;});
+        return std::ranges::find_if(r, [&what](auto val) { return what == val;});
     }
 
     template <typename T>
@@ -120,47 +120,47 @@ namespace nsblast::lib {
     }
 
     template <typename I, std::ranges::range T>
-    I getValueAt(const T& b, size_t loc) {
+    I getValueAt(const T& buf, size_t loc) {
         const auto tlen = sizeof(I);
-        if (loc + (tlen -1) >= b.size()) {
+        if (loc + (tlen -1) >= buf.size()) {
             throw std::runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
         }
 
-        auto *v = reinterpret_cast<const I *>(b.data() + loc);
+        auto *v = reinterpret_cast<const I *>(buf.data() + loc);
         return boost::endian::big_to_native(*v);
     }
 
     template <std::ranges::range T>
-    auto get16bValueAt(const T& b, size_t loc) {
-        return getValueAt<uint16_t>(b, loc);
+    auto get16bValueAt(const T& buf, size_t loc) {
+        return getValueAt<uint16_t>(buf, loc);
     }
 
     template <std::ranges::range T>
-    auto get32bValueAt(const T& b, size_t loc) {
-        return getValueAt<uint32_t>(b, loc);
+    auto get32bValueAt(const T& buf, size_t loc) {
+        return getValueAt<uint32_t>(buf, loc);
     }
 
     template <std::ranges::range T, typename I>
-    void setValueAt(const T& b, size_t loc, I value) {
-        if (loc + (sizeof(I) -1) >= b.size()) {
+    void setValueAt(T& buf, size_t loc, I value) {
+        if (loc + (sizeof(I) -1) >= buf.size()) {
             throw std::runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
         }
 
-        auto *v = reinterpret_cast<I *>(const_cast<char *>(b.data() + loc));
-        *v = boost::endian::native_to_big(value);
+        auto *val = reinterpret_cast<I *>(buf.data() + loc);
+        *val = boost::endian::native_to_big(value);
     }
 
     // ASCII tolower
-    std::string toLower(const range_of<char> auto& v) {
+    std::string toLower(const range_of<char> auto& val) {
         std::string out;
-        out.resize(v.size());
+        out.resize(val.size());
         auto p = out.begin();
 
-        for(const char ch : v) {
+        for(const char ch : val) {
             assert(p != out.end());
             static constexpr char diff = 'A' - 'a';
             if (ch >= 'A' && ch <= 'Z') {
-                *p = ch - diff;
+                *p = static_cast<char>(ch - diff);
             } else {
                 *p = ch;
             }
@@ -206,12 +206,14 @@ namespace nsblast::lib {
         static const std::locale loc{"C"};
 
         size_t num_front = 0, num_end = 0;
-        for (auto it = str.begin(); it != str.end() && isspace(*it, loc); ++it, ++num_front)
+        for (auto it = str.begin(); it != str.end() && isspace(*it, loc); ++it, ++num_front) {
             ;
+        }
 
         if (num_front < str.size()) {
-            for (auto it = str.rbegin(); it != str.rend() && isspace(*it, loc); ++it, ++num_end)
+            for (auto it = str.rbegin(); it != str.rend() && isspace(*it, loc); ++it, ++num_end) {
                 ;
+            }
         }
 
         str = str.substr(num_front, str.size() - num_front - num_end);
@@ -225,6 +227,8 @@ namespace nsblast::lib {
 
         FqdnKey()
             : d_{span_t{}} {}
+
+        ~FqdnKey() = default;
 
 
         explicit FqdnKey(const std::string& s)
@@ -245,7 +249,8 @@ namespace nsblast::lib {
         FqdnKey& operator = (const FqdnKey&) = default;
         FqdnKey& operator = (FqdnKey&&) = default;
 
-        span_t key() const noexcept {
+        [[nodiscard]] span_t key() const noexcept
+        {
             if (std::holds_alternative<span_t>(d_)) {
                 return std::get<span_t>(d_);
             }
@@ -263,7 +268,8 @@ namespace nsblast::lib {
             return {s.data(), s.size()};
         }
 
-        bool ownsBuffer() const noexcept {
+        [[nodiscard]] bool ownsBuffer() const noexcept
+        {
             return std::holds_alternative<std::string>(d_);
         }
 
@@ -280,7 +286,8 @@ namespace nsblast::lib {
             return ! operator == (span);
         }
 
-        std::string string() const {
+        [[nodiscard]] std::string string() const
+        {
             const auto k = key();
             return {k.data(), k.size()};
         }
@@ -290,12 +297,16 @@ namespace nsblast::lib {
     };
 
     bool hasUppercase(const range_of<char> auto& str) noexcept {
-        for(char ch : str) {
-            if (ch >= 'A' && ch <= 'Z') {
-                return true;
-            }
-        }
-        return false;
+        return std::ranges::any_of(str, [](const auto ch) {
+            return ch >= 'A' && ch <= 'Z';
+        });
+
+        // for(char ch : str) {
+        //     if (ch >= 'A' && ch <= 'Z') {
+        //         return true;
+        //     }
+        // }
+        // return false;
     }
 
     // Get a key for a fqdn
@@ -303,7 +314,7 @@ namespace nsblast::lib {
         if (hasUppercase(w)) {
             return FqdnKey{toLower(w)};
         }
-        return FqdnKey{std::move(w)};
+        return FqdnKey{std::forward<decltype(w)>(w)};
     }
 
     FqdnKey labelsToFqdnKey(const Labels& labels);
@@ -357,7 +368,7 @@ namespace nsblast::lib {
             if (rd.empty()) {
                 throw std::runtime_error{"getTextFromRdata: text field has no length byte!"};
             }
-            size_t len = rd[0];
+            size_t const len = static_cast<uint8_t>(rd[0]);
             if (len >= rd.size()) {
                 throw std::runtime_error{"getTextFromRdata - Length exeeds buffer-len!"};
             }
@@ -397,8 +408,8 @@ namespace nsblast::lib {
             const std::string& port,
             boost::asio::yield_context& yield);
 
-    std::vector<char> base64Decode(const std::string_view in);
-    std::string Base64Encode(const span_t in);
+    std::vector<char> base64Decode(std::string_view in);
+    std::string Base64Encode(span_t in);
 
     // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
     template <typename T>
@@ -406,12 +417,18 @@ namespace nsblast::lib {
         explicit ScopedExit(T&& fn)
             : fn_{std::move(fn)} {}
 
+        ScopedExit(const ScopedExit&) = delete;
+        ScopedExit(ScopedExit&&) = delete;
+
         ~ScopedExit() {
             fn_();
         }
+
+        ScopedExit& operator =(const ScopedExit&) = delete;
+        ScopedExit& operator =(ScopedExit&&) = delete;
 
     private:
         T fn_;
     };
 
-} // ns
+    } // namespace nsblast::lib

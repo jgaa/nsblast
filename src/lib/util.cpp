@@ -25,11 +25,11 @@ T getRandomNumberT()
     static mutex mtx;
     static uniform_int_distribution<T> dist; //dist(1, numeric_limits<T>::max);
 
-    lock_guard<mutex> lock{mtx};
+    const lock_guard lock{mtx};
     return dist(mt);
 }
 
-} // anon ns
+} // namespace
 
 boost::uuids::uuid newUuid()
 {
@@ -44,7 +44,7 @@ FqdnKey labelsToFqdnKey(const Labels &labels) {
 span_t getNextKey(span_t fqdn) noexcept {
     bool bs = false;
     size_t pos = 0;
-    for(auto& ch : fqdn) {
+    for(const auto& ch : fqdn) {
         if (bs) {
             ; // Ignore this character
         } else {
@@ -115,7 +115,7 @@ string getRandomStr(size_t len)
     string rval;
     rval.reserve(len);
     while(rval.size() < (len)) {
-        auto v = getRandomNumberT<uint8_t>();
+        auto v = getRandomNumberT<char>();
         if (v < ' ' || v > '~' || v == '\"' || v == '\'' || v == '`') {
             continue;
         }
@@ -135,18 +135,22 @@ vector<char> base64Decode(const string_view in) {
         "0123456789+/";
 
     for (std::size_t i = 0; i < in.size(); i += 4) {
-      const int index1 = base64_chars.find(in[i]);
-      const int index2 = base64_chars.find(in[i + 1]);
-      const int index3 = base64_chars.find(i + 2 < in.size() ? in[i + 2] : '=');
-      const int index4 = base64_chars.find(i + 3 < in.size() ? in[i + 3] : '=');
+      const auto index1 = base64_chars.find(in[i]);
+      const auto index2 = base64_chars.find(in[i + 1]);
+      const auto index3 = base64_chars.find(i + 2 < in.size() ? in[i + 2] : '=');
+      const auto index4 = base64_chars.find(i + 3 < in.size() ? in[i + 3] : '=');
 
-      const int a = (index1 << 2) | (index2 >> 4);
-      const int b = ((index2 & 0xf) << 4) | (index3 >> 2);
-      const int c = ((index3 & 0x3) << 6) | index4;
+      const auto a = (index1 << 2) | (index2 >> 4);
+      const auto b = ((index2 & 0xf) << 4) | (index3 >> 2);
+      const auto c = ((index3 & 0x3) << 6) | index4;
 
       binary_data.push_back(a);
-      if (static_cast<size_t>(index3) != std::string::npos) binary_data.push_back(b);
-      if (static_cast<size_t>(index4) != std::string::npos) binary_data.push_back(c);
+      if (static_cast<size_t>(index3) != std::string::npos) {
+          binary_data.push_back(b);
+      }
+      if (static_cast<size_t>(index4) != std::string::npos) {
+          binary_data.push_back(c);
+      }
     }
 
     return binary_data;
@@ -163,14 +167,14 @@ string Base64Encode(const span_t in)
     base64_data.reserve(((in.size() + 2) / 3) * 4);
 
     for (std::size_t i = 0; i < in.size(); i += 3) {
-      const int a = static_cast<uint8_t>(in[i]);
-      const int b = i + 1 < in.size() ? in[i + 1] : 0;
-      const int c = i + 2 < in.size() ? in[i + 2] : 0;
+      const auto a = static_cast<uint8_t>(in[i]);
+      const auto b = i + 1 < in.size() ? in[i + 1] : 0;
+      const auto c = i + 2 < in.size() ? in[i + 2] : 0;
 
-      const int index1 = (a >> 2) & 0x3f;
-      const int index2 = ((a & 0x3) << 4) | ((b >> 4) & 0xf);
-      const int index3 = ((b & 0xf) << 2) | ((c >> 6) & 0x3);
-      const int index4 = c & 0x3f;
+      const auto index1 = (a >> 2) & 0x3f;
+      const auto index2 = ((a & 0x3) << 4) | ((b >> 4) & 0xf);
+      const auto index3 = ((b & 0xf) << 2) | ((c >> 6) & 0x3);
+      const auto index4 = c & 0x3f;
 
       base64_data.push_back(base64_chars[index1]);
       base64_data.push_back(base64_chars[index2]);
@@ -190,16 +194,16 @@ string newUuidStr()
 string sha256(span_t what, bool encodeToBase64)
 {
     EVP_MD_CTX* context = EVP_MD_CTX_new();
-    ScopedExit bye{[context] {
+    const ScopedExit bye{[context] {
         EVP_MD_CTX_free(context);
     }};
 
-    if(context != NULL) {
-        if(EVP_DigestInit_ex(context, EVP_sha256(), NULL)) {
-            if(EVP_DigestUpdate(context, what.data(), what.size())) {
-                array<uint8_t, EVP_MAX_MD_SIZE> hash;
+    if (context != nullptr) {
+        if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) != 0) {
+            if (EVP_DigestUpdate(context, what.data(), what.size()) != 0) {
+                array<uint8_t, EVP_MAX_MD_SIZE> hash{};
                 unsigned int lengthOfHash = 0;
-                if(EVP_DigestFinal_ex(context, hash.data(), &lengthOfHash)) {
+                if (EVP_DigestFinal_ex(context, hash.data(), &lengthOfHash) != 0) {
                     if (encodeToBase64) {
                         return Base64Encode({reinterpret_cast<const char *>(hash.data()), lengthOfHash});
                     }
@@ -226,7 +230,7 @@ HashedKey getHashFromKeyAndSeed(std::string_view key, std::string seed) {
     return {seed, sha256(seeded_key)};
 }
 
-HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed)
+HashedKey getHashFromKeyInFile(const std::filesystem::path& file, std::string seed)
 {
     if (file.empty()) {
         LOG_WARN << "getHashFromKeyInFile - key-file argument is empty!";
@@ -250,7 +254,7 @@ HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed)
     in.read(key.data(), len);
     in.close();
 
-    ScopedExit bye{[&key] {
+    ScopedExit const bye{[&key] {
         //Erase the key from memory
         for(auto &c : key) {
             c = 0;
@@ -263,7 +267,7 @@ HashedKey getHashFromKeyInFile(std::filesystem::path file, std::string seed)
 
 HashedKey getHashFromKeyInEnvVar(const std::string& name, std::string seed)
 {
-    if (auto key = std::getenv(name.c_str())) {
+    if (auto *key = std::getenv(name.c_str())) {
         return getHashFromKeyAndSeed(key, std::move(seed));
     }
 
@@ -271,10 +275,10 @@ HashedKey getHashFromKeyInEnvVar(const std::string& name, std::string seed)
     throw runtime_error{format("Missing environment variable: {}", name)};
 }
 
-HashedKey getHashFromKeyInFileOrEnvVar(std::filesystem::path file, const std::string &envName, std::string seed)
+HashedKey getHashFromKeyInFileOrEnvVar(const std::filesystem::path& file, const std::string &envName, std::string seed)
 {
     if (!file.empty()) {
-        return getHashFromKeyInFile(std::move(file), std::move(seed));
+        return getHashFromKeyInFile(file, std::move(seed));
     }
 
     return getHashFromKeyInEnvVar(envName, std::move(seed));
@@ -359,5 +363,4 @@ bool isSameZone(std::string_view zone, std::string_view fqdn)
     return false;
 }
 
-
-} // ns
+} // namespace nsblast::lib

@@ -41,7 +41,7 @@ struct hdrbits {
 
 
 template <typename T>
-void set16bValueAt(const T& b, size_t loc, uint16_t value) {
+void set16bValueAt(T& b, size_t loc, uint16_t value) {
     return setValueAt(b, loc, value);
 }
 
