@@ -38,6 +38,9 @@ export default function Login() {
 
             if (res.ok) {
                 setToken(token)
+
+                // Reset the zones state
+                window.localStorage.setItem('zones.current', "")
             }
 
         } catch(error) {
