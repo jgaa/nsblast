@@ -119,14 +119,14 @@ namespace nsblast::lib {
         return std::shared_ptr<T>{ptr};
     }
 
-    template <typename I, std::ranges::range T>
-    I getValueAt(const T& buf, size_t loc) {
-        const auto tlen = sizeof(I);
+    template <typename V, std::ranges::range T>
+    V getValueAt(const T& buf, size_t loc) {
+        const auto tlen = sizeof(V);
         if (loc + (tlen -1) >= buf.size()) {
             throw std::runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
         }
 
-        auto *v = reinterpret_cast<const I *>(buf.data() + loc);
+        auto *v = reinterpret_cast<const V *>(buf.data() + loc);
         return boost::endian::big_to_native(*v);
     }
 
@@ -140,14 +140,22 @@ namespace nsblast::lib {
         return getValueAt<uint32_t>(buf, loc);
     }
 
-    template <std::ranges::range T, typename I>
-    void setValueAt(T& buf, size_t loc, I value) {
-        if (loc + (sizeof(I) -1) >= buf.size()) {
+    template <std::ranges::range T, typename V>
+    void setValueAt(T& buf, size_t loc, V value) {
+        if (loc + (sizeof(V) -1) >= buf.size()) {
             throw std::runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
         }
 
-        auto *val = reinterpret_cast<I *>(buf.data() + loc);
+        auto *val = reinterpret_cast<V *>(buf.data() + loc);
         *val = boost::endian::native_to_big(value);
+    }
+
+    // Construct a string from a range
+    std::string make_string(const range_of<char> auto& range) {
+        std::string str;
+        str.reserve(range.size());
+        std::ranges::copy(range, std::back_inserter(str));
+        return str;
     }
 
     // ASCII tolower
@@ -205,7 +213,9 @@ namespace nsblast::lib {
     void trim(range_of<char> auto& str) {
         static const std::locale loc{"C"};
 
-        size_t num_front = 0, num_end = 0;
+        size_t num_front = 0;
+        size_t num_end = 0;
+
         for (auto it = str.begin(); it != str.end() && isspace(*it, loc); ++it, ++num_front) {
             ;
         }

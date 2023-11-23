@@ -97,9 +97,8 @@ ResourceIf::RealKey::Class ResourceIf::RealKey::kClass() const noexcept {
 }
 
 string ResourceIf::RealKey::dataAsString() const {
-    std::string fqdn;
-    std::string postfix;
     if (!empty()) {
+        std::string postfix;
         auto end = bytes_.end();
         const auto kt = static_cast<ResourceIf::RealKey::Class>(bytes_.at(0));
         switch(kt) {
@@ -116,8 +115,9 @@ string ResourceIf::RealKey::dataAsString() const {
             [[fallthrough]];
         default:
             if (isReversed(kt)) {
-                fqdn.assign(bytes_.begin() + 1, end);
-                std::reverse(fqdn.begin(), fqdn.end());
+                auto fqdn = make_string(
+                    ranges::subrange(bytes_.begin() + 1, end) | views::reverse);
+
                 if (!postfix.empty()) {
                     return fqdn + postfix;
                 }
