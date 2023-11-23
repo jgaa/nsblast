@@ -2093,7 +2093,7 @@ TEST(ApiRequest, listZonesPaginationMultipleTenants) {
 
     size_t pages = 2;
     for(; pages <= expected_pages; ++pages) {
-        string next_key = string{zones.at("value").as_array().back().as_object().at("zone").as_string()};
+        string next_key = string{zones.at("klast").as_string()};
 
         req = makeRequest(svr, "zone", "", {}, yahat::Request::Type::GET);
 
@@ -2196,12 +2196,12 @@ TEST(ApiRequest, listZoneWithPagination) {
     auto result = boost::json::parse(res.body);
     EXPECT_FALSE(result.at("error").as_bool());
     EXPECT_EQ(result.at("value").as_array().size(), limit);
-    EXPECT_EQ(string_view{result.at("value").as_array()[0].as_string()},
+    EXPECT_EQ(string_view{result.at("value").as_array().back().as_string()},
               string_view{"example.com"});
 
     size_t pages = 2;
     for(; pages <= expected_pages; ++pages) {
-        auto next_key = string{result.at("value").as_array().back().as_string()};
+        auto next_key = string{result.at("klast").as_string()};
 
         req = makeRequest(svr, "rr", zone, {}, yahat::Request::Type::GET);
 
@@ -2219,7 +2219,7 @@ TEST(ApiRequest, listZoneWithPagination) {
         if (pages == expected_pages) {
             EXPECT_FALSE(result.at("more").as_bool());
             EXPECT_EQ(result.at("value").as_array().size(), 6);
-            EXPECT_EQ(result.at("value").as_array().back().as_string(), "49-test.example.com");
+            EXPECT_EQ(result.at("value").as_array().back().as_string(), "9-test.example.com");
         } else {
             EXPECT_TRUE(result.at("more").as_bool());
             EXPECT_EQ(result.at("value").as_array().size(), limit);
