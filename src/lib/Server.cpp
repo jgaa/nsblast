@@ -61,6 +61,47 @@ string cppStrandard() {
 
     return std::format("unknown ({})", __cplusplus);
 }
+
+// This class works directly with an embedded resource
+// generated with mkres. Just point it to the static
+// class with the resources.
+template <typename T>
+class EmbeddedResHandler : public RequestHandler {
+public:
+    explicit EmbeddedResHandler(std::string prefix)
+        : prefix_{std::move(prefix)} {}
+
+    Response onReqest(const Request& req) override {
+        // Remove prefix
+        auto t = std::string_view{req.target};
+        if (t.size() < prefix_.size()) {
+            throw std::runtime_error{"Invalid targert. Cannot be shorter than prefix!"};
+        }
+
+        t = t.substr(prefix_.size());
+
+        while(!t.empty() && t.front() == '/') {
+            t = t.substr(1);
+        }
+
+        if (t.empty()) {
+            t = {"index.html"};
+        }
+
+        if (const auto& data = T::get(t); !data.empty()) {
+            std::filesystem::path served = prefix_;
+            served /= t;
+            // TODO: Fix yahat so we can send a lambda to feed it with chunks.
+            return {200, "OK", data.toString(), served.string()};
+        }
+
+        return {404, "Document not found"};
+    }
+
+private:
+    const std::string prefix_;
+};
+
 } // anon ns
 
 Server::Server(const Config &config)
@@ -178,9 +219,7 @@ void Server::startHttpServer()
         LOG_INFO << "Enabling Swagger at http/https://<fqdn>[:port]" << swagger_path;
 
         http_->addRoute(swagger_path,
-                            make_shared<EmbeddedHandler<lib::embedded::resource_t>>(
-                                lib::embedded::swagger_files_,
-                                "/api/swagger"));
+                        make_shared<EmbeddedResHandler<lib::embedded::Swagger>>("/api/swagger"));
     }
 #endif
 

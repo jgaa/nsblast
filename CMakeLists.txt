@@ -100,7 +100,7 @@ message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 include(cmake/3rdparty.cmake)
 
 add_subdirectory(src/lib)
-add_subdirectory(src/mkres)
+#add_subdirectory(src/mkres)
 add_subdirectory(src/nsblast)
 
 if (NSBLAST_WITH_TESTS)

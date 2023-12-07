@@ -20,6 +20,20 @@ ExternalProject_Add(logfault
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 )
 
+ExternalProject_Add(mkres
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY "https://github.com/jgaa/mkres.git"
+    GIT_TAG "main"
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+)
+
+set(MKRES "${EXTERNAL_PROJECTS_PREFIX}/installed/bin/mkres")
+
 ExternalProject_Add(glad
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/glad.git"
