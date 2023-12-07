@@ -27,6 +27,10 @@
 #   include "swagger_res.h"
 #endif
 
+#ifdef NSBLAST_WITH_UI
+#   include "ui_res.h"
+#endif
+
 using namespace std;
 using namespace std::string_literals;
 
@@ -220,6 +224,16 @@ void Server::startHttpServer()
 
         http_->addRoute(swagger_path,
                         make_shared<EmbeddedResHandler<lib::embedded::Swagger>>("/api/swagger"));
+    }
+#endif
+
+#ifdef NSBLAST_WITH_UI
+    if (config().ui) {
+        const string_view ui_path = "/ui";
+        LOG_INFO << "Enabling ui at http/https://<fqdn>[:port]" << ui_path;
+
+        http_->addRoute(ui_path,
+                        make_shared<EmbeddedResHandler<lib::embedded::Ui>>("/ui"));
     }
 #endif
 

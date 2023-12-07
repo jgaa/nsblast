@@ -3,9 +3,6 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
 if (NSBLAST_WITH_SWAGGER)
-# See https://lastviking.eu/code_generator.html
-find_program(mkres mkres NO_CACHE)
-
 add_custom_command(
     COMMAND ${MKRES} --verbose --compression gzip --namespace nsblast::lib::embedded --name Swagger --destination swagger_res --exclude '.*\\.map' ${NSBLAST_ROOT}/swagger/*
     DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
@@ -18,6 +15,29 @@ add_custom_command(
     add_custom_target(swagger_res ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.cpp)
 endif()
 
+if (NSBLAST_WITH_UI)
+    set(UI_DEST ${CMAKE_CURRENT_BINARY_DIR}/ui)
+    add_custom_command(
+        COMMAND BUILD_PATH=${UI_DEST} ${NPM_EXECUTABLE} --prefix ${NSBLAST_ROOT}/ui/nsblast-ui run build && touch ui_files.stamp
+        DEPENDS ${NSBLAST_ROOT}/ui/nsblast-ui/package.json
+        OUTPUT ${UI_DEST}asset-manifest.json ui_files.stamp
+        COMMENT "Embedding ui..."
+        )
+
+        add_custom_target(ui_js ALL DEPENDS ui_files.stamp)
+
+    add_custom_command(
+        COMMAND ${MKRES} --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}/*
+        DEPENDS ui_files.stamp mkres
+        OUTPUT ui_res.cpp ui_res.h
+        COMMENT "Embedding swagger..."
+        )
+
+        set(LIB_UI_FILES ui_res.cpp ui_res.h)
+
+        #add_custom_target(ui_res ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/ui_res.cpp ${CMAKE_CURRENT_BINARY_DIR}/ui_res.h)
+endif()
+
 ADD_SUBDIRECTORY(proto)
 
 if (NSBLAST_CLUSTER)
@@ -27,6 +47,7 @@ endif()
 add_library(${PROJECT_NAME}
     ${LIB_CLUSTER_FILES}
     ${LIB_SWAGGER_FILES}
+    ${LIB_UI_FILES}
     ${NSBLAST_ROOT}/include/nsblast/DnsEngine.h
     ${NSBLAST_ROOT}/include/nsblast/DnsMessages.h
     ${NSBLAST_ROOT}/include/nsblast/ResourceIf.h

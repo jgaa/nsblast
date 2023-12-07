@@ -13,17 +13,6 @@ using namespace nsblast;
 
 namespace {
 
-//string_view cppStrandard() {
-//    if constexpr (__cplusplus == 202101L)
-//        return "C++23";
-//    if constexpr (__cplusplus == 202002L)
-//        return "C++20";
-//    if constexpr (__cplusplus == 201703L)
-//        return "C++17";
-
-//    return "unknown";
-//}
-
 optional<logfault::LogLevel> toLogLevel(string_view name) {
     if (name.empty() || name == "off" || name == "false") {
         return {};
@@ -141,8 +130,13 @@ int main(int argc, char* argv[]) {
     http.add_options()
 #ifdef NSBLAST_WITH_SWAGGER
         ("with-swagger",
-         po::value(&config.swagger)->default_value(config.swagger),
+         po::bool_switch(&config.swagger),
          "Enable the '/swagger' endpoint to interactively explore the REST API")
+#endif
+#ifdef NSBLAST_WITH_UI
+            ("with-ui",
+             po::bool_switch(&config.ui),
+             "Enable the '/ui' endpoint to serve the WEB UI")
 #endif
         ("http-endpoint,H",
             po::value<string>(&config.http.http_endpoint)->default_value(config.http.http_endpoint),

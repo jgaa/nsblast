@@ -27,8 +27,11 @@ struct Config {
 #ifdef NSBLAST_WITH_SWAGGER
     /// Enable the swagger interface
     bool swagger = true;
-#else
-    bool dummy_placeholder_ = false;
+#endif
+
+#ifdef NSBLAST_WITH_UI
+    /// Enable the swagger interface
+    bool ui = true;
 #endif
 
     ///@}

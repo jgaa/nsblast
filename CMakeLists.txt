@@ -11,8 +11,6 @@ project(nsblast-all
     VERSION ${NSBLAST_VERSION}
     LANGUAGES CXX)
 
-
-
 set(NSBLAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -22,6 +20,7 @@ option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
 option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" OFF)
 option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)
 option(NSBLAST_WITH_SWAGGER "Enable Swagger" ON)
+option(NSBLAST_WITH_UI "Enable UI" ON)
 
 if (NSBLAST_CLUSTER)
     add_definitions(-DNSBLAST_CLUSTER=1)
@@ -29,6 +28,14 @@ endif()
 
 if (NSBLAST_WITH_SWAGGER)
     add_definitions(-DNSBLAST_WITH_SWAGGER=1)
+endif()
+
+if (NSBLAST_WITH_UI)
+    find_program(NPM_EXECUTABLE NAMES npm HINTS /usr)
+    if (NOT NPM_EXECUTABLE)
+        message(SEND_ERROR "Failed to find npm executable")
+    endif()
+    add_definitions(-DNSBLAST_WITH_UI=1)
 endif()
 
 if (NSBLAST_USE_VALGRIND)
