@@ -79,7 +79,7 @@ public:
         // Remove prefix
         auto t = std::string_view{req.target};
         if (t.size() < prefix_.size()) {
-            throw std::runtime_error{"Invalid targert. Cannot be shorter than prefix!"};
+            throw std::runtime_error{"Invalid target. Cannot be shorter than prefix!"};
         }
 
         t = t.substr(prefix_.size());
