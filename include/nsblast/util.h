@@ -22,6 +22,12 @@ namespace nsblast::lib {
     template <class T, class V>
     concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
+template <class R, typename T>
+concept input_range_of =
+    std::ranges::input_range<R>
+    && std::is_same_v<T, std::ranges::range_value_t<R>>;
+
+
     // Takes a range of json values (typically an json::array) and sorts them.
     // If the values are objects, the element named 'key' is used to sort.
     // It is assumed that `json[i][key].is_string()`.

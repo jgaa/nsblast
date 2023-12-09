@@ -39,6 +39,7 @@ public:
 
     yahat::Response onTenant(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onRole(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onPermissions(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onUser(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);

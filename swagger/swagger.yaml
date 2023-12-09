@@ -995,6 +995,37 @@ paths:
               schema:
                 $ref: "#/definitions/Returns"
 
+  /permissions:
+    get:
+      tags:
+      - role
+      summary: List permissions available to the user
+      description: "Returns a list of all the permissions that are available to the tenant the user belongs to."
+      parameters:
+        - name: tenant
+          in: query
+          description: Applies for `tenant` in stead of the tenant you are logged in as. Requires the **IMPERSONATE_TENANT** permission.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/ReturnsListOfValues"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
+        "403":
+          description: "Forbidden. (Access denied)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/Returns"
 
   /role:
     get:
@@ -1939,7 +1970,6 @@ definitions:
     properties:
       name:
         type: string
-        required: true
       properties:
         $ref: "#/definitions/KeyValueList"
       permissions:
@@ -2004,7 +2034,6 @@ definitions:
       name:
         type: string
         description: "Name for the user. Can be a traditional (unix-like) user-name or an email. Must be globally unique (for an instance of nsblast)."
-        required: true
       properties:
          $ref: "#/definitions/KeyValueList"
       roles:

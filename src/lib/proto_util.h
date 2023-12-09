@@ -2,6 +2,8 @@
 
 #include <ranges>
 #include <optional>
+#include <concepts>
+#include <format>
 #include "proto/nsblast.pb.h"
 #include "nsblast/logging.h"
 
@@ -15,6 +17,11 @@ namespace nsblast::lib {
 template <typename T>
 concept ProtoList = requires(T container) {
     requires std::ranges::range<T>;
+};
+
+template <typename T>
+concept ConvertibleToString = requires(T val) {
+    requires std::convertible_to<std::string, T>;
 };
 
 template <typename T>
@@ -75,15 +82,26 @@ std::string toJson(const T& obj) {
     return str;
 }
 
+template <std::integral T>
+std::string toJson(const T& val) {
+    return to_string(val);
+}
+
+template <ConvertibleToString T>
+std::string toJson(const T& val) {
+    return std::string{val};
+}
+
 template <ProtoList T>
 std::ostream& toJson(std::ostream& out, const T& list) {
     out << '[';
     auto num = 0;
-    for(const auto& message: list) {
+    for(const auto& something: list) {
         if (++num > 1) {
             out << ',';
         }
-        out << toJson(message);
+
+        out << toJson(something);
     }
     return out << ']';
 }

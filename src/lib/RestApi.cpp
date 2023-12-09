@@ -500,6 +500,10 @@ Response RestApi::onReqest(const Request &req)
             return onRole(req, p);
         }
 
+        if (p.what == "permissions") {
+            return onPermissions(req, p);
+        }
+
         if (p.what == "config") {
             if (p.operation == "master") {
                 return onConfigMaster(req, p);
@@ -1283,6 +1287,41 @@ Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
         }
         return {404, "Role not found"};
     }
+    default:
+        return {400, "Invalid method"};
+    }
+}
+
+Response RestApi::onPermissions(const yahat::Request &req, const Parsed &parsed)
+{
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
+
+    switch(req.type) {
+    case Request::Type::GET:
+        if (parsed.target.empty()) {
+            // This operation does not require it's own permission.
+            // We allow it if the user has acess to a related operation of higher importance.
+            static constexpr auto perms = to_array(
+                {pb::Permission::LIST_ROLES,
+                 pb::Permission::GET_ROLE,
+                 pb::Permission::CREATE_ROLE,
+                 pb::Permission::UPDATE_ROLE});
+            if (!session->isAllowedAnyOf(perms)) {
+                return {403, "Access Denied"};
+            }
+            // List
+
+            const auto permnames = std::ranges::transform_view(
+                tenant->allowedpermissions(),
+                [](auto id) {
+                    return nsblast::pb::Permission_Name(id);
+                });
+
+            return makeReply(permnames);
+        }
     default:
         return {400, "Invalid method"};
     }

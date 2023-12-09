@@ -205,6 +205,13 @@ public:
         return isAllowed(perm, opts);
     }
 
+    template <input_range_of<pb::Permission> R>
+    bool isAllowedAnyOf(const R& perms) {
+        return std::ranges::any_of(perms, [this](auto perm) {
+            return isAllowed(perm);
+        });
+    }
+
     std::string_view tenant() const;
 
     // Check if a zone-permission is granted
