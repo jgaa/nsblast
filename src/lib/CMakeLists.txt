@@ -21,7 +21,7 @@ if (NSBLAST_WITH_UI)
         COMMAND BUILD_PATH=${UI_DEST} ${NPM_EXECUTABLE} --prefix ${NSBLAST_ROOT}/ui/nsblast-ui run build && touch ui_files.stamp
         DEPENDS ${NSBLAST_ROOT}/ui/nsblast-ui/package.json
         OUTPUT ${UI_DEST}asset-manifest.json ui_files.stamp
-        COMMENT "Embedding ui..."
+        COMMENT "Building react based UI..."
         )
 
         add_custom_target(ui_js ALL DEPENDS ui_files.stamp)
@@ -30,7 +30,7 @@ if (NSBLAST_WITH_UI)
         COMMAND ${MKRES} --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}/*
         DEPENDS ui_files.stamp mkres
         OUTPUT ui_res.cpp ui_res.h
-        COMMENT "Embedding swagger..."
+        COMMENT "Embedding UI ..."
         )
 
         set(LIB_UI_FILES ui_res.cpp ui_res.h)

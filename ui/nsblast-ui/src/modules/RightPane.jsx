@@ -4,6 +4,7 @@ import Dashboard from '../pages/Dashboard';
 import Login from './Login';
 import { useAppState } from './AppState'
 import ResourceRecords from '../pages/ResourceRecords';
+import Roles from '../pages/Roles';
 
 function LoggedIn() {
     return (
@@ -14,7 +15,7 @@ function LoggedIn() {
                 <Route path="/dashboard" exact element={<Dashboard />} />
                 <Route path="/dashboard/rr" element={<ResourceRecords />} />
                 <Route path="/tenants" element={<h1>tenants</h1>} />
-                <Route path="/roles" element={<h1>roles</h1>} />
+                <Route path="/roles" element={<Roles/>} />
                 <Route path="/users" element={<h1>users</h1>} />
                 <Route path="/apikeys" element={<h1>apikeys</h1>} />
                 <Route path="/events" element={<h1>events</h1>} />

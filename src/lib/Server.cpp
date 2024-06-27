@@ -233,7 +233,7 @@ void Server::startHttpServer()
         LOG_INFO << "Enabling ui at http/https://<fqdn>[:port]" << ui_path;
 
         http_->addRoute(ui_path,
-                        make_shared<EmbeddedResHandler<lib::embedded::Ui>>("/ui"));
+                        make_shared<EmbeddedResHandler<lib::embedded::Ui>>(ui_path));
     }
 #endif
 

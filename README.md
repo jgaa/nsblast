@@ -24,7 +24,7 @@ So, when I started on nsblast, I had a few requirements:
 # Status
 Under initial development.
 
-MVP expected late 2023. 
+MVP expected late 2024.
 
 The POC requirements has grown significantly in the last months, as
 I want the server to be cluster ready (one primary, any number of followers)

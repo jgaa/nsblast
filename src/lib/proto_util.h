@@ -25,7 +25,7 @@ concept ConvertibleToString = requires(T val) {
 };
 
 template <typename T>
-concept ProtoMessage = std::is_base_of<google::protobuf::Message, T>::value;
+concept ProtoMessage = std::is_base_of_v<::google::protobuf::Message, T>;
 
 template <ProtoList T, typename nameT, typename messageT = typename T::value_type>
 std::optional<messageT>  getFromList(const T& list, const nameT& name) {
@@ -77,7 +77,7 @@ std::string toJson(const T& obj) {
         LOG_DEBUG << "Failed to convert object to json: "
                   << typeid(T).name() << ": "
                   << res.ToString();
-        throw std::runtime_error{"Failed to convertt object to json"};
+        throw std::runtime_error{"Failed to convert object to json"};
     }
     return str;
 }

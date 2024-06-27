@@ -8,7 +8,7 @@
 #include "nsblast/errors.h"
 #include "proto/nsblast.pb.h"
 #include "proto_util.h"
-#include "test_res.h"
+//#include "test_res.h"
 
 using namespace std;
 using namespace nsblast;
