@@ -3,16 +3,14 @@ project(nsblastlib VERSION ${NSBLAST_VERSION} LANGUAGES CXX)
 message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 
 if (NSBLAST_WITH_SWAGGER)
-add_custom_command(
-    COMMAND ${MKRES} --verbose --compression gzip --namespace nsblast::lib::embedded --name Swagger --destination swagger_res --exclude '.*\\.map' ${NSBLAST_ROOT}/swagger/*
-    DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
-    OUTPUT swagger_res.cpp swagger_res.h
-    COMMENT "Embedding swagger..."
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.cpp ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.h
+        COMMAND ${MKRES} --verbose --compression gzip --namespace nsblast::lib::embedded --name Swagger --destination swagger_res --exclude '.*\\.map' ${NSBLAST_ROOT}/swagger/*
+        DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
+        COMMENT "Embedding swagger... Dst: ${CMAKE_CURRENT_BINARY_DIR}"
     )
 
-    set(LIB_SWAGGER_FILES swagger_res.cpp swagger_res.h)
-
-    add_custom_target(swagger_res ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.cpp)
+    set(LIB_SWAGGER_FILES ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.cpp ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.h)
 endif()
 
 if (NSBLAST_WITH_UI)
@@ -35,7 +33,6 @@ if (NSBLAST_WITH_UI)
 
         set(LIB_UI_FILES ui_res.cpp ui_res.h)
 
-        #add_custom_target(ui_res ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/ui_res.cpp ${CMAKE_CURRENT_BINARY_DIR}/ui_res.h)
 endif()
 
 ADD_SUBDIRECTORY(proto)
@@ -97,13 +94,20 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})
 
+# g++ don't like long constexpr loops
+# We need it for the embedded resources
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${PROJECT_NAME} PRIVATE -fconstexpr-loop-limit=1000000)
+endif()
+
 #set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 #add_dependencies(${PROJECT_NAME} rocksdb logfault mkres externalYahat glad ${GRPC_LIBS})
-add_dependencies(${PROJECT_NAME} rocksdb logfault externalYahat glad ${GRPC_LIBS})
+add_dependencies(${PROJECT_NAME}  logfault externalYahat glad ${GRPC_LIBS})
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         $<BUILD_INTERFACE:${Protobuf_LIBRARIES}>
+        $<BUILD_INTERFACE:${ROCKSDB_LIBRARIES}>
         $<BUILD_INTERFACE:proto>
     )
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NSBLAST_VERSION)
-    set(NSBLAST_VERSION 0.0.1)
+    set(NSBLAST_VERSION 0.1.0)
 endif()
 add_definitions(-DNSBLAST_VERSION=\"${NSBLAST_VERSION}\")
 
@@ -17,10 +17,10 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 option(NSBLAST_WITH_TESTS "Enable Tests" ON)
 option(NSBLAST_WITH_DOCS "Generate documentation" OFF)
 option(NSBLAST_USE_VALGRIND "Enable Valgrind" OFF)
-option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" OFF)
+option(NSBLAST_RUN_TESTS "Run unit-tests as part of the build" ON)
 option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)
 option(NSBLAST_WITH_SWAGGER "Enable Swagger" ON)
-option(NSBLAST_WITH_UI "Enable UI" ON)
+option(NSBLAST_WITH_UI "Enable UI" OFF)
 
 if (NSBLAST_CLUSTER)
     add_definitions(-DNSBLAST_CLUSTER=1)
@@ -80,6 +80,9 @@ if (NSBLAST_WITH_DOCS)
             VERBATIM )
 endif() # docs
 
+find_package(RocksDB REQUIRED)
+message("RocksDB lib: ${ROCKSDB_LIBRARIES}")
+
 if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.82)
 endif()
@@ -87,7 +90,6 @@ endif()
 option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
-    #locale
     program_options
     date_time
     coroutine

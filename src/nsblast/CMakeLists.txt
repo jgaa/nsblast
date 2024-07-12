@@ -16,7 +16,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
-add_dependencies(${PROJECT_NAME} logfault rocksdb nsblastlib externalYahat)
+add_dependencies(${PROJECT_NAME} logfault nsblastlib externalYahat)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib
@@ -26,7 +26,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
-    stdc++fs
     # TODO: Add macros and check for these libraries
     lz4
     snappy

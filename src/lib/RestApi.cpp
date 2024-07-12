@@ -16,12 +16,11 @@
 #include "Notifications.h"
 #include "PrimaryReplication.h"
 #include "RocksDbResource.h"
-//#include "nsblast/DnsEngine.h"
 #include "nsblast/errors.h"
 #include "google/protobuf/util/json_util.h"
 #include "proto_util.h"
 
-#include "glad/AsyncCache.hpp"
+//#include "glad/AsyncCache.hpp"
 
 using namespace std;
 using namespace std::string_literals;
@@ -591,7 +590,7 @@ void RestApi::validateSoa(const boost::json::value &json)
 
 boost::json::value RestApi::parseJson(string_view json)
 {
-    boost::json::error_code ec;
+    boost::system::error_code ec;
 
     auto obj = boost::json::parse(json, ec);
     if (ec) {

@@ -23,7 +23,7 @@ ExternalProject_Add(logfault
 ExternalProject_Add(mkres
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/mkres.git"
-    GIT_TAG "main"
+    GIT_TAG "nsblast-changes"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -76,34 +76,34 @@ ExternalProject_Add(externalYahat
 
 add_dependencies(externalYahat logfault)
 
-ExternalProject_Add(rocksdb
-    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
-    GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
-    GIT_TAG "v8.1.1"
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
-        -DUSE_RTTI=1
-        -DWITH_TESTS=OFF
-        -DWITH_ALL_TESTS=OFF
-        -DWITH_TOOLS=OFF
-        -DWITH_BENCHMARK_TOOLS=OFF
-        -DWITH_CORE_TOOLS=OFF
-        -DWITH_JNI=OFF
-        -DJNI=OFF
-        -DWITH_EXAMPLES=OFF
-        -DWITH_BENCHMARK=OFF
-        -DWITH_SNAPPY=ON
-        -DWITH_ZLIB=ON
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+# ExternalProject_Add(rocksdb
+#     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+#     GIT_REPOSITORY "https://github.com/facebook/rocksdb.git"
+#     GIT_TAG "v8.1.1"
+#     CMAKE_ARGS
+#         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+#         -DUSE_RTTI=1
+#         -DWITH_TESTS=OFF
+#         -DWITH_ALL_TESTS=OFF
+#         -DWITH_TOOLS=OFF
+#         -DWITH_BENCHMARK_TOOLS=OFF
+#         -DWITH_CORE_TOOLS=OFF
+#         -DWITH_JNI=OFF
+#         -DJNI=OFF
+#         -DWITH_EXAMPLES=OFF
+#         -DWITH_BENCHMARK=OFF
+#         -DWITH_SNAPPY=ON
+#         -DWITH_ZLIB=ON
+#         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+#         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 
 
-     # Required because CMake don't work really well with ninja
-     BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
-)
+#      # Required because CMake don't work really well with ninja
+#      BUILD_BYPRODUCTS external-projects/src/rocksdb-build/librocksdb.a
+# )
 
-ExternalProject_Get_Property(rocksdb BINARY_DIR)
-set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
-set(ROCKSDB_FOUND TRUE)
+# ExternalProject_Get_Property(rocksdb BINARY_DIR)
+# set(ROCKSDB_LIBRARIES ${BINARY_DIR}/librocksdb.a)
+# set(ROCKSDB_FOUND TRUE)
 
-message("For rocksdb: EXTERNAL_PROJECTS_INSTALL_PREFIX='${EXTERNAL_PROJECTS_INSTALL_PREFIX}'")
+# message("For rocksdb: EXTERNAL_PROJECTS_INSTALL_PREFIX='${EXTERNAL_PROJECTS_INSTALL_PREFIX}'")

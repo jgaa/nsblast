@@ -7,8 +7,6 @@
 #include "nsblast/logging.h"
 #include "nsblast/DnsEngine.h"
 
-#include "test_res.h"
-
 using namespace std;
 using namespace nsblast;
 using namespace nsblast::lib;
