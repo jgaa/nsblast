@@ -150,21 +150,44 @@ Server::VersionInfo Server::getVersionInfo()
 
 void Server::start()
 {
+    LOG_DEBUG_N << "Starting Rocksdb...";
     startRocksDb();
+    LOG_DEBUG_N << "Starting Auth...";
     startAuth();
 
 #ifdef NSBLAST_CLUSTER
+    LOG_DEBUG_N << "Starting Replication and RPC...";
     startReplicationAndRpc();
 #endif
 
-    startApi();
+    if (!config_.disable_http) {
+        LOG_DEBUG_N << "Starting Api...";
+        startApi();
+    }
+
+    LOG_DEBUG_N << "Starting Follower mgr...";
     startSlaveMgr();
-    startHttpServer();
+
+    if (config_.disable_http) {
+        LOG_INFO << "HTTP server (including the API server) is dsabled.";
+    } else {
+        LOG_DEBUG_N << "Starting HTTP server...";
+        startHttpServer();
+    }
+
+    LOG_DEBUG_N << "Starting IO threads...";
     startIoThreads();
+
+    LOG_DEBUG_N << "Starting Notifications...";
     startNotifications();
+
+    LOG_DEBUG_N << "Starting Dns...";
     startDns();
+
+    LOG_DEBUG_N << "Starting Backup manager...";
     startBackupMgr();
 
+    LOG_DEBUG_N << "Main thread joining the thread-pool...";
     runWorker("main thread");
 }
 

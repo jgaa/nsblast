@@ -266,6 +266,8 @@ public:
 
     RrInfo rrInfo() const noexcept;
 
+    std::string_view typeName() const;
+
 protected:
     void parse(bool isQuery);
 
@@ -773,6 +775,8 @@ public:
 
         bool validate() const;
 
+        std::string toString() const;
+
     private:
         const span_t span_;
     };
@@ -826,6 +830,8 @@ public:
     }
     
     std::optional<RrSoa> getSoa() const;
+
+    std::string toString() const;
 
 protected:
     void createIndex();
@@ -1523,4 +1529,7 @@ private:
 };
 
 } // ns
+
+std::ostream& operator << (std::ostream& o, const nsblast::lib::Message::Header::OPCODE& opcode);
+std::ostream& operator << (std::ostream& o, const nsblast::lib::Message::Header::RCODE& rcode);
 

@@ -225,6 +225,9 @@ struct Config {
     /// HTTP configuration
     yahat::HttpConfig http;
 
+    // Disable the HTTP server (inluding the API server)
+    bool disable_http = false;
+
     /// Max page size in a REST list reply
     size_t rest_max_page_size = 1000;
 

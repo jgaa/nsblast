@@ -129,6 +129,9 @@ int main(int argc, char* argv[]) {
     po::options_description http("HTTP/API server");
     http.add_options()
 #ifdef NSBLAST_WITH_SWAGGER
+        ("disable-http-server",
+         po::bool_switch(&config.disable_http),
+         "Disables the HTTP server, including swagger and the API server")
         ("with-swagger",
          po::bool_switch(&config.swagger),
          "Enable the '/swagger' endpoint to interactively explore the REST API")

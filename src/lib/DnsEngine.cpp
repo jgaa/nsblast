@@ -1012,6 +1012,8 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
     auto out_buffer_len = request.maxReplyBytes;
 
     Message message{request.span};
+    LOG_DEBUG << "Request " << request.uuid << " from " << request.endpoint
+              << ": " << message.toString();
 
     shared_ptr<MessageBuilder> mb;
     bool ok = true;
@@ -1020,9 +1022,11 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
 
     bool do_reply = true;
 
-    ScopedExit se{[&mb, &do_reply, &send] {
+    ScopedExit se{[&mb, &do_reply, &send, &request] {
         if (do_reply && mb) {
             mb->finish();
+            LOG_DEBUG << "Request " << request.uuid << " from " << request.endpoint
+                      << " is done: " << mb->toString();
             send(mb, true);
         }
     }};

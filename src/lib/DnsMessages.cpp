@@ -14,6 +14,26 @@
 using namespace std;
 using namespace std::string_literals;
 
+std::ostream& operator << (std::ostream& out, const nsblast::lib::Message::Header::OPCODE& op) {
+    constexpr auto names = to_array<string_view>({"QUERY", "IQUERY", "STATUS", "RESERVED", "NOTIFY", "RESERVED2"});
+    const auto index = static_cast<size_t>(op);
+    if (index < names.size()) {
+        return out << names[index];
+    }
+    return out << std::format("OPCODE={}", index);
+}
+
+std::ostream& operator << (std::ostream& o, const nsblast::lib::Message::Header::RCODE& rcode) {
+    constexpr auto names = to_array<string_view>({"NOERROR", "FORMERR", "SERVFAIL", "NXDOMAIN", "NOTIMP", "REFUSED",
+                                                 "YXDOMAIN", "YXRRSET", "NXRRSET", "NOTAUTH", "NOTZONE", "RESERVED",
+                                                  "", "", "", "", "BADVERS"});
+    const auto index = static_cast<size_t>(rcode);
+    if (index < names.size() && !names[index].empty()) {
+        return o << names[index];
+    }
+    return o << std::format("RCODE={}", index);
+}
+
 namespace nsblast::lib {
 
 using namespace detail;
@@ -815,6 +835,25 @@ bool Message::Header::validate() const
     return true;
 }
 
+string Message::Header::toString() const
+{
+    stringstream ss;
+    ss << "id: " << id()
+       << ", qr: " << qr()
+       << ", opcode: " << opcode()
+       << ", aa: " << aa()
+       << ", tc: " << tc()
+       << ", rd: " << rd()
+       << ", ra: " << ra()
+       << ", z: " << z()
+       << ", rcode: " << rcode()
+       << ", qdcount: " << qdcount()
+       << ", ancount: " << ancount()
+       << ", nscount: " << nscount()
+       << ", arcount: " << arcount();
+    return ss.str();
+}
+
 void MessageBuilder::NewHeader::incQdcount()
 {
     inc16BitValueAt(*mutable_buffer_, 4);
@@ -904,6 +943,122 @@ std::optional<RrSoa> Message::getSoa() const
         }
     }
     return {};
+}
+
+string Message::toString() const
+{
+    stringstream ss;
+    ss << header().toString() << endl;
+    for(const auto& q: getQuestions()) {
+        ss << "  Q: " << q.typeName() << " " << q.labels().string() << endl;
+    }
+
+    for(const auto& a: getAnswers()) {
+        ss << "  A: " << a.typeName() << " " << a.labels().string() << endl;
+    }
+
+    return ss.str();
+}
+
+string_view Rr::typeName() const
+{
+    static const std::map<int, std::string_view> dns_rr_types = {
+        {1, "A"},
+        {2, "NS"},
+        {3, "MD"},
+        {4, "MF"},
+        {5, "CNAME"},
+        {6, "SOA"},
+        {7, "MB"},
+        {8, "MG"},
+        {9, "MR"},
+        {10, "NULL"},
+        {11, "WKS"},
+        {12, "PTR"},
+        {13, "HINFO"},
+        {14, "MINFO"},
+        {15, "MX"},
+        {16, "TXT"},
+        {17, "RP"},
+        {18, "AFSDB"},
+        {19, "X25"},
+        {20, "ISDN"},
+        {21, "RT"},
+        {22, "NSAP"},
+        {23, "NSAP-PTR"},
+        {24, "SIG"},
+        {25, "KEY"},
+        {26, "PX"},
+        {27, "GPOS"},
+        {28, "AAAA"},
+        {29, "LOC"},
+        {30, "NXT"},
+        {31, "EID"},
+        {32, "NIMLOC"},
+        {33, "SRV"},
+        {34, "ATMA"},
+        {35, "NAPTR"},
+        {36, "KX"},
+        {37, "CERT"},
+        {38, "A6"},
+        {39, "DNAME"},
+        {40, "SINK"},
+        {41, "OPT"},
+        {42, "APL"},
+        {43, "DS"},
+        {44, "SSHFP"},
+        {45, "IPSECKEY"},
+        {46, "RRSIG"},
+        {47, "NSEC"},
+        {48, "DNSKEY"},
+        {49, "DHCID"},
+        {50, "NSEC3"},
+        {51, "NSEC3PARAM"},
+        {52, "TLSA"},
+        {53, "SMIMEA"},
+        {55, "HIP"},
+        {56, "NINFO"},
+        {57, "RKEY"},
+        {58, "TALINK"},
+        {59, "CDS"},
+        {60, "CDNSKEY"},
+        {61, "OPENPGPKEY"},
+        {62, "CSYNC"},
+        {63, "ZONEMD"},
+        {64, "SVCB"},
+        {65, "HTTPS"},
+        {99, "SPF"},
+        {100, "UINFO"},
+        {101, "UID"},
+        {102, "GID"},
+        {103, "UNSPEC"},
+        {104, "NID"},
+        {105, "L32"},
+        {106, "L64"},
+        {107, "LP"},
+        {108, "EUI48"},
+        {109, "EUI64"},
+        {249, "TKEY"},
+        {250, "TSIG"},
+        {251, "IXFR"},
+        {252, "AXFR"},
+        {253, "MAILB"},
+        {254, "MAILA"},
+        {255, "ANY"},
+        {256, "URI"},
+        {257, "CAA"},
+        {258, "AVC"},
+        {259, "DOA"},
+        {260, "AMTRELAY"},
+        {32768, "TA"},
+        {32769, "DLV"}
+    };
+
+    auto it = dns_rr_types.find(type());
+    if (it == dns_rr_types.end()) {
+        return "Unknown";
+    }
+    return it->second;
 }
 
 void Message::createIndex()

@@ -672,6 +672,28 @@ void Session::init(const pb::Tenant& tenant)
     for (auto& role : roles_) {
         if (role.appliesToAll()) {
             non_zone_perms_ |= role.permissions_;
+        } else {
+            // Propagate granted, non-admin permissions, that has no relation to fqdn's to the non_zone_perms_
+            non_zone_perms_ |= role.permissions_ &
+             ( detail::getBit(pb::Permission::USE_API)
+             | detail::getBit(pb::Permission::GET_ROLE)
+             | detail::getBit(pb::Permission::GET_USER)
+             | detail::getBit(pb::Permission::GET_SELF_TENANT)
+             | detail::getBit(pb::Permission::LIST_TENANTS)
+             | detail::getBit(pb::Permission::LIST_USERS)
+             | detail::getBit(pb::Permission::LIST_ROLES)
+             | detail::getBit(pb::Permission::LIST_APIKEYS)
+             | detail::getBit(pb::Permission::CREATE_APIKEY)
+             | detail::getBit(pb::Permission::CREATE_ROLE)
+             | detail::getBit(pb::Permission::CREATE_USER)
+             | detail::getBit(pb::Permission::CREATE_TENANT)
+             | detail::getBit(pb::Permission::DELETE_ROLE)
+             | detail::getBit(pb::Permission::DELETE_SELF_USER)
+             | detail::getBit(pb::Permission::DELETE_SELF_TENANT)
+             | detail::getBit(pb::Permission::DELETE_APIKEY)
+             | detail::getBit(pb::Permission::UPDATE_ROLE)
+             | detail::getBit(pb::Permission::UPDATE_USER)
+             | detail::getBit(pb::Permission::UPDATE_SELF_TENANT));
         }
 
         if (role.filters_) {

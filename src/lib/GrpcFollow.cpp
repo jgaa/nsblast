@@ -72,19 +72,23 @@ GrpcFollow::SyncFromServer::SyncFromServer(GrpcFollow &grpc,
                  }
       }
 {
-    LOG_INFO_N << "Setting up replication channel to " << address;
-
     std::shared_ptr<grpc::ChannelCredentials> creds;
+
+    string_view how = "plain text";
 
     if (!grpc_.server().config().cluster_x509_ca_cert.empty()) {
         grpc::SslCredentialsOptions opts;
         opts.pem_root_certs = readFileToBuffer(grpc_.server().config().cluster_x509_ca_cert);
         creds = grpc::SslCredentials(opts);
+        how = "tls with x509";
     } else {
         creds = grpc::InsecureChannelCredentials();
     }
 
     assert(creds);
+
+    LOG_INFO_N << "Setting up replication channel to " << address
+               << " using a " << how << " connection.";
 
     channel_ = grpc::CreateChannel(address, creds);
     if (auto status = channel_->GetState(false); status == GRPC_CHANNEL_TRANSIENT_FAILURE) {

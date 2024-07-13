@@ -7,13 +7,15 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
         libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
-        librocksdb8.9
+        librocksdb8.9 libcap2-bin locales
 
 
 COPY bin/* /usr/local/bin/
 # COPY lib/* /usr/local/lib/
 
-RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
+RUN locale-gen en_US.UTF-8 &&\
+    update-locale LANG=en_US.UTF-8 &&\
+    groupadd -r -g ${USER_UID} ${USER_NAME} \
     && mkdir -m=755 -p /var/home/ \
     && useradd -r -m -k /dev/null -u ${USER_UID} -g ${USER_UID} -c "Nsblast user" \
     -d /var/home/${USER_NAME}/ -s /bin/false ${USER_NAME} \
@@ -23,6 +25,12 @@ RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
 
 RUN ldconfig
 
+RUN setcap 'cap_net_bind_service=+ep' /usr/local/bin/nsblast
+
 USER ${USER_NAME}
+
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
 
 ENTRYPOINT ["/usr/local/bin/nsblast"]
