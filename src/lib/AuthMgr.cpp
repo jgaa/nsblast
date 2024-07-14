@@ -760,6 +760,18 @@ void Session::init(const pb::Tenant& tenant)
 
 bool detail::Role::matchesFqdn(std::string_view fqdn) const noexcept
 {
+    if (filters_ && !filters_->fqdn_.empty()) {
+        if (filters_->recursive_) {
+            if (isSameZone(filters_->fqdn_, fqdn)) {
+                return true;
+            }
+        } else {
+            if (filters_->fqdn_ == fqdn) {
+                return true;
+            }
+        }
+    }
+
     if (filters_ && filters_->match_) {
         return regex_match(fqdn.begin(), fqdn.end(), *filters_->match_);
     }

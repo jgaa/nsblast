@@ -218,6 +218,7 @@ public:
     bool isAllowed(pb::Permission perm,
                    std::string_view lowercaseFqdn) const {
         Options opts;
+        opts.validateZone = !lowercaseFqdn.empty();
         return isAllowed(perm, lowercaseFqdn, opts);
     }
 
