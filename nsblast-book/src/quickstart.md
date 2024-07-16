@@ -48,7 +48,7 @@ sure that the server starts automatically when the server starts up and
 if the nextappd application crash.
 
 ```sh
-docker run --restart=always -d --name nsblast -v $(pwd)/nsblast:/var/lib/nsblast --network host jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --hourly-backup-interval 6 --cluster-role primary --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/server1-cert.pem --cluster-server-key /var/lib/nsblast/tls/server1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --with-swagger --http-endpoint 0.0.0.0 --http-port 443 --http-tls-key /var/lib/nsblast/tls/certbot/privkey1.pem --http-tls-cert /var/lib/nsblast/tls/certbot/fullchain1.pem  --cluster-server-address 0.0.0.0:10123
+docker run --restart=always -d --name nsblast -v $(pwd)/nsblast:/var/lib/nsblast --network host jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --hourly-backup-interval 6 --cluster-role primary --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/server1-cert.pem --cluster-server-key /var/lib/nsblast/tls/server1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --with-swagger --http-endpoint 0.0.0.0 --http-port 443 --http-tls-key /var/lib/nsblast/tls/certbot/privkey1.pem --http-tls-cert /var/lib/nsblast/tls/certbot/fullchain1.pem  --cluster-server-address 0.0.0.0:10123 --log-file /var/lib/nsblast/nsblast.log --log-level trace
 ```
 
 Now, before we can use the API from a remote location, we need to get a TLS certificate.
@@ -121,7 +121,7 @@ echo "Creating ns records for the zone"
 
 curl --netrc -X 'PATCH' \
   'http://127.0.0.1/api/v1/rr/nsblast.com' \
-  -H 'accept: application/json' \
+  -H 'accept: appl
   -H 'Content-Type: application/json' \
   -d '{
   "ns": [
@@ -153,7 +153,7 @@ Then prepare to start the follower server.
 ```sh
 docker pull jgaafromnorth/nsblast
 
-docker run -it --rm --name nsblast -v $(pwd)/nsblast:/var/lib/nsblast -p 80:80 -p 53:53 -p 53:53/udp --add-host ns1.nsblast.com:139.162.132.207 jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --hourly-backup-interval 6 --cluster-role follower --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/client1-cert.pem --cluster-server-key /var/lib/nsblast/tls/client1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --http-port 80 --cluster-server-address ns1.nsblast.com:10123
+docker run --restart=always -d --name nsblast v $(pwd)/nsblast:/var/lib/nsblast -p 80:80 -p 53:53 -p 53:53/udp --add-host ns1.nsblast.com:139.162.132.207 jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --cluster-role follower --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/client1-cert.pem --cluster-server-key /var/lib/nsblast/tls/client1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --cluster-server-address ns1.nsblast.com:10123 --disable-http-server
 
 ```
 
