@@ -57,6 +57,7 @@ private:
     std::string_view getFrom(const yahat::Request &req) const;
     // Forward is true, backwards is false
     bool getDirection(const yahat::Request &req) const;
+    bool getAppend(const yahat::Request &req) const;
 
     Server& server() noexcept {
         assert(server_);

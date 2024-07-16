@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NSBLAST_VERSION)
-    set(NSBLAST_VERSION 0.1.2)
+    set(NSBLAST_VERSION 0.1.5)
 endif()
 add_definitions(-DNSBLAST_VERSION=\"${NSBLAST_VERSION}\")
 

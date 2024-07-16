@@ -210,6 +210,34 @@ void MessageBuilder::finish()
     createIndex();
 }
 
+bool MessageBuilder::exists(const Rr &rr, Segment segment) const
+{
+    Header hdr{span_};
+    size_t offset = nsblast::lib::Message::Header::SIZE;
+    size_t sectionIndex = 0;
+    for(auto sectionCount : {hdr.qdcount(), hdr.ancount(), hdr.nscount(), hdr.arcount()}) {
+        if (sectionCount) {
+            const RrList rs{span_, static_cast<uint16_t>(offset), sectionCount, sectionIndex == 0};
+            offset += rs.bytes();
+            if (static_cast<size_t>(segment) == sectionIndex) {
+                for(const auto& r: rs) {
+                    if (r.type() == rr.type()
+                        && r.clas() == rr.clas()
+                        && r.rdata().size() == rr.rdata().size()
+                        && std::memcmp(r.rdata().data(), rr.rdata().data(), r.rdata().size())
+                        && r.labels().string() == rr.labels().string()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+        ++sectionIndex;
+    }
+    return false;
+}
+
 void MessageBuilder::handleOpt()
 {
     const auto rcb = RrOpt::rcodeBits(rcode_);
@@ -612,6 +640,22 @@ uint32_t StorageBuilder::incrementSoaVersion(const Entry &entry)
     return new_version;
 }
 
+bool StorageBuilder::exists(const Rr &rr)
+{
+    for(const auto & it : index_) {
+        const Rr r{buffer_, it.offset};
+        if (r.type() == rr.type()
+            && r.clas() == rr.clas()
+            && r.rdata().size() == rr.rdata().size()
+            && (std::memcmp(r.rdata().data(), rr.rdata().data(), r.rdata().size()) == 0)
+            && r.labels().string() == rr.labels().string()) {
+            LOG_TRACE << "StorageBuilder::exists: Found an existing rr";
+            return true;
+        }
+    }
+    return false;
+}
+
 StorageBuilder::NewRr StorageBuilder::createDomainNameInRdata(string_view fqdn, uint16_t type, uint32_t ttl, string_view dname)
 {
     vector<char> rdata;
@@ -799,13 +843,13 @@ bool Message::Header::validate() const
     }
 
     if (flags.ra && !flags.qr) {
-        LOG_TRACE << "Message::Header::validate(): ra flag set in query";
-        return false;
+        LOG_TRACE << "Message::Header::validate(): ra flag set in query. Weird, but acceptable";
+        //return false;
     }
 
     if (flags.z) {
-        LOG_TRACE << "Message::Header::validate(): z (reserved) must be 0";
-        return false;
+        LOG_TRACE << "Message::Header::validate(): z (reserved) should be 0.";
+        //return false;
     }
 
     if (flags.rcode) {
@@ -825,11 +869,6 @@ bool Message::Header::validate() const
             LOG_TRACE << "Message::Header::validate(): ancount in query";
             return false;
         }
-
-//        if (nscount()) {
-//            LOG_TRACE << "Message::Header::validate(): nscount in query";
-//            return false;
-//        }
     }
 
     return true;

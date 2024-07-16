@@ -129,7 +129,7 @@ paths:
           "
       schema:
         type: string
-      default: brief
+      default: default
     get:
       tags:
         - zone
@@ -496,10 +496,18 @@ paths:
           $ref: "#/definitions/Entry"
       - name: wait
         in: query
+        type: integer
         description: Number of seconds to wait for the operation to be replicated to secondary servers.
         schema:
           type: integer
           default: 0
+      - name: append
+        in: query
+        type: boolean
+        description: Allows new entries to be appended, in stead of owerwriting the existing of the same type in the same fqdn. Only valid for entries that can have multiple values, like a, txt, mz, ns etc.
+        schema:
+          type: boolean
+          default: false
       responses:
         "200":
           description: "Success"

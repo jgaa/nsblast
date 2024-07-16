@@ -958,6 +958,9 @@ public:
         return maxBufferSize_;
     }
 
+    // Can be used duing construction to check if a RR already exists
+    bool exists(const Rr& rr, Segment segment = Segment::ANSWER) const;
+
 protected:
     void increaseBuffer(size_t bytes) {
         if (bytes) {
@@ -1497,6 +1500,9 @@ public:
     void oneSoa(bool value) {
         one_soa_ = value;
     }
+
+    // Can be used to check if a RR exists before the buffer is finished
+    bool exists(const Rr& rr);
 
 private:
     NewRr createDomainNameInRdata(std::string_view fqdn,

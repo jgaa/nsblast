@@ -1679,9 +1679,22 @@ put:
         }
 
         // Add the relevant old rr's to the merged buffer
+        const auto append = getAppend(req);
         for(const auto& rr : existing.rr()) {
             if (new_types.find(rr.type()) == new_types.end()) {
                 merged->createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+            } else if (append) {
+                const auto rtype = rr.type();
+                if (rtype == TYPE_A || rtype == TYPE_AAAA || rtype == TYPE_TXT
+                    || rtype == TYPE_MX || rtype == TYPE_NS || rtype == TYPE_SRV
+                    || rtype == TYPE_PTR) {
+
+                    // Allow append only if the record is not a duplicate.
+                    // Search merged for an existing rr with the same data
+                    if (!merged->exists(rr)) {
+                        merged->createRr(lowercaseFqdn, rr.type(), rr.ttl(), rr.rdata());
+                    }
+                }
             }
         }
 
@@ -2273,6 +2286,14 @@ bool RestApi::getDirection(const yahat::Request &req) const
         throw Response{400, format("direction must be `forward` or `backward`, not `{}`", it->second)};
     }
     return true; // default is forward
+}
+
+bool RestApi::getAppend(const yahat::Request &req) const
+{
+    if (auto it = req.arguments.find("append"); it != req.arguments.end()) {
+        return it->second == "true";
+    }
+    return false;
 }
 
 std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint64_t trxid)
