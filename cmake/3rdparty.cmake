@@ -56,7 +56,7 @@ ExternalProject_Add(glad
 ExternalProject_Add(externalYahat
     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
     GIT_REPOSITORY "https://github.com/jgaa/yahat-cpp.git"
-    GIT_TAG "main"
+    GIT_TAG "metrics"
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -64,6 +64,7 @@ ExternalProject_Add(externalYahat
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
         -DYAHAT_WITH_EXAMPLES=OFF
+        -DYAHAT_WITH_METRICS=ON
         -DCMAKE_CXX_STANDARD=20
         -DUSE_LOGFAULT=ON
         -DYAHAT_USE_VALGRIND=${NSBLAST_USE_VALGRIND}

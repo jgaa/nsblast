@@ -63,6 +63,8 @@ add_library(${PROJECT_NAME}
     DnsMessages.cpp
     FollowerReplication.cpp
     FollowerReplication.h
+    Metrics.cpp
+    Metrics.h
     Notifications.cpp
     Notifications.h
     PrimaryReplication.cpp
@@ -93,6 +95,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     PRIVATE src)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(STATUS "Using g++, adding -Winterference-size flag")
+    target_compile_options(${PROJECT_NAME} PUBLIC -Wno-interference-size)
+endif()
 
 # g++ don't like long constexpr loops
 # We need it for the embedded resources

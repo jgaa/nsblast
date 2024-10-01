@@ -10,6 +10,7 @@
 #include "nsblast/util.h"
 
 #include "SlaveMgr.h"
+#include "Metrics.h"
 
 #include "Notifications.h"
 
@@ -256,7 +257,7 @@ void doStartEndpoints(DnsEngine& engine, const std::string& endpoint, const std:
 }
 
 tuple<bool, shared_ptr<MessageBuilder>>
-createBuilder(const DnsEngine::Request &request, const Message& message,
+createBuilder(Server& server, const DnsEngine::Request &request, const Message& message,
               uint16_t maxBufferSize, uint16_t maxBufferSizeWithOpt) {
     auto mb = make_shared<MessageBuilder>();
     auto use_buffer_size = maxBufferSize;
@@ -341,6 +342,7 @@ createBuilder(const DnsEngine::Request &request, const Message& message,
         }
 
         if (!mb->addRr(query, hdr, MessageBuilder::Segment::QUESTION)) {
+             server.metrics().truncated_dns_responses().inc();
             return {false, mb}; // Truncated
         }
     }
@@ -997,7 +999,7 @@ void DnsEngine::flushIf(std::shared_ptr<MessageBuilder> &mb,
         send(mb, false);
 
         bool ok = true;
-        tie(ok, mb) = createBuilder(request, message, outBufLen,
+        tie(ok, mb) = createBuilder(server_, request, message, outBufLen,
                                     getMaxUdpBufferSizeWithOpt());
         assert(ok); // Should not fail here when we just call it again!
         hdr = mb->getMutableHeader();
@@ -1007,7 +1009,7 @@ void DnsEngine::flushIf(std::shared_ptr<MessageBuilder> &mb,
 void DnsEngine::processRequest(const DnsEngine::Request &request,
                                const DnsEngine::send_t &send)
 {
-    LOG_TRACE << "processRequest: Processing request " << request.uuid;
+    LOG_TRACE << "processRequest: Processing request " << request.uuid;    
 
     auto out_buffer_len = request.maxReplyBytes;
 
@@ -1017,17 +1019,20 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
 
     shared_ptr<MessageBuilder> mb;
     bool ok = true;
-    tie(ok, mb) = createBuilder(request, message, out_buffer_len, getMaxUdpBufferSizeWithOpt());
+    tie(ok, mb) = createBuilder(server_, request, message, out_buffer_len, getMaxUdpBufferSizeWithOpt());
     auto hdr = mb->getMutableHeader();
 
     bool do_reply = true;
 
-    ScopedExit se{[&mb, &do_reply, &send, &request] {
+    ScopedExit se{[&mb, &do_reply, &send, &request, &ok, this] {
         if (do_reply && mb) {
             mb->finish();
             LOG_DEBUG << "Request " << request.uuid << " from " << request.endpoint
                       << " is done: " << mb->toString();
             send(mb, true);
+            if (ok) {
+                server_.metrics().dns_responses_ok().inc();
+            }
         }
     }};
 
@@ -1042,6 +1047,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
     }
     if (opcode != Message::Header::OPCODE::QUERY) [[unlikely]] {
         mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+        server_.metrics().dns_requests_not_implemented().inc();
         return;
     }
 
@@ -1056,6 +1062,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
             LOG_DEBUG << "I can only handle CLASS_IN. Client requested " << query.clas()
                      << " in request " << request.uuid;
             mb->setRcode(Message::Header::RCODE::NOT_IMPLEMENTED);
+            server_.metrics().dns_requests_error().inc();
             return;
         }
 
@@ -1095,6 +1102,7 @@ again:
                 }
 
                 if (!mb->addRr(*rr_cname, hdr, MessageBuilder::Segment::ANSWER)) {
+                    server_.metrics().truncated_dns_responses().inc();
                     return; // Truncated
                 }
 
@@ -1110,6 +1118,7 @@ again:
                 Entry entry{sb.buffer()};
                 assert(!entry.empty());
                 if (!mb->addRr(*entry.begin(), hdr, MessageBuilder::Segment::ANSWER)) {
+                    server_.metrics().truncated_dns_responses().inc();
                     return; // Truncated
                 }
                 continue;
@@ -1139,6 +1148,7 @@ again:
                 } // qtype
 
                 if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ANSWER)) {
+                    server_.metrics().truncated_dns_responses().inc();
                     return; // Truncated
                 }
             } // for rr_set
@@ -1156,6 +1166,7 @@ again:
                         for(const auto& rr : entry) {
                             if (rr.type() == TYPE_NS) {
                                 if (!mb->addRr(rr, hdr, MessageBuilder::Segment::AUTHORITY)) {
+                                    server_.metrics().truncated_dns_responses().inc();
                                     return; // Truncated
                                 }
                                 ns_list.push_back(rr.labels().string());
@@ -1169,6 +1180,7 @@ again:
                                     const auto type = rr.type();
                                     if (type == TYPE_CNAME || type == TYPE_A || type == TYPE_AAAA) {
                                         if (!mb->addRr(rr, hdr, MessageBuilder::Segment::ADDITIONAL)) {
+                                            server_.metrics().truncated_dns_responses().inc();
                                             return; // Truncated
                                         }
                                     } // relevant type
@@ -1181,7 +1193,10 @@ again:
 
             if (!is_referral && !persuing_cname) {
                 mb->setRcode(Message::Header::RCODE::NAME_ERROR);
+                server_.metrics().dns_requests_error().inc();
                 continue;
+            } else {
+                server_.metrics().dns_requests_not_found().inc();
             }
         } // fqdn not found with direct lookup
     } // For queries

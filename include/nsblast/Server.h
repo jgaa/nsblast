@@ -21,6 +21,7 @@ namespace lib {
     class AuthMgr;
     class RocksDbResource;
     class BackupMgr;
+    class Metrics;
 
 #ifdef NSBLAST_CLUSTER
     class GrpcPrimary;
@@ -127,6 +128,16 @@ public:
         return *dns_;
     }
 
+    // Must not be called until after the http server is instantiated.
+    lib::Metrics& metrics() const noexcept {
+        assert(metrics_);
+        return *metrics_;
+    }
+
+    bool haveMetrics() const noexcept {
+        return metrics_ ? true : false;
+    }
+
     const auto& config() const noexcept {
         return config_;
     }
@@ -209,6 +220,7 @@ protected:
     void runWorker(const std::string& name);
     void handleSignals();
 
+    std::shared_ptr<lib::Metrics> metrics_;
     std::atomic_bool done_{false};
     boost::asio::io_context ctx_;
     std::vector<std::thread> workers_;

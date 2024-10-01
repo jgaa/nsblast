@@ -80,6 +80,17 @@ if (NSBLAST_WITH_DOCS)
             VERBATIM )
 endif() # docs
 
+# Get the current Git branch name
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+message(STATUS "Git branch: ${GIT_BRANCH}")
+add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
+
 find_package(RocksDB REQUIRED)
 message("RocksDB lib: ${ROCKSDB_LIBRARIES}")
 

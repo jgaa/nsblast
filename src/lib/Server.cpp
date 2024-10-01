@@ -12,6 +12,7 @@
 #include "RocksDbResource.h"
 #include "AuthMgr.h"
 #include "BackupMgr.h"
+#include "Metrics.h"
 
 #ifdef NSBLAST_CLUSTER
 #   include "PrimaryReplication.h"
@@ -111,6 +112,35 @@ private:
 Server::Server(const Config &config)
     : config_{config}
 {
+// Macro to detect compiler and version
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#if defined(__clang__)
+#define COMPILER_NAME "Clang"
+#define COMPILER_VERSION TOSTRING(__clang_major__ ) "." TOSTRING(__clang_minor__) "." TOSTRING(__clang_patchlevel__)
+#elif defined(__GNUC__)
+#define COMPILER_NAME "GCC"
+#define COMPILER_VERSION TOSTRING(__GNUC__) "." TOSTRING(__GNUC_MINOR__) "." TOSTRING(__GNUC_PATCHLEVEL__)
+#elif defined(_MSC_VER)
+#define COMPILER_NAME "MSVC"
+#define COMPILER_VERSION TOSTRING(_MSC_VER)
+#else
+#define COMPILER_NAME "Unknown Compiler"
+#define COMPILER_VERSION "Unknown Version"
+#endif
+
+    metrics_ = make_shared<lib::Metrics>(*this);
+    metrics_->metrics().AddInfo("nsblast_build", "Build information", {}, {
+        {"version", NSBLAST_VERSION},
+        {"build_date", __DATE__},
+        {"build_time", __TIME__},
+        {"platform", BOOST_PLATFORM},
+        {"compiler", COMPILER_NAME},
+        {"compiler_version", COMPILER_VERSION},
+        {"cpp_standard", cppStrandard()},
+        {"rocksdb", rocksdb::GetRocksVersionAsString()},
+        {"branch", GIT_BRANCH}
+        });
 }
 
 Server::~Server()
@@ -237,9 +267,10 @@ void Server::startHttpServer()
 
     http_ = make_shared<yahat::HttpServer>(config().http, [this](const AuthReq& ar) {
             return auth_->authorize(ar);
-    }, "nsblast "s + NSBLAST_VERSION);
+    }, metrics_->metrics(), "nsblast "s + NSBLAST_VERSION);
 
     http_->addRoute("/api/v1", api_);
+
 #ifdef NSBLAST_WITH_SWAGGER
     if (config().swagger) {
         const string_view swagger_path = "/api/swagger";
@@ -457,6 +488,10 @@ void Server::listBackups()
 void Server::runWorker(const string &name)
 {
     LOG_DEBUG << "Server " << name  << " is joining the primary thread-pool.";
+    lib::Metrics::gauge_scoped_t thread_scope;
+    if (haveMetrics()) {
+        thread_scope = metrics().asio_worker_threads().scoped();
+    }
     try {
         ctx_.run();
     } catch(const exception& ex) {
