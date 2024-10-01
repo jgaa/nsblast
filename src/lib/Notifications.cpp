@@ -94,7 +94,7 @@ void Notifications::Notifier::init()
                       << ex.what();
         }
         LOG_TRACE << "Notifications::Notifier::init - Init complete for " << fqdn_ << "/" << id_;
-    });
+    }, boost::asio::detached);
 }
 
 void Notifications::Notifier::resolve(boost::asio::yield_context &yield)
