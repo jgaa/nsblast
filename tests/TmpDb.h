@@ -92,10 +92,10 @@ public:
         string nsname = "ns1."s + zone;
         string rname = "hostmaster."s + zone;
         string mxname = "mail.example."s + zone;
-        auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-        auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-        auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-        auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+        auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+        auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+        auto ip3 = boost::asio::ip::make_address_v6("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+        auto ip4 = boost::asio::ip::make_address_v6("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
         // Notice order. Sorting the index must work to iterate in the expected order below
         sb.setTenantId(tid);
@@ -119,10 +119,10 @@ public:
     void createWwwA() {
         StorageBuilder sb;
         string_view fqdn = "www.example.com";
-        auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.3");
-        auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.4");
-        auto ip3 = boost::asio::ip::address_v6::from_string("2003:0db8:85a3:0000:0000:8a2e:0370:7334");
-        auto ip4 = boost::asio::ip::address_v6::from_string("2004:0db8:85a3:0000:0000:8a2e:0370:7335");
+        auto ip1 = boost::asio::ip::make_address_v4("127.0.0.3");
+        auto ip2 = boost::asio::ip::make_address_v4("127.0.0.4");
+        auto ip3 = boost::asio::ip::make_address_v6("2003:0db8:85a3:0000:0000:8a2e:0370:7334");
+        auto ip4 = boost::asio::ip::make_address_v6("2004:0db8:85a3:0000:0000:8a2e:0370:7335");
 
         // Notice order. Sorting the index must work to iterate in the expected order below
         sb.createA(fqdn, 1000, ip1);

@@ -461,7 +461,7 @@ StorageBuilder::NewRr StorageBuilder::createBase64(string_view fqdn, uint16_t ty
 
 StorageBuilder::NewRr StorageBuilder::createA(string_view fqdn, uint32_t ttl, const string &ip)
 {
-    auto addr = boost::asio::ip::address::from_string(string{ip});
+    auto addr = boost::asio::ip::make_address(string{ip});
     if (addr.is_v4()) {
         return createA(fqdn, ttl, addr.to_v4());
     } if (addr.is_v6()) {

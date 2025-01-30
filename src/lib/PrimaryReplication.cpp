@@ -257,7 +257,7 @@ void PrimaryReplication::Agent::syncLater()
     // a race-condition where it get called from another thread
     // just after finishing iterateDb() but before is_syncing_
     // is reset.
-    db_sync_.post([w=weak_from_this()]{
+    boost::asio::post(db_sync_, [w=weak_from_this()]{
         if (auto self = w.lock()) {
             try {
                 if (self->state_ == State::ITERATING_DB && !self->is_syncing_) {

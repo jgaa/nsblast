@@ -114,7 +114,7 @@ public:
 
             // Get ready to receive the next request
             // TODO: Add some logic to prevent us from queuing an infinite number of requests
-            parent().ctx().post([this] {
+            boost::asio::post(parent().ctx(), [this] {
                 start();
             });
 
@@ -1243,7 +1243,7 @@ DnsEngine::tcp_session_t DnsEngine::createTcpSession(DnsEngine::tcp_t::socket &&
     // a weak pointer so we can easily detect this corner-case and handle
     // it correctly.
     auto w = session->weak_from_this();
-    ctx().post([w] {
+    boost::asio::post(ctx(), [w] {
         if (auto self = w.lock()) {
             // Start receiving messages
             self->start();

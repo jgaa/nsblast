@@ -291,7 +291,7 @@ void Slave::sync()
      *
      */
     notifications_ = 0;
-    boost::asio::spawn([this, self=shared_from_this()](boost::asio::yield_context yield) {
+    boost::asio::spawn(mgr_.ctx(), [this, self=shared_from_this()](boost::asio::yield_context yield) {
         try {
             sync(yield);
         }  catch (const exception& ex) {
@@ -299,7 +299,7 @@ void Slave::sync()
                       << " failed with exception: " << ex.what();
         }
         self->setTimer(self->interval());
-    });
+    }, boost::asio::detached);
 }
 
 void Slave::sync(boost::asio::yield_context &yield)

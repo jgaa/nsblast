@@ -580,7 +580,7 @@ TEST(Rr, generalOnRootPath) {
 TEST(Rr, A) {
     StorageBuilder sb;
 
-    auto ip = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip = boost::asio::ip::make_address_v4("127.0.0.1");
     auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -595,7 +595,7 @@ TEST(Rr, AStr) {
     StorageBuilder sb;
 
     const string ip_str = "127.0.0.1";
-    auto ip = boost::asio::ip::address_v4::from_string(ip_str);
+    auto ip = boost::asio::ip::make_address_v4(ip_str);
     auto rr = sb.createA("www.example.com", 0, ip_str);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -609,7 +609,7 @@ TEST(Rr, AStr) {
 TEST(Rr, AAAA) {
     StorageBuilder sb;
 
-    auto ip = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip = boost::asio::ip::make_address_v6("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
     auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -624,7 +624,7 @@ TEST(Rr, AAAAStr) {
     StorageBuilder sb;
 
     const string ip_str = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
-    auto ip = boost::asio::ip::address_v6::from_string(ip_str);
+    auto ip = boost::asio::ip::make_address_v6(ip_str);
     auto rr = sb.createA("www.example.com", 0, ip_str);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -639,7 +639,7 @@ TEST(Rr, AAAAStr) {
 TEST(Rr, GenericA) {
     StorageBuilder sb;
 
-    auto ip = boost::asio::ip::address::from_string("127.0.0.1");
+    auto ip = boost::asio::ip::make_address("127.0.0.1");
     auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -653,7 +653,7 @@ TEST(Rr, GenericA) {
 TEST(Rr, GenericAAAA) {
     StorageBuilder sb;
 
-    auto ip = boost::asio::ip::address::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip = boost::asio::ip::make_address("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
     auto rr = sb.createA("www.example.com", 0, ip);
 
     EXPECT_EQ(rr.labels().string(), "www.example.com");
@@ -667,9 +667,9 @@ TEST(Rr, GenericAAAA) {
 TEST(Rr, MultipleA) {
     StorageBuilder sb;
 
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+    auto ip3 = boost::asio::ip::make_address_v4("127.0.0.3");
     auto rr1 = sb.createA("www.example.com", 0, ip1);
     auto rr2 = sb.createA("ignored.example.com", 0, ip2);
     auto rr3 = sb.createA("", 0, ip3);
@@ -727,9 +727,9 @@ TEST(RrList, parse) {
     string_view rname = "hostmaster.example.com";
 
 
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.3");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+    auto ip3 = boost::asio::ip::make_address_v4("127.0.0.3");
     auto rr1 = sb.createA(fqdn, 5000, ip1);
     auto rr2 = sb.createA(fqdn, 5001, ip2);
     auto rr3 = sb.createA(fqdn, 5002, ip3);
@@ -1197,7 +1197,7 @@ TEST(Rr, RootLabel) {
 TEST(StorageBuilder, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
 
     sb.createA(fqdn, 1000, ip1);
     EXPECT_NO_THROW(sb.finish());
@@ -1228,7 +1228,7 @@ TEST(StorageBuilder, Dhcid) {
 TEST(Entry, SingleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
 
     sb.createA(fqdn, 1000, ip1);
     sb.finish();
@@ -1261,8 +1261,8 @@ TEST(Entry, SingleA) {
 TEST(Entry, DoubleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
 
     sb.createA(fqdn, 1000, ip1);
     sb.createA(fqdn, 1000, ip2);
@@ -1306,9 +1306,9 @@ TEST(Entry, DoubleA) {
 TEST(Entry, TripleA) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v4::from_string("127.0.0.2");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+    auto ip3 = boost::asio::ip::make_address_v4("127.0.0.2");
 
     sb.createA(fqdn, 1000, ip1);
     sb.createA(fqdn, 1000, ip2);
@@ -1363,10 +1363,10 @@ TEST(Entry, TripleA) {
 TEST(Entry, AandAAAASorting) {
     StorageBuilder sb;
     string_view fqdn = "example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+    auto ip3 = boost::asio::ip::make_address_v6("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip4 = boost::asio::ip::make_address_v6("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
     // Notice order. Sorting the index must work to iterate in the expected order below
     sb.createA(fqdn, 1000, ip1);
@@ -1469,10 +1469,10 @@ TEST(Entry, Zone) {
     string_view nsname = "ns1.example.com";
     string_view rname = "hostmaster.example.com";
     string_view mxname = "mail.example.com";
-    auto ip1 = boost::asio::ip::address_v4::from_string("127.0.0.1");
-    auto ip2 = boost::asio::ip::address_v4::from_string("127.0.0.2");
-    auto ip3 = boost::asio::ip::address_v6::from_string("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
-    auto ip4 = boost::asio::ip::address_v6::from_string("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
+    auto ip1 = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto ip2 = boost::asio::ip::make_address_v4("127.0.0.2");
+    auto ip3 = boost::asio::ip::make_address_v6("2001:0db8:85a3:0000:0000:8a2e:0370:7334");
+    auto ip4 = boost::asio::ip::make_address_v6("2000:0db8:85a3:0000:0000:8a2e:0370:7335");
 
     // Notice order. Sorting the index must work to iterate in the expected order below
     sb.createA(fqdn, 1000, ip1);
