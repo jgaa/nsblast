@@ -238,7 +238,7 @@ void Server::resetAuth()
 
 void Server::startRocksDb(bool init)
 {
-    auto rdb = make_shared<lib::RocksDbResource>(config());
+    auto rdb = make_shared<lib::RocksDbResource>(*this);
 
     if (init) {
         LOG_DEBUG << "Initializing RocksDB";

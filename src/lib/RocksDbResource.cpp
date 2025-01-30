@@ -8,6 +8,9 @@
 #include "nsblast/util.h"
 #include "nsblast/errors.h"
 
+#include "nsblast/Server.h"
+#include "Metrics.h"
+
 using namespace std;
 using namespace std::string_literals;
 using namespace std::chrono_literals;
@@ -507,6 +510,18 @@ void RocksDbResource::Transaction::rollback_()
 RocksDbResource::RocksDbResource(const Config &config)
     : config_{config}
 {
+    preInit();
+}
+
+RocksDbResource::RocksDbResource(Server &server)
+: server_{&server}, config_{server.config()}
+{
+    preInit();
+}
+
+
+void RocksDbResource::preInit()
+{
     rocksdb::ColumnFamilyOptions o = rocksdb_options_;
     cfd_.emplace_back(rocksdb::kDefaultColumnFamilyName, o);
     cfd_.emplace_back("masterZone", o);
@@ -666,6 +681,9 @@ void RocksDbResource::startBackup(const std::filesystem::path &backupDir,
 {
     unique_lock lock(backup_mutex_, try_to_lock);
     if (!lock.owns_lock()) {
+        if (server_) {
+            server_->metrics().backup_already_running().inc();
+        };
         LOG_ERROR_N << "Failed to aquire backup mutex. A backup related operation is already in progress.";
         throw runtime_error{"Backup related operation already in progress"};
     }
@@ -683,10 +701,21 @@ void RocksDbResource::startBackup(const std::filesystem::path &backupDir,
 
     backup_thread_.emplace([backupDir, uuid, syncFirst, this] {
         LOG_DEBUG << "Starting async backup " << uuid;
+        assert(server_);
+
+        // Handle metrics
+        server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::RUNNING);
+        ScopedExit se{[this] {
+            server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::IDLE);
+        }};
+        auto duration = server_->metrics().backup_duration().scoped();
+
         try {
             backup(backupDir, syncFirst, uuid);
+            server_->metrics().backups_ok().inc();
         } catch(const exception& ex) {
             LOG_ERROR << "Caught exception from backup " << uuid <<": " << ex.what();
+            server_->metrics().backups_failed().inc();
         }
 
         LOG_DEBUG << "Async backup " << uuid << " is done.";

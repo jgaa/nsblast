@@ -11,6 +11,10 @@
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 
+namespace nsblast {
+class Server;
+}
+
 namespace nsblast::lib {
 
 class RocksDbResource : public ResourceIf {
@@ -148,7 +152,8 @@ public:
     public:
     };
 
-    RocksDbResource(const Config& config);
+    RocksDbResource(const Config& config); // For unit tests
+    RocksDbResource(Server& server); // For use
     ~RocksDbResource();
 
     // ResourceIf interface
@@ -268,6 +273,7 @@ private:
 
     rocksdb::ColumnFamilyHandle * handle(const Category category);
 
+    void preInit();
     void open();
     void bootstrap();
     bool needBootstrap() const;
@@ -287,6 +293,14 @@ private:
     std::weak_ptr<rocksdb::BackupEngine> active_backup_;
     std::optional<std::thread> backup_thread_;
     boost::uuids::uuid active_backup_uuid_;
+
+    yahat::Metrics::Counter<double> *backup_already_running_{};
+    yahat::Metrics::Counter<double> *backups_ok{};
+    yahat::Metrics::Counter<double> *backups_failed{};
+    yahat::Metrics::Summary<double> *backup_duration_{}; // Duration of backups in seconds
+
+    Server *server_{};
+
     std::mutex backup_mutex_;
     std::mutex mutex_;
 };

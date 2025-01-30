@@ -18,6 +18,8 @@ public:
     using counter_t = yahat::Metrics::Counter<uint64_t>;
     using gauge_scoped_t = yahat::Metrics::Scoped<gauge_t>;
     using counter_scoped_t = yahat::Metrics::Scoped<counter_t>;
+    using summary_t = yahat::Metrics::Summary<double>;
+    using summary_scoped = yahat::Metrics::ScopedTimer<summary_t, double>;
 
     Metrics(Server& server);
 
@@ -80,6 +82,31 @@ public:
         return *asio_worker_threads_;
     }
 
+    counter_t& backup_already_running() {
+        return *backup_already_running_;
+    }
+
+    counter_t& backups_ok() {
+        return *backups_ok_;
+    }
+
+    counter_t& backups_failed() {
+        return *backups_failed_;
+    }
+
+    summary_t& backup_duration() {
+        return *backup_duration_;
+    }
+
+    enum class BackupState{
+        IDLE,
+        RUNNING
+    };
+
+    auto& backup_state() {
+        return *backup_state_;
+    }
+
 private:
     Server& server_;
     yahat::Metrics metrics_;
@@ -97,6 +124,11 @@ private:
     gauge_t * cluster_replication_primaries_{}; // Only for followers
     gauge_t * current_dns_requests_{};
     gauge_t * asio_worker_threads_{};
+    counter_t * backup_already_running_{};
+    counter_t * backups_ok_{};
+    counter_t * backups_failed_{};
+    summary_t * backup_duration_{}; // Duration of backups in seconds
+    yahat::Metrics::Stateset<2> * backup_state_{};
 };
 
 
