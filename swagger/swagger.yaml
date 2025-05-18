@@ -1962,6 +1962,7 @@ definitions:
       - RESTORE_BACKUP
       - VERIFY_BACKUP
       - DELETE_BACKUP
+      - METRICS
 
   KeyValueList:
     type array:

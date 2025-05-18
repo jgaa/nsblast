@@ -226,7 +226,7 @@ public:
                    std::string_view lowercaseFqdn,
                    const Options& opts) const;
 
-    yahat::Auth getAuth() noexcept;
+    yahat::Auth getAuth(pb::Permission perm = pb::Permission::USE_API) noexcept;
 
     const std::string& who() const noexcept {
         return who_;
@@ -351,7 +351,7 @@ public:
 
 private:
     yahat::Auth basicAuth(std::string hash, std::string_view authString,
-                          const boost::uuids::uuid reqUuid);
+                          const boost::uuids::uuid reqUuid, pb::Permission perm = pb::Permission::USE_API);
     void processUsers(pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void upsertUserIndexes(trx_t& trx, const pb::Tenant& tenant,
                            const std::optional<pb::Tenant>& existingTenant);

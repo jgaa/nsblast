@@ -95,6 +95,8 @@ enum Permission {
     RESTORE_BACKUP = 44;
     VERIFY_BACKUP = 45;
     DELETE_BACKUP = 46;
+
+    METRICS = 47; // Gives access to GET /metrics
 }
 
 /**

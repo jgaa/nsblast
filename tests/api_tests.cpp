@@ -1746,7 +1746,7 @@ TEST(ApiRequest, createUser) {
     auto Userit = tenant->users().begin();
     EXPECT_EQ(Userit->name(), "admin");
     ++Userit;
-    EXPECT_EQ(Userit->name(), "testUser");
+    EXPECT_EQ(Userit->name(), "testuser");
 }
 
 TEST(ApiRequest, upsertNewUser) {
@@ -1766,7 +1766,7 @@ TEST(ApiRequest, upsertNewUser) {
     auto Userit = tenant->users().begin();
     EXPECT_EQ(Userit->name(), "admin");
     ++Userit;
-    EXPECT_EQ(Userit->name(), "testUser");
+    EXPECT_EQ(Userit->name(), "testuser");
 }
 
 TEST(ApiRequest, upsertNewUserMissingTarget) {

@@ -261,6 +261,18 @@ struct Config {
     /// Options to generate a chain of self-signed cerificates
     CreateCaChainOptions ca_chain;
     ///@}
+
+    /*! \name Metrics */
+    ///@{
+    /// Options for metrics
+
+    /// Disable metrics
+    bool disable_metrics = false;
+
+    /// Disable authentication for metrics
+    bool no_metrics_auth = false;
+
+    ///@}
 };
 
 // RFC 1035

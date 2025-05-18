@@ -70,6 +70,18 @@ AuthMgr::AuthMgr(Server &server)
 
 yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 {
+    auto required_perm = pb::Permission::USE_API;
+    if (ar.req.target == "/metrics") {
+        if (server().config().disable_metrics) {
+            LOG_DEBUG_N << "Request " <<  ar.req.uuid << " to metrics endpoint:  Metrics is disabled.";
+            return {};
+        }
+        if (server().config().no_metrics_auth) {
+            return {"anonymous-metrics", true};
+        }
+
+        required_perm = pb::Permission::METRICS;
+    }
     if (ar.auth_header.empty()) {
         LOG_TRACE_N << "Request " <<  ar.req.uuid << " provided no Authorization header.";
         return {};
@@ -78,12 +90,13 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
     auto hash = sha256(ar.auth_header, false);
     if (auto existing = keys_.get(hash)) {
         LOG_TRACE_N << "Request " <<  ar.req.uuid << " proceeded with session-key " << Base64Encode(hash);
-        return existing->getAuth();
+        return existing->getAuth(required_perm);
     }
 
     static constexpr string_view basic = "basic ";
     if (compareCaseInsensitive(basic, ar.auth_header, false)) {
-        return basicAuth(hash, ar.auth_header.substr(basic.size()), ar.req.uuid);
+        return basicAuth(hash, ar.auth_header.substr(basic.size()),
+                         ar.req.uuid, required_perm);
     }
 
     LOG_DEBUG_N << "AuthMgr::authorize: Unrecognized authentication method" << ar.auth_header.substr(0, 10);
@@ -358,7 +371,8 @@ void AuthMgr::updateZoneRrIx(ResourceIf::TransactionIf &trx, std::string_view fq
 
 yahat::Auth AuthMgr::basicAuth(std::string hash,
                                std::string_view authString,
-                               const boost::uuids::uuid reqUuid)
+                               const boost::uuids::uuid reqUuid,
+                               pb::Permission required_perm)
 {
     trim(authString);
     if (authString.empty()) {
@@ -412,7 +426,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                               << " at tenant " << tenant->id()
                               << " for request " << reqUuid;
 
-                    return session->getAuth();
+                    return session->getAuth(required_perm);
                 }
             }
         }
@@ -654,10 +668,10 @@ bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, con
     return result;
 }
 
-yahat::Auth Session::getAuth() noexcept
+yahat::Auth Session::getAuth(pb::Permission perm) noexcept
 {
     yahat::Auth a;
-    a.access = isAllowed(pb::Permission::USE_API);
+    a.access = isAllowed(perm);
     a.extra = shared_from_this();
     a.account = format("{}/{}", tenant(), who_);
     return a;
@@ -693,7 +707,8 @@ void Session::init(const pb::Tenant& tenant)
              | detail::getBit(pb::Permission::DELETE_APIKEY)
              | detail::getBit(pb::Permission::UPDATE_ROLE)
              | detail::getBit(pb::Permission::UPDATE_USER)
-             | detail::getBit(pb::Permission::UPDATE_SELF_TENANT));
+             | detail::getBit(pb::Permission::UPDATE_SELF_TENANT)
+             | detail::getBit(pb::Permission::METRICS));
         }
 
         if (role.filters_) {

@@ -1342,11 +1342,15 @@ Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
             return {400, "Failed to parse json to a user"};
         }
 
+        if (user.has_name()) {
+            user.set_name(toLower(user.name()));
+        }
+
         if (req.type == Request::Type::POST) {
             if (!user.has_name()) {
                 return {400, "The user must have a name"};
             }
-            lcTarget = toLower(user.name());
+            lcTarget = user.name();
         } else if (parsed.target.empty()) {
             return {400, "Target must contain the user-name"};
         }
@@ -1380,7 +1384,7 @@ get_user:
         if (!session->isAllowed(pb::Permission::CREATE_USER)) {
             return {403, "Access Denied"};
         }
-        if (auto existing = getFromList(tenant->users(), toLower(user.name()))) {
+        if (auto existing = getFromList(tenant->users(), user.name())) {
             return {409, "user already exists"};
         }
 
@@ -1406,6 +1410,12 @@ get_user:
                 return {403, "Access Denied"};
             }
             rcode = 201;
+            if (user.has_name() && user.name() != lcTarget) {
+                return {400, "When you create a user, the name must be blank or the same as the target"};
+            }
+            if (!user.has_name()) {
+                user.set_name(lcTarget);
+            }
         }
         assert(user.has_name());
         lcTarget = user.name();

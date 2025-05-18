@@ -136,6 +136,12 @@ int main(int argc, char* argv[]) {
          po::bool_switch(&config.swagger),
          "Enable the '/swagger' endpoint to interactively explore the REST API")
 #endif
+        ("disable-metrics",
+         po::bool_switch(&config.disable_http),
+         "Disables the /metrics endpoint.")
+        ("disable-metrics-auth",
+         po::bool_switch(&config.no_metrics_auth),
+         "Disables authentication for the /metrics endpoint.")
 #ifdef NSBLAST_WITH_UI
             ("with-ui",
              po::bool_switch(&config.ui),
