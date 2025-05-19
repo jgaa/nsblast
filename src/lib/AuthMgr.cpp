@@ -632,19 +632,32 @@ bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, con
         return true;
     }
 
+    static constexpr auto failed = [](pb::Permission perm, string_view fqdn, const Options& opts) -> bool {
+        if (opts.throwOnFailure) {
+            throw DeniedException{format("Access denied for permission {} on zone {}", pb::Permission_Name(perm), fqdn)};
+        }
+        return false;
+    };
+
     if (opts.validateZone) {
         auto trx = mgr_.server().resource().transaction();
         auto res = trx->lookupEntryAndSoa(lowercaseFqdn);
         if (!res.hasSoa()) {
             LOG_DEBUG_N << "The zone " << lowercaseFqdn << " is unknown.";
-            return false;
-        }
-        if (auto id = res.soa().tenantId()) {
-            if (*id != tenantId()) {
+            if (perm != pb::Permission::CREATE_ZONE) {
                 LOG_DEBUG_N << "The zone " << lowercaseFqdn
-                            << " is owned by tenant " << *id
-                            << ". Tenant " << tenantId() << " is denied access.";
-                return false;
+                            << " is unknown. The only valid permission to request is CREATE_ZONE, but "
+                            << pb::Permission_Name(perm) << " was requested.";
+                    return failed(perm, lowercaseFqdn, opts);
+            }
+        } else {
+            if (auto id = res.soa().tenantId()) {
+                if (*id != tenantId()) {
+                    LOG_DEBUG_N << "The zone " << lowercaseFqdn
+                                << " is owned by tenant " << *id
+                                << ". Tenant " << tenantId() << " is denied access.";
+                    return false;
+                }
             }
         }
     }
@@ -661,9 +674,8 @@ bool Session::isAllowed(pb::Permission perm, std::string_view lowercaseFqdn, con
 
     const auto bit = detail::getBit(perm);
     const auto result = (perms & bit) == bit;
-    if (!result && opts.throwOnFailure) {
-        auto pname = pb::Permission_Name(perm);
-        throw DeniedException{"Access denied for "s + pname + ": " + string{lowercaseFqdn}};
+    if (!result ) {
+        return failed(perm, lowercaseFqdn, opts);
     }
     return result;
 }

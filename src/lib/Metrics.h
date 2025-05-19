@@ -98,6 +98,10 @@ public:
         return *backup_duration_;
     }
 
+    summary_t& request_latency_ok() {
+        return *request_latency_ok_;
+    }
+
     enum class BackupState{
         IDLE,
         RUNNING
@@ -128,6 +132,7 @@ private:
     counter_t * backups_ok_{};
     counter_t * backups_failed_{};
     summary_t * backup_duration_{}; // Duration of backups in seconds
+    summary_t * request_latency_ok_{}; // Latency of requests in seconds
     yahat::Metrics::Stateset<2> * backup_state_{};
 };
 

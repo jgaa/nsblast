@@ -47,6 +47,8 @@ int main(int argc, char* argv[]) {
     bool trunc_log = true;
     int restore_backup_id = 0;
     int validate_backup_id = 0;
+    bool use_json_log_console = false;
+    bool use_json_log_file = false;
 
     namespace po = boost::program_options;
     po::options_description general("Options");
@@ -60,6 +62,9 @@ int main(int argc, char* argv[]) {
         ("log-to-console,C",
              po::value<string>(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+        ("json-log-to-console",
+             po::bool_switch(&use_json_log_console),
+             "Use JSON format for the console log")
         ("log-level,l",
             po::value<string>(&log_level)->default_value(log_level),
             "Log-level; one of 'info', 'debug', 'trace'.")
@@ -69,6 +74,9 @@ int main(int argc, char* argv[]) {
         ("truncate-log-file,T",
              po::value<bool>(&trunc_log)->default_value(trunc_log),
              "Log-file to write a log to. Default is to use the console.")
+        ("json-log-file",
+         po::bool_switch(&use_json_log_file),
+         "Use JSON format for the file log")
         ("reset-auth",
             "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
             "The server will terminate after the changes are made.")
@@ -252,14 +260,24 @@ int main(int argc, char* argv[]) {
 
     if (!log_file.empty()) {
         if (auto level = toLogLevel(log_level)) {
-            logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+            if (use_json_log_file) {
+                logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::JsonHandler>(log_file, *level, trunc_log, 0xffff));
+            } else {
+                logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+            }
         }
     }
 
     if (auto level = toLogLevel(log_level_console)) {
-        logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, *level));
+        if (use_json_log_console) {
+            logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::JsonHandler>(clog, *level, 0xffff));
+        } else {
+            logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::StreamHandler>(clog, *level));
+        }
     }
 
     if (!config.ca_chain.server_subjects.empty()) {

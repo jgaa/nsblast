@@ -1023,8 +1023,9 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
     auto hdr = mb->getMutableHeader();
 
     bool do_reply = true;
+    auto latency_metrics_ok = server_.metrics().request_latency_ok().scoped();
 
-    ScopedExit se{[&mb, &do_reply, &send, &request, &ok, this] {
+    ScopedExit se{[&mb, &do_reply, &send, &request, &ok, this, &latency_metrics_ok] {
         if (do_reply && mb) {
             mb->finish();
             LOG_DEBUG << "Request " << request.uuid << " from " << request.endpoint
@@ -1032,6 +1033,8 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
             send(mb, true);
             if (ok) {
                 server_.metrics().dns_responses_ok().inc();
+            } else {
+                latency_metrics_ok.cancel();
             }
         }
     }};
@@ -1055,6 +1058,7 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
 
     LOG_TRACE << "DnsEngine::processRequest " << request.uuid
               << ". qcount=" << message.header().qdcount();
+
 
     // Iterate over the queries and add our answers
     for(const auto& query : message.getQuestions()) {
