@@ -19,8 +19,8 @@ RUN locale-gen en_US.UTF-8 &&\
     && mkdir -m=755 -p /var/home/ \
     && useradd -r -m -k /dev/null -u ${USER_UID} -g ${USER_UID} -c "Nsblast user" \
     -d /var/home/${USER_NAME}/ -s /bin/false ${USER_NAME} \
-    && mkdir -m=755 -p /var/lib/nsblast && chown ${USER_NAME} /var/lib/nsblast \
-    && mkdir -m=755 -p /var/log/nsblast && chown ${USER_NAME} /var/log/nsblast \
+    && mkdir -m=777 -p /var/lib/nsblast && chown ${USER_NAME} /var/lib/nsblast \
+    && mkdir -m=777 -p /var/log/nsblast && chown ${USER_NAME} /var/log/nsblast \
     && mkdir -m=755 -p /etc/nsblast
 
 RUN ldconfig
