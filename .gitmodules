@@ -1,0 +1,12 @@
+[submodule "dependencies/logfault"]
+	path = dependencies/logfault
+	url = https://github.com/jgaa/logfault.git
+[submodule "dependencies/mkres"]
+	path = dependencies/mkres
+	url = https://github.com/jgaa/mkres.git
+[submodule "dependencies/glad"]
+	path = dependencies/glad
+	url = https://github.com/jgaa/glad.git
+[submodule "dependencies/yahat-cpp"]
+	path = dependencies/yahat-cpp
+	url = https://github.com/jgaa/yahat-cpp.git

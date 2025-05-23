@@ -128,12 +128,29 @@ static retT getBit(const eT perm) noexcept {
     return (retT{1} << bitshift);
 }
 
-template <range_of<int> T, typename retT = detail::perms_t>
-static detail::perms_t getPerms(const T& perms) noexcept {
+template <typename T>
+concept range_of_int = std::ranges::range<T> &&
+                       std::same_as<std::ranges::range_value_t<T>, int>;
+
+#if __cplusplus >= 202302L  // C++23 or later
+
+template <range_of_int T, typename retT = detail::perms_t>
+static retT getPerms(const T& perms) noexcept {
     return std::ranges::fold_left(perms, retT{0}, [](auto s, auto v) {
         return s |= getBit<retT>(v);
     });
 }
+
+#else  // C++20 fallback
+
+template <range_of_int T, typename retT = detail::perms_t>
+static retT getPerms(const T& perms) noexcept {
+    return std::accumulate(perms.begin(), perms.end(), retT{0}, [](retT s, int v) {
+        return s | getBit<retT>(v);
+    });
+}
+
+#endif
 
 struct ZoneFilter {
     ZoneFilter() = default;

@@ -1,4 +1,6 @@
 
+#include <unistd.h>
+
 #include <iostream>
 #include <filesystem>
 #include <boost/program_options.hpp>
@@ -296,6 +298,7 @@ int main(int argc, char* argv[]) {
     }
 
     LOG_INFO << appname << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
+    LOG_INFO << "I am running as user=" << getuid() << " group=" << getgid();
 
     try {        
         Server server{config};

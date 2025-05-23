@@ -15,8 +15,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     #$<INSTALL_INTERFACE:include>
     PRIVATE src)
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
-add_dependencies(${PROJECT_NAME} logfault nsblastlib externalYahat)
+add_dependencies(${PROJECT_NAME} logfault nsblastlib)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib

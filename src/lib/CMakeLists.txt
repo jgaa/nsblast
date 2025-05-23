@@ -5,7 +5,7 @@ message(STATUS "Configuring ${PROJECT_NAME} ${NSBLAST_VERSION}")
 if (NSBLAST_WITH_SWAGGER)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.cpp ${CMAKE_CURRENT_BINARY_DIR}/swagger_res.h
-        COMMAND ${MKRES} --verbose --compression gzip --namespace nsblast::lib::embedded --name Swagger --destination swagger_res --exclude '.*\\.map' ${NSBLAST_ROOT}/swagger/*
+        COMMAND mkres --verbose --compression gzip --namespace nsblast::lib::embedded --name Swagger --destination swagger_res --exclude '.*\\.map' ${NSBLAST_ROOT}/swagger/*
         DEPENDS ${NSBLAST_ROOT}/swagger/index.html ${NSBLAST_ROOT}/swagger/swagger.yaml mkres
         COMMENT "Embedding swagger... Dst: ${CMAKE_CURRENT_BINARY_DIR}"
     )
@@ -25,14 +25,13 @@ if (NSBLAST_WITH_UI)
         add_custom_target(ui_js ALL DEPENDS ui_files.stamp)
 
     add_custom_command(
-        COMMAND ${MKRES} --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}/*
+        COMMAND mkres --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}/*
         DEPENDS ui_files.stamp mkres
         OUTPUT ui_res.cpp ui_res.h
         COMMENT "Embedding UI ..."
         )
 
         set(LIB_UI_FILES ui_res.cpp ui_res.h)
-
 endif()
 
 ADD_SUBDIRECTORY(proto)
@@ -107,24 +106,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE -fconstexpr-loop-limit=1000000)
 endif()
 
-#set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
-#add_dependencies(${PROJECT_NAME} rocksdb logfault mkres externalYahat glad ${GRPC_LIBS})
-add_dependencies(${PROJECT_NAME}  logfault externalYahat glad ${GRPC_LIBS})
+add_dependencies(${PROJECT_NAME} mkres logfault yahat glad ${GRPC_LIBS})
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         $<BUILD_INTERFACE:${Protobuf_LIBRARIES}>
         $<BUILD_INTERFACE:${ROCKSDB_LIBRARIES}>
         $<BUILD_INTERFACE:proto>
+        $<BUILD_INTERFACE:yahat>
     )
-
-#install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Config
-#    ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#    LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#    RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})  # This is for Windows
-#install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
-#install(EXPORT ${PROJECT_NAME}Config DESTINATION share/${PROJECT_NAME}/cmake)
 
 message(STATUS "Components to pack (nsblast): ${CPACK_COMPONENTS_ALL}")
 

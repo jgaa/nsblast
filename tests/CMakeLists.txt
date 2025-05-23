@@ -104,7 +104,7 @@ set_property(TARGET api_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(api_tests
     nsblastlib
-    externalYahat
+    yahat
      ${DEPENDS_GTEST}
     )
 
@@ -148,7 +148,7 @@ set_property(TARGET dns_engine_tests PROPERTY CXX_STANDARD 20)
 
 add_dependencies(dns_engine_tests
     nsblastlib
-    externalYahat
+    yahat
      ${DEPENDS_GTEST}
     )
 
