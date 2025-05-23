@@ -55,7 +55,7 @@ Metrics::Metrics(Server& server)
     backup_already_running_ = metrics_.AddCounter("nsblast_backup_already_running", "Number of backup requests that was already running", {});
     backups_ok_ = metrics_.AddCounter("nsblast_backups", "Number of successful backups", {}, {{"result", "ok"}});
     backups_failed_ = metrics_.AddCounter("nsblast_backups", "Number of failed backups", {}, {{"result", "failed"}});
-    backup_duration_ = metrics_.AddSummary("nsblast_backup_duration", "Duration of backups", {}, {{}}, {{0.5, 0.9, 0.95, 0.99}});
+    backup_duration_ = metrics_.AddSummary("nsblast_backup_duration", "Duration of backups", {}, {}, {{0.5, 0.9, 0.95, 0.99}});
     backup_state_ = metrics_.AddStateset<2>("nsblast_backup_state", "Backup state", {}, {}, {"idle", "running"});
     backup_state_->setExclusiveState(BackupState::IDLE);
 
