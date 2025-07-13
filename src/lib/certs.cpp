@@ -75,6 +75,8 @@ auto openFile(const std::filesystem::path& path) {
         return unique_ptr<FILE, Closer>(fp);
     }
 
+    LOG_TRACE_N << "Opened " << path << " for binary write.";
+
     const auto why = strerror(errno);
 
     throw runtime_error{format("Failed to open file {} for binary write: {}",
@@ -237,8 +239,19 @@ void createClientCert(const std::string& caName,
         throw runtime_error{format("Error signing client certificate {}.", serial)};
     }
 
-    PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL);
-    PEM_write_X509(openFile(certPath).get(), cert.get());
+    if (PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL) != 1) {
+        const auto errCode = ERR_get_error();  // Get the latest error code
+        const auto* errStr = ERR_reason_error_string(errCode);
+        LOG_ERROR_N << "Failed to write client private key to " << keyPath
+                    << ": " << (errStr ? errStr : "Unknown error");
+    }
+
+    if (PEM_write_X509(openFile(certPath).get(), cert.get()) != 1) {
+        const auto errCode = ERR_get_error();  // Get the latest error code
+        const auto* errStr = ERR_reason_error_string(errCode);
+        LOG_ERROR_N << "Failed to write client certificate to " << certPath
+                    << ": " << (errStr ? errStr : "Unknown error");
+    }
 }
 
 void createServerCert(const std::string& caName,
@@ -261,8 +274,19 @@ void createServerCert(const std::string& caName,
         throw runtime_error{format("Error signing client certificate {}.", serial)};
     }
 
-    PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL);
-    PEM_write_X509(openFile(certPath).get(), cert.get());
+    if (PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL) != 1) {
+        const auto errCode = ERR_get_error();  // Get the latest error code
+        const auto* errStr = ERR_reason_error_string(errCode);
+        LOG_ERROR_N << "Failed to write server private key to " << keyPath
+                    << ": " << (errStr ? errStr : "Unknown error");
+    }
+
+    if (PEM_write_X509(openFile(certPath).get(), cert.get()) != 1) {
+        const auto errCode = ERR_get_error();  // Get the latest error code
+        const auto* errStr = ERR_reason_error_string(errCode);
+        LOG_ERROR_N << "Failed to write server certificate to " << certPath
+                    << ": " << (errStr ? errStr : "Unknown error");
+    }
 }
 
 string expand(string what, bool kindIsCert, unsigned count = 0) {
@@ -281,7 +305,8 @@ void createCaChain(const CreateCaChainOptions& options)
     // Create the CA
     auto ca_cert_path = options.path;
     ca_cert_path /= expand(options.ca_template, true);
-    auto [ca_cert, ca_key] =  createCaCert(options.ca_name, options.lifetime_days_ca,
+    LOG_INFO_N << "Creating CA certificate: " << ca_cert_path;
+    auto [ca_cert, ca_key] =  createCaCert(options.ca_name, options.lifetime_days_ca(),
                                           options.key_bytes, {}, ca_cert_path);
 
     // Serial numbers for the certs we make
@@ -298,8 +323,10 @@ void createCaChain(const CreateCaChainOptions& options)
         kpath /= expand(options.servers_template, false, scount);
         ++scount;
 
+        LOG_INFO_N << "Creating server certificate: " << cpath;
+
         createServerCert(options.ca_name, subject, ca_key.get(), ++serial,
-                         options.lifetime_days_certs, options.key_bytes, kpath, cpath);
+                         options.lifetime_days_certs(), options.key_bytes, kpath, cpath);
     }
 
 
@@ -312,8 +339,10 @@ void createCaChain(const CreateCaChainOptions& options)
         cpath /= expand(options.client_template, true, i);
         kpath /= expand(options.client_template, false, i);
 
+        LOG_INFO_N << "Creating client certificate: " << cpath;
+
         createClientCert(options.ca_name, name, ca_key.get(), ++serial,
-                         options.lifetime_days_certs, options.key_bytes, kpath, cpath);
+                         options.lifetime_days_certs(), options.key_bytes, kpath, cpath);
     }
 }
 

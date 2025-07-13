@@ -234,6 +234,22 @@ int main(int argc, char* argv[]) {
          po::value(&config.ca_chain.path)->default_value(config.ca_chain.path),
          "Specifies where to generate the certs. "
          "Require cert-subject to also be provided.")
+        ("create-certs-num-years",
+         po::value(&config.ca_chain.num_years_certs)->default_value(config.ca_chain.num_years_certs),
+         "Specifies how many years the server and client cert will be valid for. "
+         "Require cert-subject to also be provided.")
+        ("create-ca-certs-num-years",
+         po::value(&config.ca_chain.num_years_ca)->default_value(config.ca_chain.num_years_ca),
+         "Specifies how many years the CA cert will be valid for. "
+         "Require cert-subject to also be provided.")
+        ("create-certs-key-bytes",
+         po::value(&config.ca_chain.key_bytes)->default_value(config.ca_chain.key_bytes),
+         "Specifies how many bytes the key will be. "
+         "Require cert-subject to also be provided.")
+        ("create-certs-ca-name",
+         po::value(&config.ca_chain.ca_name)->default_value(config.ca_chain.ca_name),
+         "Name of the CA Authority for the self-signed certs. "
+         "Require cert-subject to also be provided.")
         ;
 
     const auto appname = filesystem::path(argv[0]).stem().string();

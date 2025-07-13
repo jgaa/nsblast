@@ -3,10 +3,19 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <algorithm>
 
 namespace nsblast {
 
 struct CreateCaChainOptions {
+
+    unsigned lifetime_days_ca() const noexcept {
+        return 365 * std::max<unsigned>(num_years_ca, num_years_certs);
+    }
+
+    unsigned lifetime_days_certs() const noexcept {
+        return 365 * std::max<unsigned>(num_years_certs, 1);
+    }
 
     /// Path to where the files are created. Defaults to cwd.
     std::filesystem::path path = std::filesystem::current_path();
@@ -18,8 +27,9 @@ struct CreateCaChainOptions {
     /// Number of client certs to create
     unsigned num_clients = 3;
 
-    unsigned lifetime_days_ca = 356 * 10;
-    unsigned lifetime_days_certs = 356;
+    /// Validity period for the CA and server certs in years
+    unsigned num_years_certs = 5;
+    unsigned num_years_ca = 10;
     unsigned key_bytes = 4096;
 
     // Templates for file-names
