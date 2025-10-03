@@ -163,7 +163,7 @@ private:
     uint64_t minTrxIdForAllStreamingAgents_ = 0;
     uint64_t last_trxid_ = 0;
     std::map<boost::uuids::uuid, std::shared_ptr<Agent>> follower_agents_;
-    boost::asio::deadline_timer timer_{server_.ctx()};
+    boost::asio::steady_timer timer_{server_.ctx()};
     mutable std::mutex mutex_;
 };
 

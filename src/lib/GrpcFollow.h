@@ -103,7 +103,7 @@ private:
     std::atomic<std::chrono::steady_clock::time_point> last_contact_ = {};
     on_update_t on_update_;
     get_current_trxid_t get_ack_t;
-    boost::asio::deadline_timer timer_{server_.ctx()};
+    boost::asio::steady_timer timer_{server_.ctx()};
     std::shared_ptr<SyncFromServer> follower_;
     const HashedKey auth_key_;
     bool stopped_ = true;

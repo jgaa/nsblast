@@ -21,7 +21,7 @@ namespace {
             }
         };
 
-        void LogMessage(const logfault::Message& msg) override {
+        void LogMessage(const logfault::Message& msg) noexcept override {
             if (msg.level_ == level_) {
                 counter_->inc();
             }

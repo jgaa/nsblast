@@ -52,7 +52,7 @@ void GrpcFollow::createSyncClient(get_current_trxid_t due, on_update_t onUpdate)
 
 void GrpcFollow::scheduleNextTimer()
 {
-    timer_.expires_from_now(boost::posix_time::seconds{server().config().cluster_keepalive_timer});
+    timer_.expires_after(std::chrono::seconds{server().config().cluster_keepalive_timer});
     timer_.async_wait([this](boost::system::error_code ec) {
         if (!ec.failed()) {
             onTimer();

@@ -47,7 +47,7 @@ public:
         MutableRrSoa soa_;
         Notifications& parent_;
         const uint32_t id_;
-        boost::asio::deadline_timer timer_;
+        boost::asio::steady_timer timer_;
         std::vector<endpoint_t> pending_;
         mutable std::mutex mutex_;
         const std::string fqdn_;

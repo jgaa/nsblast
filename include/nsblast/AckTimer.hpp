@@ -19,7 +19,7 @@ template <typename ctxT, typename fnT> class AckTimer {
             return;
         }
 
-        timer_.expires_from_now(boost::posix_time::millisec{millisec});
+        timer_.expires_after(std::chrono::milliseconds{millisec});
         active_ = true;
         LOG_TRACE_N << "Starting timer with " << millisec
                     << " milliseconds time-out";
@@ -45,16 +45,19 @@ template <typename ctxT, typename fnT> class AckTimer {
     }
 
     void cancel() {
-        boost::system::error_code ec;
         std::lock_guard lock{mutex_};
         active_ = false;
-        timer_.cancel(ec);
+        try {
+            timer_.cancel();
+        } catch(...) {
+            ;
+        }
     }
 
     private:
         fnT fn_;
         bool active_ = false;
-        boost::asio::deadline_timer timer_;
+        boost::asio::steady_timer timer_;
         std::mutex mutex_;
 };
 } // ns

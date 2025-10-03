@@ -68,8 +68,8 @@ private:
     SlaveMgr& mgr_;
     const std::string fqdn_;
     const pb::SlaveZone zone_; // Configuration
-    boost::asio::deadline_timer schedule_;
-    std::optional<boost::asio::deadline_timer> timeout_;
+    boost::asio::steady_timer schedule_;
+    std::optional<boost::asio::steady_timer> timeout_;
     mutable std::mutex mutex_;;
     std::atomic_bool done_{false};
     tcp_t::endpoint current_remote_ep_;

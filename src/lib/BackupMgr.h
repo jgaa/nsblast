@@ -29,13 +29,13 @@ public:
      *  \param numHours Number of hours into the future
      *  \return time_t value for the desired time-point.
      */
-    static boost::posix_time::ptime getNextHours(size_t numHours);
+    static std::chrono::system_clock::time_point getNextHours(size_t numHours);
 
 private:
     void onTimer();
-    void startTimer(boost::posix_time::ptime when);
+    void startTimer(std::chrono::system_clock::time_point when);
 
-    boost::asio::deadline_timer timer_;
+    boost::asio::system_timer timer_;
     Server& server_;
 };
 

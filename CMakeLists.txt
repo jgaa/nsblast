@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NSBLAST_VERSION)
-    set(NSBLAST_VERSION 0.2.1)
+    set(NSBLAST_VERSION 0.2.2)
 endif()
 add_definitions(-DNSBLAST_VERSION=\"${NSBLAST_VERSION}\")
 
@@ -121,7 +121,6 @@ if(NOT DEFINED USE_BOOST_VERSION)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
-    system
     program_options
     date_time
     coroutine

@@ -433,7 +433,7 @@ public:
         }
 
         idle_timer_.cancel();
-        idle_timer_.expires_from_now(boost::posix_time::seconds{parent_.config().dns_tcp_idle_time});
+        idle_timer_.expires_after(std::chrono::seconds{parent_.config().dns_tcp_idle_time});
 
         if (!done_) {
             idle_timer_.async_wait([w=weak_from_this()] (boost::system::error_code ec) {
@@ -618,7 +618,7 @@ private:
     DnsEngine& parent_;
     DnsEngine::tcp_t::socket socket_;
     bool done_ = false;
-    boost::asio::deadline_timer idle_timer_;
+    boost::asio::steady_timer idle_timer_;
 
     // If set in the future, leave the session running even if the idle_timer timed out
     chrono::steady_clock::time_point axfr_timeout_ = {};

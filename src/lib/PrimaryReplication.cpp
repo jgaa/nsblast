@@ -84,7 +84,7 @@ void PrimaryReplication::onTransaction(transaction_t && transaction)
 
 void PrimaryReplication::startTimer()
 {
-    timer_.expires_from_now(boost::posix_time::seconds{server_.config().cluster_replication_housekeeping_timer_});
+    timer_.expires_after(std::chrono::seconds{server_.config().cluster_replication_housekeeping_timer_});
     timer_.async_wait([this](const auto ec) {
         if (ec) {
             if (ec == boost::asio::error::operation_aborted) {

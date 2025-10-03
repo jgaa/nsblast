@@ -1,4 +1,5 @@
-#include <boost/date_time/posix_time/posix_time.hpp>
+
+#include <format>
 
 #include "BackupMgr.h"
 #include "nsblast/Server.h"
@@ -11,17 +12,6 @@ using namespace std::string_literals;
 
 namespace nsblast::lib {
 
-namespace {
-
-string toLocalTime(const boost::posix_time::ptime& when) {
-    auto t = boost::posix_time::to_time_t(when);
-    std::ostringstream out;
-    struct tm tm = {};
-    out << put_time(localtime_r(&t, &tm), "%c %Z");
-    return out.str();
-}
-
-}
 
 BackupMgr::BackupMgr(Server &server)
     : server_{server}, timer_{server.ctx()}
@@ -83,24 +73,21 @@ void BackupMgr::listBackups()
     LOG_INFO << "Listing backups:" << endl << out.str();
 }
 
-boost::posix_time::ptime BackupMgr::getNextHours(size_t numHours)
+std::chrono::system_clock::time_point BackupMgr::getNextHours(size_t numHours)
 {
     assert(numHours > 0);
-    using namespace boost::posix_time;
+    assert(numHours > 0);
+    using namespace std::chrono;
 
-    auto now = second_clock::universal_time();
-    auto time_of_day = now.time_of_day();
-    ptime when{now.date(), time_of_day + hours(numHours)};
+    const auto now = system_clock::now();
 
-    // Align to whole hours
-    time_of_day = when.time_of_day();
-    time_of_day -= seconds(time_of_day.seconds());
-    time_of_day -= minutes(time_of_day.minutes());
-    when = ptime{now.date(), time_of_day};
+    // Add N hours, then align to whole hours (floor).
+    // e.g. 10:37 + 3h = 13:37 -> floor<hours> = 13:00
+    const auto when = floor<hours>(now + hours(numHours));
 
     assert(when > now);
 
-    LOG_TRACE << "BackupMgr::getNextHours Time " << toLocalTime(when)
+    LOG_TRACE << "BackupMgr::getNextHours Time " << std::format("{}", when)
               << " is supposed to be the next " << numHours
               << " hour(s) into the future.";
 
@@ -122,16 +109,20 @@ void BackupMgr::onTimer()
                               server().config().sync_before_backup);
 }
 
-void BackupMgr::startTimer(boost::posix_time::ptime when)
+void BackupMgr::startTimer(std::chrono::system_clock::time_point when)
 {
     if (server().isDone()) {
         return;
     }
 
     LOG_INFO_N << "Scehduling next automatic backup at "
-               << toLocalTime(when);
+               << format("{}", when);
 
-    timer_.cancel();
+    try {
+        timer_.cancel();
+    } catch(const std::exception&) {
+        ;
+    }
     timer_.expires_at(when);
     timer_.async_wait([this](boost::system::error_code ec) {
         if (ec) {

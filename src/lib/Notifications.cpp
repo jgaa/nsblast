@@ -61,8 +61,11 @@ void Notifications::Notifier::cancelTimer()
     if (yield_ && !yield_->cancelled()) {
         boost::asio::post(yield_->get_executor(), [w=weak_from_this()] {
             if (auto self = w.lock()) {
-                boost::system::error_code ec;
-                self->timer_.cancel(ec);
+                try {
+                    self->timer_.cancel();
+                } catch(...) {
+                    ;
+                }
             }
         });
     }
@@ -192,7 +195,7 @@ void Notifications::Notifier::process(boost::asio::yield_context& yield)
                 }
             }
 
-            timer_.expires_from_now(boost::posix_time::seconds(delay));
+            timer_.expires_after(std::chrono::seconds(delay));
             delay = max(delay * 2, 60);
         }
 

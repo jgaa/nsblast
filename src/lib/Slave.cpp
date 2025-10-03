@@ -1,6 +1,6 @@
 
 #include <boost/asio.hpp>
-#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/asio/spawn.hpp>
 #include <utility>
 
@@ -260,7 +260,7 @@ void Slave::setTimer(uint32_t secondsInFuture)
     }
 
     std::lock_guard<std::mutex> lock{mutex_};
-    schedule_.expires_from_now(boost::posix_time::seconds{secondsInFuture});
+    schedule_.expires_after(std::chrono::seconds{secondsInFuture});
     schedule_.async_wait([self=shared_from_this()](boost::system::error_code ec) {
         if (self->done_) {
             LOG_TRACE << "Slave::setTimer - Timer for sync with zone " << self->fqdn_
@@ -728,8 +728,11 @@ void Slave::onNotify(const boost::asio::ip::address& address)
               << fqdn_ << " from " << address;
 
     ++notifications_;
-    boost::system::error_code ec;
-    schedule_.cancel(ec);
+    try {
+        schedule_.cancel();
+    } catch (const std::exception& ex) {
+        ;
+    }
 }
 
 } // ns
