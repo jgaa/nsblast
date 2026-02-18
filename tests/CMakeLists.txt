@@ -36,7 +36,7 @@ target_link_libraries(dns_messages_tests
     nsblastlib
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
@@ -79,7 +79,7 @@ target_link_libraries(db_tests
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
@@ -123,7 +123,7 @@ target_link_libraries(api_tests
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
@@ -167,7 +167,7 @@ target_link_libraries(dns_engine_tests
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
@@ -211,7 +211,7 @@ target_link_libraries(auth_tests
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
@@ -251,7 +251,7 @@ target_link_libraries(replication_tests
     ${Protobuf_LIBRARIES}
     ${SNAPPY_LIBRARIES} # Not working
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}

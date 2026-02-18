@@ -87,10 +87,45 @@ Other dependencies that are handled automatically by CMake:
 - yahat-cpp: Embedded HTTP server for the REST API interface
 - rocksdb:   Database-engine
 
-## Debian dependencies
+## Build dependencies by distro
+
+Required by default CMake options (`NSBLAST_CLUSTER=ON`, `NSBLAST_WITH_SWAGGER=ON`):
+
+### Debian / Ubuntu
 ```sh
-sudo apt install googletest libgtest-dev protobuf-compiler libprotobuf-dev libicu-dev libsnappy-dev libssl-dev libz3-dev libgflags-dev libbz2-dev liblz4-dev libgrpc-dev libgrpc++-dev grpc-proto protobuf-compiler-grpc
+sudo apt update
+sudo apt install -y \
+  build-essential cmake git pkg-config \
+  libboost-all-dev \
+  libssl-dev zlib1g-dev libbz2-dev liblz4-dev libsnappy-dev librocksdb-dev \
+  libprotobuf-dev protobuf-compiler \
+  libgrpc-dev libgrpc++-dev protobuf-compiler-grpc
 ```
+
+### Fedora
+```sh
+sudo dnf install -y \
+  gcc-c++ cmake git pkgconf-pkg-config make \
+  boost-devel \
+  openssl-devel zlib-devel bzip2-devel lz4-devel snappy-devel rocksdb-devel \
+  protobuf-devel protobuf-compiler \
+  grpc-devel grpc-plugins
+```
+
+### Arch Linux
+```sh
+sudo pacman -S --needed \
+  base-devel cmake git pkgconf \
+  boost \
+  openssl zlib bzip2 lz4 snappy rocksdb \
+  protobuf grpc
+```
+
+Optional features:
+
+- Tests (`NSBLAST_WITH_TESTS=ON`): `libgtest-dev` (Debian/Ubuntu), `gtest-devel` (Fedora), `gtest` (Arch)
+- Docs (`NSBLAST_WITH_DOCS=ON`): `doxygen`
+- UI (`NSBLAST_WITH_UI=ON`): `npm`/`nodejs`
 
 Example on building the application (with custom built boost-library in /opt):
 ```sh

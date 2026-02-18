@@ -25,6 +25,7 @@ option(NSBLAST_CLUSTER "Build nsblast for seimi-automatic Cluster Mode" ON)
 option(NSBLAST_WITH_SWAGGER "Enable Swagger" ON)
 option(NSBLAST_WITH_UI "Enable UI" OFF)
 option(NSBLAST_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
+option(NSBLAST_FETCHCONTENT_UPDATES_DISCONNECTED "Disable FetchContent update checks after first download" OFF)
 
 if (NSBLAST_CLUSTER)
     add_definitions(-DNSBLAST_CLUSTER=1)
@@ -60,6 +61,8 @@ if(NSBLAST_SILENCE_BOOST_DEPRICATED_MESSAGES)
 endif()
 
 include(GNUInstallDirs)
+include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ${NSBLAST_FETCHCONTENT_UPDATES_DISCONNECTED})
 
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -117,7 +120,7 @@ find_package(RocksDB REQUIRED)
 message("RocksDB lib: ${ROCKSDB_LIBRARIES}")
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.82)
+    set(USE_BOOST_VERSION 1.85)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
@@ -130,6 +133,16 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
     json
     url
     )
+set(NSBLAST_BOOST_LIBS
+    Boost::program_options
+    Boost::date_time
+    Boost::coroutine
+    Boost::context
+    Boost::chrono
+    Boost::regex
+    Boost::json
+    Boost::url
+)
 
 # add_library(boost INTERFACE IMPORTED)
 # set_property(TARGET boost PROPERTY
@@ -137,20 +150,47 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
-add_subdirectory(dependencies/logfault)
-include_directories(${NSBLAST_ROOT}/dependencies/logfault/include)
-
-add_subdirectory(dependencies/mkres)
-
 set(GLAD_WITH_TESTS OFF)
 set(GLAD_WITH_EXAMPLES OFF)
-add_subdirectory(dependencies/glad)
-include_directories(${NSBLAST_ROOT}/dependencies/glad/include)
-
 set(YAHAT_WITH_EXAMPLES OFF)
 set(YAHAT_WITH_METRICS ON)
 set(USE_LOGFAULT=ON)
-add_subdirectory(dependencies/yahat-cpp)
+
+FetchContent_Declare(
+    logfault_dep
+    GIT_REPOSITORY https://github.com/jgaa/logfault.git
+    GIT_TAG origin/HEAD
+)
+FetchContent_Declare(
+    mkres_dep
+    GIT_REPOSITORY https://github.com/jgaa/mkres.git
+    GIT_TAG origin/HEAD
+)
+FetchContent_Declare(
+    glad_dep
+    GIT_REPOSITORY https://github.com/jgaa/glad.git
+    GIT_TAG origin/HEAD
+)
+FetchContent_Declare(
+    yahat_dep
+    GIT_REPOSITORY https://github.com/jgaa/yahat-cpp.git
+    GIT_TAG origin/HEAD
+)
+FetchContent_MakeAvailable(logfault_dep mkres_dep glad_dep yahat_dep)
+
+include_directories(${logfault_dep_SOURCE_DIR}/include)
+include_directories(${glad_dep_SOURCE_DIR}/include)
+
+if (TARGET yahat)
+    target_link_libraries(yahat PUBLIC
+        Boost::program_options
+        Boost::coroutine
+        Boost::context
+        Boost::chrono
+        Boost::json
+        Boost::url
+    )
+endif()
 
 add_subdirectory(src/lib)
 add_subdirectory(src/nsblast)

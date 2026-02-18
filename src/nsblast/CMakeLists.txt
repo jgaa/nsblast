@@ -21,7 +21,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     nsblastlib
     yahat
     ${ROCKSDB_LIBRARIES}
-    ${Boost_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${OPENSSL_LIBRARIES}
