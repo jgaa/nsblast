@@ -3,6 +3,7 @@
 #include <grpc/grpc.h>
 
 #include "GrpcFollow.h"
+#include "Metrics.h"
 #include "nsblast/logging.h"
 //#include "nsblast/util.h"
 #include "nsblast/AckTimer.hpp"
@@ -28,6 +29,10 @@ void GrpcFollow::start()
 
 void GrpcFollow::stop()
 {
+    stopped_ = true;
+    timer_.cancel();
+    setPrimaryConnected(false);
+
     if (follower_) {
         follower_->stop();
     }
@@ -45,6 +50,8 @@ void GrpcFollow::createSyncClient(get_current_trxid_t due, on_update_t onUpdate)
 
     get_ack_t = std::move(due);
     on_update_ = std::move(onUpdate);
+    stopped_ = false;
+    setPrimaryConnected(false);
 
     startFollower();
     scheduleNextTimer();
@@ -164,9 +171,9 @@ void GrpcFollow::SyncFromServer::ping()
         }
     }
 
-    const auto max_response_time = chrono::steady_clock::now()
-                         + chrono::seconds{grpc_.server().config().cluster_keepalive_timeout};
-    if (grpc_.last_contact_.load() > max_response_time) {
+    const auto now = chrono::steady_clock::now();
+    const auto max_silence = chrono::seconds{grpc_.server().config().cluster_keepalive_timeout};
+    if (now > grpc_.last_contact_.load() + max_silence) {
         LOG_INFO_N << "We may have lost connectivity with the primary (cluster_keepalive_timeout="
                    << grpc_.server().config().cluster_keepalive_timeout
                    << " seconds).";
@@ -176,6 +183,12 @@ void GrpcFollow::SyncFromServer::ping()
 }
 
 void GrpcFollow::SyncFromServer::OnWriteDone(bool ok) {
+    if (!ok) {
+        LOG_TRACE_N << "Write failed. Marking stream as done.";
+        done_ = true;
+        return;
+    }
+
     lock_guard lock{mutex_};
     can_write_ = true;
 }
@@ -192,6 +205,7 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
 
     if (!was_connected_) {
         was_connected_ = true;
+        grpc_.setPrimaryConnected(true);
     }
 
     grpc_.last_contact_ = chrono::steady_clock::now();
@@ -203,6 +217,9 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
 
 void GrpcFollow::SyncFromServer::OnDone(const grpc::Status &s)
 {
+    done_ = true;
+    grpc_.setPrimaryConnected(false);
+
     if (!was_connected_) {
         LOG_ERROR_N << "Failed to establish connection to primary grpc server. "
                        "Is the 'cluster-auth-key' valid?";
@@ -236,6 +253,13 @@ void GrpcFollow::onTimer()
             // No follower, but createSyncClient has been called. Let's create a new instance.
             startFollower();
         }
+    }
+}
+
+void GrpcFollow::setPrimaryConnected(bool connected) noexcept
+{
+    if (server_.haveMetrics() && server_.isReplicationFollower()) {
+        server_.metrics().cluster_replication_primaries().set(connected ? 1 : 0);
     }
 }
 

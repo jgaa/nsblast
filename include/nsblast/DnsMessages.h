@@ -1123,7 +1123,7 @@ public:
             return {};
         }
 
-        return span_.subspan(BUFFER_HEADER_LEN + header().flags.tenantId ? tenantIdLen : 0);
+        return span_.subspan(BUFFER_HEADER_LEN + (header().flags.tenantId ? tenantIdLen : 0));
     }
 
 private:
@@ -1538,4 +1538,3 @@ private:
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::Message::Header::OPCODE& opcode);
 std::ostream& operator << (std::ostream& o, const nsblast::lib::Message::Header::RCODE& rcode);
-

@@ -64,6 +64,7 @@ Metrics::Metrics(Server& server)
             cluster_replication_followers_ = metrics_.AddGauge("nsblast_cluster_replication", "Number of followers connected to us", {});
         } else if (server_.isReplicationFollower()) {
             cluster_replication_primaries_ = metrics_.AddGauge("nsblast_cluster_replication", "Number of primaries we are connected to", {});
+            cluster_replication_in_sync_ = metrics_.AddGauge("nsblast_cluster_replication_in_sync", "Whether this follower is in sync with its primary (1=true, 0=false)", {});
         }
     }
 

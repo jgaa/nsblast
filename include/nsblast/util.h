@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstring>
 #include <ranges>
 #include <variant>
 #include <locale>
@@ -132,8 +133,10 @@ concept input_range_of =
             throw std::runtime_error{"getValueAt: Cannot get value outside range of buffer!"};
         }
 
-        auto *v = reinterpret_cast<const V *>(buf.data() + loc);
-        return boost::endian::big_to_native(*v);
+        static_assert(std::is_trivially_copyable_v<V>);
+        V raw{};
+        std::memcpy(&raw, buf.data() + loc, sizeof(V));
+        return boost::endian::big_to_native(raw);
     }
 
     template <std::ranges::range T>
@@ -152,8 +155,9 @@ concept input_range_of =
             throw std::runtime_error{"setValueAt: Cannot set value outside range of buffer!"};
         }
 
-        auto *val = reinterpret_cast<V *>(buf.data() + loc);
-        *val = boost::endian::native_to_big(value);
+        static_assert(std::is_trivially_copyable_v<V>);
+        const auto raw = boost::endian::native_to_big(value);
+        std::memcpy(buf.data() + loc, &raw, sizeof(V));
     }
 
     // Construct a string from a range

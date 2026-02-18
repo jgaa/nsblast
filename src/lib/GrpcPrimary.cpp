@@ -8,6 +8,7 @@
 
 #include "GrpcPrimary.h"
 #include "PrimaryReplication.h"
+#include "Metrics.h"
 #include "nsblast/logging.h"
 
 using namespace std;
@@ -97,6 +98,9 @@ void GrpcPrimary::done(SyncClient &client)
     LOG_TRACE_N << "Removing client " << client.uuid();
     lock_guard lock{mutex_};
     clients_.erase(client.uuid());
+    if (owner_.haveMetrics() && owner_.isPrimaryReplicationServer()) {
+        owner_.metrics().cluster_replication_followers().set(clients_.size());
+    }
 }
 
 GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::createSyncClient(grpc::CallbackServerContext *context)
@@ -109,6 +113,9 @@ GrpcPrimary::bidi_sync_stream_t *GrpcPrimary::createSyncClient(grpc::CallbackSer
     {
         lock_guard lock{mutex_};
         clients_[client->uuid()] = client;
+        if (owner_.haveMetrics() && owner_.isPrimaryReplicationServer()) {
+            owner_.metrics().cluster_replication_followers().set(clients_.size());
+        }
     }
 
     return client.get();

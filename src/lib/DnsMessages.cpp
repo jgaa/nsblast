@@ -224,7 +224,7 @@ bool MessageBuilder::exists(const Rr &rr, Segment segment) const
                     if (r.type() == rr.type()
                         && r.clas() == rr.clas()
                         && r.rdata().size() == rr.rdata().size()
-                        && std::memcmp(r.rdata().data(), rr.rdata().data(), r.rdata().size())
+                        && (std::memcmp(r.rdata().data(), rr.rdata().data(), r.rdata().size()) == 0)
                         && r.labels().string() == rr.labels().string()) {
                         return true;
                     }
@@ -1715,8 +1715,28 @@ Entry::Entry(boost::span<const char> buffer)
     : span_(buffer)
 {
     if (!buffer.empty()) {
+        if (buffer.size() < sizeof(Header)) {
+            throw runtime_error{"Entry::Entry: Buffer too small to contain header"};
+        }
+
+        const auto& hdr = header();
+        if (hdr.flags.tenantId && buffer.size() < (sizeof(Header) + tenantIdLen)) {
+            throw runtime_error{"Entry::Entry: Buffer too small to contain tenant id"};
+        }
+
         count_ = ntohs(header().rrcount);
-        index_ = mkIndex(span_, header(), count_);
+        const auto ixoffset = static_cast<size_t>(ntohs(hdr.ixoffset));
+        if (ixoffset > buffer.size()) {
+            throw runtime_error{"Entry::Entry: Index offset outside buffer"};
+        }
+
+        const auto remaining = buffer.size() - ixoffset;
+        const auto index_bytes = count_ * sizeof(Index);
+        if (index_bytes > remaining) {
+            throw runtime_error{"Entry::Entry: Index exceeds buffer bounds"};
+        }
+
+        index_ = {reinterpret_cast<const Index *>(buffer.data() + ixoffset), count_};
     }
 }
 

@@ -98,6 +98,7 @@ private:
     void scheduleNextTimer();
     void startFollower();
     void onTimer();
+    void setPrimaryConnected(bool connected) noexcept;
 
     Server& server_;
     std::atomic<std::chrono::steady_clock::time_point> last_contact_ = {};
@@ -110,5 +111,4 @@ private:
 };
 
 } // ns
-
 

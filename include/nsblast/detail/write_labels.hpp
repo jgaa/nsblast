@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <regex>
 
 #include "nsblast/DnsMessages.h"
@@ -178,8 +179,8 @@ uint16_t writeName(T& buffer, const uint16_t startOffset, const string_view fqdn
 
 template <typename T>
 void writeNamePtr(T& buffer, uint16_t offset, uint16_t namePtr) {
-    auto *w = reinterpret_cast<uint16_t *>(buffer.data() + offset);
-    *w = htons(namePtr);
+    const auto ptr = htons(namePtr);
+    std::memcpy(buffer.data() + offset, &ptr, sizeof(ptr));
     buffer[offset] |= START_OF_POINTER_TAG;
 }
 
@@ -190,10 +191,11 @@ uint16_t resolvePtr(const T& buffer, uint16_t offset) {
     array<char, 2> ptr_buf;
     ptr_buf[0] = *ch & ~START_OF_POINTER_TAG;
     ptr_buf[1] = *++ch;
-    const auto *v = reinterpret_cast<const uint16_t *>(ptr_buf.data());
+    uint16_t v = {};
+    std::memcpy(&v, ptr_buf.data(), sizeof(v));
     // Convert to host representation
 
-    const auto ptr = ntohs(*v);
+    const auto ptr = ntohs(v);
     return ptr;
 }
 

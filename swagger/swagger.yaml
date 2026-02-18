@@ -596,6 +596,26 @@ paths:
       required: true
       type: string
 
+    get:
+      tags:
+      - config
+      summary: "Get slave configuration for a zone"
+      description: "Returns the current slave configuration for the specified zone."
+      operationId: "configGetMaster"
+      produces:
+      - "application/json"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/definitions/MasterZone"
+        "403":
+          description: "Forbidden. (Access denied)"
+        "404":
+          description: "Config not found"
+
     post:
       tags:
       - config

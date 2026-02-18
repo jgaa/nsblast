@@ -74,6 +74,11 @@ public:
         return *cluster_replication_primaries_;
     }
 
+    gauge_t& cluster_replication_in_sync() {
+        assert(cluster_replication_in_sync_);
+        return *cluster_replication_in_sync_;
+    }
+
     gauge_t& current_dns_requests() {
         return *current_dns_requests_;
     }
@@ -126,6 +131,7 @@ private:
     counter_t * dns_responses_ok_{};
     gauge_t * cluster_replication_followers_{}; // Only for primary
     gauge_t * cluster_replication_primaries_{}; // Only for followers
+    gauge_t * cluster_replication_in_sync_{}; // Only for followers
     gauge_t * current_dns_requests_{};
     gauge_t * asio_worker_threads_{};
     counter_t * backup_already_running_{};
@@ -138,4 +144,3 @@ private:
 
 
 } // ns nsblast::lib
-

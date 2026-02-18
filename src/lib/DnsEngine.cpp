@@ -478,7 +478,7 @@ public:
             while(!self->done_) {
                 // Read message-length
                 boost::system::error_code ec;
-                auto bytes = socket_.async_receive(to_asio_buffer(req->size_buffer), yield[ec]);
+                auto bytes = boost::asio::async_read(socket_, to_asio_buffer(req->size_buffer), yield[ec]);
                 if (!validate(*req, "read message-length", ec)) {
                     return;
                 }
@@ -505,7 +505,7 @@ public:
                 req->buffer_in.resize(len);
 
                 // Read message
-                bytes = socket_.async_receive(to_asio_buffer(req->buffer_in), yield[ec]);
+                bytes = boost::asio::async_read(socket_, to_asio_buffer(req->buffer_in), yield[ec]);
                 if (!validate(*req, "read message", ec)) {
                     return;
                 }

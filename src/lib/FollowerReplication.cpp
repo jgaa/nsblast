@@ -4,6 +4,7 @@
 
 #include "FollowerReplication.h"
 #include "RocksDbResource.h"
+#include "Metrics.h"
 
 #include "nsblast/logging.h"
 #include "proto_util.h"
@@ -35,6 +36,9 @@ FollowerReplication::Agent::Agent(FollowerReplication &parent)
 void FollowerReplication::Agent::init()
 {
     current_trxid_ = parent_.server().db().getLastCommittedTransactionId();
+    if (parent_.server().haveMetrics() && parent_.server().isReplicationFollower()) {
+        parent_.server().metrics().cluster_replication_in_sync().set(0);
+    }
 
     parent_.server().grpcFollow().createSyncClient([this]() {
         lock_guard lock{mutex_};
@@ -42,27 +46,30 @@ void FollowerReplication::Agent::init()
     }, [this](const grpc::nsblast::pb::SyncUpdate& update){
         LOG_TRACE << "FollowerReplication::Agent--update called with update. sync="
             << update.isinsync()
-            << ", trx #" << update.trx().id();
+            << ", has trx=" << update.has_trx();
 
         try {
-            onTrx(update.trx());
-            const auto id =  update.trx().id();
+            if (update.has_trx()) {
+                onTrx(update.trx());
+                const auto id = update.trx().id();
+
+                lock_guard lock{mutex_};
+                current_trxid_ = id;
+            }
 
             auto was_in_sync = parent_.is_in_sync_;
             parent_.is_in_sync_ = update.isinsync();
+            if (parent_.server().haveMetrics() && parent_.server().isReplicationFollower()) {
+                parent_.server().metrics().cluster_replication_in_sync().set(parent_.is_in_sync_ ? 1 : 0);
+            }
 
             if (parent_.is_in_sync_ != was_in_sync) {
                 LOG_INFO << "Changed replication state to "
                          << (parent_.is_in_sync_ ? "IN_SYNC" : "NOT_IN_SYNC");
             }
-
-            {
-                lock_guard lock{mutex_};
-                current_trxid_ = id;
-            }
         } catch(const exception& ex) {
             LOG_ERROR_N << "Failed to apply transaction #"
-                      << update.trx().id()
+                      << (update.has_trx() ? std::to_string(update.trx().id()) : "n/a")
                       << ": " << ex.what();
         }
     });
