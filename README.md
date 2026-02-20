@@ -1,3 +1,6 @@
+[![Security](https://github.com/jgaa/nsblast/actions/workflows/security.yml/badge.svg)](https://github.com/jgaa/nsblast/actions/workflows/security.yml)<br>
+[![Container](https://github.com/jgaa/nsblast/actions/workflows/container-publish.yml/badge.svg)](https://github.com/jgaa/nsblast/actions/workflows/container-publish.yml)
+
 # nsblast
 Massively scalable authoritative DNS server
 
