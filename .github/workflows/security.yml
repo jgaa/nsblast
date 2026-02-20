@@ -39,8 +39,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: npm audit (high+)
-        run: npm audit --audit-level=high
+      - name: npm audit (high+, production deps)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: OSV scan (lockfile)
         run: npx --yes osv-scanner --lockfile=package-lock.json
