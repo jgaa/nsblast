@@ -4,7 +4,7 @@
 ## build a container-image from the deliverables
 
 project=nsblast
-image_repro=jgaafromnorth
+image_repro=ghcr.io/jgaa
 
 docker_run_args=""
 tag=latest
@@ -194,8 +194,10 @@ if [ "$push" = true ] ; then
 
     if [[ -n "${version// /}" ]]; then
         vtag=${REGISTRY}/${project}:${version}
-        echo "Tagging and pushing: ${vtag}"
-        docker tag ${target_image} ${vtag}
-        docker push ${vtag}
+        if [ "${vtag}" != "${target_image}" ] ; then
+            echo "Tagging and pushing: ${vtag}"
+            docker tag ${target_image} ${vtag}
+            docker push ${vtag}
+        fi
     fi
 fi

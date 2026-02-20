@@ -1,0 +1,46 @@
+name: Container Publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/container-publish.yml'
+      - 'build-docker-image.sh'
+      - 'docker/**'
+      - 'CMakeLists.txt'
+      - 'src/**'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image version from CMake
+        id: version
+        shell: bash
+        run: |
+          VERSION="v$(grep ' set(NSBLAST_VERSION' CMakeLists.txt | xargs | cut -f 2 -d ' ' | cut -f1 -d')')"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and publish ghcr.io/jgaa/nsblast
+        shell: bash
+        env:
+          REGISTRY: ghcr.io/jgaa
+        run: |
+          ./build-docker-image.sh --push --tag "${{ steps.version.outputs.version }}"
