@@ -16,17 +16,18 @@ endif()
 if (NSBLAST_WITH_UI)
     set(UI_DEST ${CMAKE_CURRENT_BINARY_DIR}/ui)
     add_custom_command(
-        COMMAND BUILD_PATH=${UI_DEST} ${NPM_EXECUTABLE} --prefix ${NSBLAST_ROOT}/ui/nsblast-ui run build && touch ui_files.stamp
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${UI_DEST}
+        COMMAND ${CMAKE_COMMAND} -E env UI_BASE_PATH=/ui/ ${NPM_EXECUTABLE} --prefix ${NSBLAST_ROOT}/ui/nsblast-ui run build -- --outDir ${UI_DEST}
         DEPENDS ${NSBLAST_ROOT}/ui/nsblast-ui/package.json
-        OUTPUT ${UI_DEST}asset-manifest.json ui_files.stamp
+        OUTPUT ${UI_DEST}/index.html
         COMMENT "Building react based UI..."
         )
 
-        add_custom_target(ui_js ALL DEPENDS ui_files.stamp)
+        add_custom_target(ui_js ALL DEPENDS ${UI_DEST}/index.html)
 
     add_custom_command(
-        COMMAND mkres --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}/*
-        DEPENDS ui_files.stamp mkres
+        COMMAND mkres --verbose --recurse --compression gzip --namespace nsblast::lib::embedded --name Ui --destination ui_res --exclude '.*\\.map' ${UI_DEST}
+        DEPENDS ${UI_DEST}/index.html mkres
         OUTPUT ui_res.cpp ui_res.h
         COMMENT "Embedding UI ..."
         )
@@ -116,4 +117,3 @@ target_link_libraries(${PROJECT_NAME}
     )
 
 message(STATUS "Components to pack (nsblast): ${CPACK_COMPONENTS_ALL}")
-

@@ -1,12 +1,31 @@
 import React, { createContext, useContext, useState } from "react";
+import { API_BASE_URL } from "../config";
+import { createApiClient } from "./apiClient";
 
 export const AppStateContext = createContext();
 
+const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
+const trimLeadingSlash = (value) => value.replace(/^\/+/, "");
+
+const joinUrl = (base, target) => {
+    const normalizedBase = trimTrailingSlash(base || "");
+    const normalizedTarget = trimLeadingSlash(target || "");
+
+    if (!normalizedBase) {
+        return normalizedTarget ? `/${normalizedTarget}` : "/";
+    }
+
+    if (!normalizedTarget) {
+        return normalizedBase;
+    }
+
+    return `${normalizedBase}/${normalizedTarget}`;
+};
 
 export default function AppState({ children }) {
     const initialState = {
         loginToken: "",
-        api: "http://127.0.0.1:8080/api/v1",
+        api: API_BASE_URL,
     }
 
     const [state, setState] = useState(initialState);
@@ -14,21 +33,25 @@ export default function AppState({ children }) {
     const isLoggedIn = () => state.loginToken.length > 0;
 
     const setToken = (token) => {
-        console.log(`Setting auth token to: ${token}`)
-        setState({...state, loginToken: token});
-    }
+        setState((prev) => ({...prev, loginToken: token}));
+    };
 
-    const getUrl = (target) => state.api + target;
+    const getUrl = (target) => joinUrl(state.api, target);
 
     const getAuthHeader = () => {
-        const ah = { Authorization: ` Basic ${state.loginToken}`}
-        console.log("State is: ", state);
-        console.log(`Returninmg auth header: `, ah)
-        return ah;
-    }
+        if (!state.loginToken) {
+            return {};
+        }
+        return { Authorization: `Basic ${state.loginToken}` };
+    };
+
+    const api = createApiClient({
+        baseUrl: state.api,
+        getToken: () => state.loginToken
+    });
 
     return (
-        <AppStateContext.Provider value={{state, getUrl, isLoggedIn, setToken, getAuthHeader}}>
+        <AppStateContext.Provider value={{state, getUrl, isLoggedIn, setToken, getAuthHeader, api}}>
             {children}
         </AppStateContext.Provider>
     )

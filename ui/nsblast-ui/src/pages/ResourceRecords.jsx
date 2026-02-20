@@ -158,7 +158,6 @@ function EditDeleteBtn({onDelete, onEdit}) {
 
 function AddRrData({type, entry, deleteRr, editRr, ix=0}) {
 
-  //console.log('type=', type, " entry=", entry)
 
   if (Array.isArray(entry)) {
       return (
@@ -225,7 +224,7 @@ function AddRrData({type, entry, deleteRr, editRr, ix=0}) {
 }
 
 function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
-  const {getUrl, getAuthHeader} = useAppState();
+  const { api } = useAppState();
 
   if (!rr) {
     return (<p>Empty</p>)
@@ -235,30 +234,20 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
 
   const deleteFqdn = async () => {
     if (window.confirm(`Do you really want to delete fqdn ${rr.fqdn} ?`)) {
-      console.log(`deleting fqdn ${rr.fqdn}`)
 
       try {
-        const res = await fetch(getUrl(`/rr/${rr.fqdn}`), {
-            method: "delete",
-            headers: {...getAuthHeader()}
-            });
-
-        console.log("fetch delete res: ", res)
-
-        if (!res.ok) {
-          throw Error(res.statusText)
-        }
-        onChange()
+        await api.request(`/rr/${rr.fqdn}`, {
+          method: "DELETE"
+        });
+        onChange();
 
     } catch(error) {
-        console.log("Delete failed: ", error)
         window.alert(`Deletion of fqdn ${rr.fqdn} failed\n\r${error.message}`)
       }
     }
   }
 
   const editRr = async (type, ix=0) => {
-    console.log(`edit rr at #${rrIx} ${rr.fqdn} type=${type}, ix=${ix}`)
 
     // rrIx, fqdn, type, ix = 0
     onEdit(rrIx, rr.fqdn, type, ix)
@@ -276,7 +265,6 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
 
     let found = false
 
-    console.log(`rr_obj is ${rr_obj}: `, rr_obj)
 
     for (const [key, value] of Object.entries(rr_obj)) {
       if (key === type) {
@@ -292,30 +280,19 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
     }
 
     if (!found) {
-      console.log(`The rr item was not found!`)
       return
     }
 
     if (window.confirm(`Do you really want to delete this "${type}" Resorce Record?`)) {
-      console.log(`deleting rr type=${type}, ix=${ix}, new rr: `, rr_obj)
 
       try {
-        const res = await fetch(getUrl(`/rr/${rr.fqdn}`), {
-          method: "put",
-          headers: {...getAuthHeader(), 
-            'Content-Type':'application/json'},
-          body: JSON.stringify(rr_obj)
-          });
-
-        console.log("fetch delete rr res: ", res)
-
-        if (!res.ok) {
-          throw Error(res.statusText)
-        }
-        onChange()
+        await api.request(`/rr/${rr.fqdn}`, {
+          method: "PUT",
+          body: rr_obj
+        });
+        onChange();
 
     } catch(error) {
-        console.log("Delete failed: ", error)
         window.alert(`Deletion of fqdn ${rr.fqdn} failed\n\r${error.message}`)
       }
     }
@@ -346,7 +323,7 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
 }
 
 function AddFqdn({args}) {
-    const {getUrl, getAuthHeader, setToken} = useAppState();
+    const { api } = useAppState();
     const {close} = usePopupDialog();
     const [errorMsg, setError] = useState("");
     const nameRef = useRef()
@@ -354,7 +331,6 @@ function AddFqdn({args}) {
     const zone = args.zone
     const caption = args.caption
 
-    console.log(`Entering AddFqdn. zone=${zone}`)
 
     const submit = async (e) => {
         e.preventDefault();
@@ -362,22 +338,13 @@ function AddFqdn({args}) {
         const fqdn = `${nameRef.current.value}.${zone}`
     
         try {
-          const res = await fetch(getUrl(`/rr/${fqdn}`), {
-              method: "post",
-              headers: {...getAuthHeader(), 
-                'Content-Type':'application/json'},
-              body: '{}'
-              });
-    
-          console.log("fetch res: ", res)
-    
-          if (res.ok) {
-              // Todo - some OK effect
-              close()
-          }
+          await api.request(`/rr/${fqdn}`, {
+            method: "POST",
+            body: {}
+          });
+          close();
     
       } catch(error) {
-          console.log("Fatch failed: ", error)
           setError("Request failed")
     
           if (error instanceof Error) {
@@ -387,7 +354,6 @@ function AddFqdn({args}) {
       }
     
       const onCancel = () => {
-        console.log('EditRr: onCancel called.')
         close();
       }
 
@@ -491,7 +457,6 @@ function RrInputs({args, registerRef, proto=null}) {
     )
   }
 
-  console.log(`RrInputs val: `, val)
 
   return (
     <InputTable>
@@ -577,7 +542,6 @@ function setValueInRr(rr, type, ix, value) {
   const isAdding = ix === -1
   const destType = Object.hasOwn(rr, type) ? rr[type] : rrProto[type].proto
 
-  console.log(`setValueInRr type=${type} ix=${ix} value=${value} isAdding=${isAdding} rr=`, rr, 'dstType=', destType)
 
   if (Array.isArray(destType)) {
     if (isAdding) {
@@ -628,7 +592,6 @@ function SelectRr({onSelectionChanged, enable, filter}) {
         name = selection
     }
 
-    console.log(`SelectRr selextion=${selection} proto=`, proto)
 
     onSelectionChanged(name, proto)
   }
@@ -658,20 +621,18 @@ function filterUsedRrTypes(rr) {
   const names = Object.keys(rr)
   names.map((name) => {
     const isArray = Array.isArray(rr[name])
-    console.log(`fitering: name=${name}, rr=`, rr, ' is array=', isArray)
     if (!isArray) {
       filter.push(name)
     }
   })
 
-  console.log(`filterUsedRrTypes: filter=`, filter, ' rr:', rr)
 
   return filter;
 }
 
 function AddRr({args}) {
   const isEditing = args.mode === 'editRr'
-  const {getUrl, getAuthHeader, setToken} = useAppState();
+  const { api } = useAppState();
   const {close} = usePopupDialog();
   const [formRefs, setFormRefs] = useState({})
   const [proto, setProto] = useState({})
@@ -679,13 +640,11 @@ function AddRr({args}) {
   const [rrType, setRrType] = useState(isEditing ? args.type : "")
   const [filteredRrs, setFilteredRrs] = useState(filterUsedRrTypes(args.rr))
 
-  console.log(`AddRr args: `, args)
 
   // Let the individual inputs register their refs here
   // We will collect the updated values on submit
   const registerRef = (name, ref) => {
 
-    console.log('Registering ref: ', name, ' ', ref)
 
     let refs = formRefs;
     refs[name] = ref
@@ -703,7 +662,6 @@ function AddRr({args}) {
     })
     setFormRefs(cleared)
 
-    console.log(`onSelectinChanged: selectedProto for ${name} is `, selectedProto)
     setProto(selectedProto)
 
     setInputIsValid(name !== '')
@@ -718,7 +676,6 @@ function AddRr({args}) {
     // If we are using a type that is not in the current orig (used to determine the new values type)
     // use the RR's prototype.
     if (!Object.hasOwn(orig, rrType)) {
-      console.log(`submit: !Object.hasOwn(${rrType}) orig=`, orig)
       if (Object.hasOwn(rrProto, rrType)) {
         orig = rrProto[rrType].proto
       } else {
@@ -727,7 +684,6 @@ function AddRr({args}) {
       }
     }
 
-    console.log(`submit: isEditing=${isEditing}, rrType=${rrType} orig=`, orig, ' proto=', proto)
 
     let edited_value = {}
 
@@ -750,45 +706,31 @@ function AddRr({args}) {
         orgType = typeof orig[name]
       }
 
-      console.log(`submit: orgType=${orgType} type=${rrType} name=${name} value=${value}`)
 
       // Build an object
       edited_value[name] = castStringToType(orgType, value)
     })
 
-    console.log(`edited_value: `, edited_value)
 
     // Now, update the rr with the edited entry
     const ix = isEditing ? args.ix : -1
     const new_rr = prepareRrForUpdate(setValueInRr(args.rr, rrType, ix, edited_value))
-    console.log(`new_rr: `, new_rr)
 
     const fqdn = args.fqdn
 
     try {
-      const res = await fetch(getUrl(`/rr/${fqdn}`), {
-          method: "put",
-          headers: {...getAuthHeader(), 
-            'Content-Type':'application/json'},
-          body: JSON.stringify(new_rr)
-          });
-
-      console.log("fetch res: ", res)
-
-      if (res.ok) {
-          close()
-      } else {
-        throw Error(res.statusText)
-      }
+      await api.request(`/rr/${fqdn}`, {
+        method: "PUT",
+        body: new_rr
+      });
+      close();
 
   } catch(error) {
-      console.log("Fatch failed: ", error)
       window.alert(`Failed to save the updated record for fqdn ${fqdn}\n\r${error.message}`)
     }
   }
 
   const onCancel = () => {
-    console.log('EditRr: onCancel called.')
     close();
   }
 
@@ -827,7 +769,7 @@ function AddPopup({args}) {
 function ListResourceRecords({ max, zone }) {
     const [rrs, setRrs] = useState(null)
     const [current, setCurrent] = useState(null)
-    const {getAuthHeader, getUrl } = useAppState()
+    const { api } = useAppState()
     const [error, setError] = useState();
     const [isEditOpen, setEditOpen] = useState(false)
     const [dlgArgs, setDlgArgs] = useState({})
@@ -843,38 +785,27 @@ function ListResourceRecords({ max, zone }) {
         setCurrentDirection(direction)
     
         try {
-          let res = await fetch(getUrl(`/zone/${zone}` + qargs(from, max, 'verbose', direction)), {
-            method: "get",
-            headers: getAuthHeader()
+          const z = await api.request(`/zone/${zone}` + qargs(from, max, 'verbose', direction), {
+            method: "GET"
           });
-    
-          if (res.ok) {
-            console.log(`fetched: `, res);
-            let z = await res.json();
-            console.log(`fetched json: `, z);
-            setRrs(z.value);
-            setNavKeys({kfirst: z.kfirst, klast: z.klast})
+          setRrs(z.value);
+          setNavKeys({kfirst: z.kfirst, klast: z.klast});
 
-            if (direction == "forward") {
-              setCanMoveBackward(from !== null)
-              setCanMoveForward(z.more)
-            } else {
-              if (!z.more) {
-                // We have moved back  to the start.
-                setCurrent(null)
-                setCanMoveBackward(false)  
-                console.log(`z.value.length=${z.value.length} max=${max}`)
-                setCanMoveForward(z.value.length === max)
-              } else {
-                setCanMoveBackward(true)
-                setCanMoveForward(true)
-              }
-            }
+          if (direction == "forward") {
+            setCanMoveBackward(from !== null);
+            setCanMoveForward(z.more);
           } else {
-            setError(Error(`Failed to fetch rr's: ${res.statusText}`))
+            if (!z.more) {
+              // We have moved back  to the start.
+              setCurrent(null);
+              setCanMoveBackward(false);
+              setCanMoveForward(z.value.length === max);
+            } else {
+              setCanMoveBackward(true);
+              setCanMoveForward(true);
+            }
           }
         } catch (err) {
-          console.log(`Caught error: `, err)
           setError(err)
         }
       }
@@ -922,7 +853,6 @@ function ListResourceRecords({ max, zone }) {
       }
 
       const onEditClosed = () => {
-        console.log('Edit rr dialog closed')
         setEditOpen(false)
         reloadCurrent()
       }
@@ -933,7 +863,6 @@ function ListResourceRecords({ max, zone }) {
       }, []);
 
       if (error) {
-        console.log("Got error err: ", error)
         throw Error("Error!")
       }
 

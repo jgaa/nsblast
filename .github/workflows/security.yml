@@ -1,0 +1,74 @@
+name: Security
+
+on:
+  push:
+    paths:
+      - '.github/workflows/security.yml'
+      - 'ui/nsblast-ui/**'
+      - 'functional-tests/**'
+  pull_request:
+    paths:
+      - '.github/workflows/security.yml'
+      - 'ui/nsblast-ui/**'
+      - 'functional-tests/**'
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ui-dependency-scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/nsblast-ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ui/nsblast-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+
+      - name: OSV scan (lockfile)
+        run: npx --yes osv-scanner --lockfile=package-lock.json
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3

@@ -14,10 +14,8 @@ export default function PopupDialog({ children, isOpen, onClosed }) {
     const modalRef = useRef(null);
     const [isModalOpen, setModalOpen] = useState(isOpen);
 
-    //console.log('In EditZone: props=', props)
 
     const handleClosed = () => {
-        //console.log('onClosed is a:', onClosed)
         if (onClosed)
             onClosed();
         setModalOpen(false);
@@ -47,7 +45,6 @@ export default function PopupDialog({ children, isOpen, onClosed }) {
 
     // Exported via context
     const close = () => {
-        console.log('PopupDialog: close called!')
         handleClosed()
     }
 
@@ -73,6 +70,6 @@ export default function PopupDialog({ children, isOpen, onClosed }) {
         </dialog>
     );
 
-    };
+    }
 
     export const usePopupDialog = () => useContext(PopupDialogContext);

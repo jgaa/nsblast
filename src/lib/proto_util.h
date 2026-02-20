@@ -4,6 +4,7 @@
 #include <optional>
 #include <concepts>
 #include <format>
+#include <boost/json.hpp>
 #include "proto/nsblast.pb.h"
 #include "nsblast/logging.h"
 
@@ -89,7 +90,7 @@ std::string toJson(const T& val) {
 
 template <ConvertibleToString T>
 std::string toJson(const T& val) {
-    return std::string{val};
+    return boost::json::serialize(boost::json::value{std::string{val}});
 }
 
 template <ProtoList T>

@@ -1,0 +1,15 @@
+/*
+  Operator branding overrides.
+  This file is loaded after base theme styles, so custom values here win.
+*/
+
+/*
+:root {
+  --color-primary: #5a2a1a;
+  --color-secondary: #1d5f85;
+  --color-background: #f7f3ef;
+  --font-family-base: "Source Sans 3", "Segoe UI", sans-serif;
+  --brand-logo-url: url("https://example.com/assets/company-logo.svg");
+  --brand-logo-height: 56px;
+}
+*/

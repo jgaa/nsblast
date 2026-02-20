@@ -314,6 +314,57 @@ def test_users_can_not_access_other_tenants(global_data):
                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
         assert requests.delete(url,
                                 auth=auth, params={'wait': global_data['wait']}).status_code == 403
+
+def test_missing_credentials_rejected(global_data):
+    url = '{}/zone'.format(global_data['master-url'])
+    response = requests.get(url, params={'wait': global_data['wait']})
+    assert response.status_code in (401, 403)
+
+def test_invalid_credentials_rejected(global_data):
+    td = get_second_tenant(global_data)
+    invalid_auth = (td['auth']['super'][0], 'definitely-not-the-right-password')
+    response = list_something(global_data, "zone", invalid_auth)
+    assert response.status_code in (401, 403)
+
+def test_create_user_with_missing_role_rejected(global_data):
+    td = get_second_tenant(global_data)
+    auth = td['auth']['super']
+
+    user = {
+        'id': str(uuid.uuid4()),
+        'name': 'missingrole-user',
+        'active': True,
+        'roles': ['does-not-exist'],
+        'auth': {'password': 'irrelevant'}
+    }
+    response = create_something(global_data, 'user', None, user, auth)
+    assert response.status_code == 400
+
+def test_inactive_user_credentials_rejected(global_data):
+    td = get_second_tenant(global_data)
+    auth = td['auth']['super']
+    username = 'inactive-user'
+    password = 'temporary-secret'
+
+    user = {
+        'id': str(uuid.uuid4()),
+        'name': username,
+        'active': True,
+        'roles': ['read'],
+        'auth': {'password': password}
+    }
+    assert create_something(global_data, 'user', None, user, auth).status_code == 201
+
+    user_auth = (username, password)
+    assert list_something(global_data, "zone", user_auth).ok
+
+    user['active'] = False
+    assert put_something(global_data, 'user', username, user, auth).ok
+
+    response = list_something(global_data, "zone", user_auth)
+    assert response.status_code in (401, 403)
+
+    assert delete_something(global_data, 'user', username, auth).ok
         
 def test_admin_can_revoke_perms(global_data):
     it =  iter(global_data['tenants'].items())

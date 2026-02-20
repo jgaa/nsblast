@@ -20,7 +20,6 @@ export default class ErrorBoundary extends React.Component {
     //   in div (created by App)
     //   in App
     //logErrorToMyService(error, info.componentStack);
-    console.log('ErrorBoundary: Caught: ', error)
     //this.state.error = error.message;
   }
 

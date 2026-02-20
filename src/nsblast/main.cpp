@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 #include <boost/program_options.hpp>
 #include <boost/version.hpp>
 
@@ -46,6 +47,7 @@ int main(int argc, char* argv[]) {
     std::string log_level = "info";
     std::string log_level_console = "info";
     std::string log_file;
+    std::string config_file;
     bool trunc_log = true;
     int restore_backup_id = 0;
     int validate_backup_id = 0;
@@ -58,9 +60,15 @@ int main(int argc, char* argv[]) {
     general.add_options()
         ("help,h", "Print help and exit")
         ("version", "print version information and exit")
+        ("config,c",
+            po::value<string>(&config_file),
+            "Path to a config file with options in boost::program_options format")
         ("db-path,d",
             po::value<string>(&config.db_path)->default_value(config.db_path),
             "Path to the database directory")
+        ("db-dir",
+            po::value<string>(&config.db_path),
+            "Alias for --db-path")
         ("log-to-console,C",
              po::value<string>(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
@@ -253,15 +261,56 @@ int main(int argc, char* argv[]) {
         ;
 
     const auto appname = filesystem::path(argv[0]).stem().string();
+    po::options_description config_options;
+    config_options.add_options()
+        ("config,c", po::value<string>(&config_file));
+
     po::options_description cmdline_options;
     cmdline_options.add(general).add(backup).add(cluster).add(odns).add(http).add(rocksdb).add(cg);
     po::variables_map vm;
     try {
-        po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
+        // Parse only --config first so we can load defaults from file.
+        po::store(po::command_line_parser(argc, argv)
+                    .options(config_options)
+                    .allow_unregistered()
+                    .run(),
+                  vm);
+        po::notify(vm);
+
+        po::variables_map vm_from_config;
+        po::variables_map vm_from_cli;
+
+        auto merge_explicit = [](po::variables_map& dst, const po::variables_map& src) {
+            for (const auto& [name, value] : src) {
+                if (value.defaulted()) {
+                    continue;
+                }
+
+                dst.erase(name);
+                dst.emplace(name, value);
+            }
+        };
+
+        if (!config_file.empty()) {
+            ifstream cfg{config_file};
+            if (!cfg.is_open()) {
+                throw runtime_error{"Failed to open config file: " + config_file};
+            }
+
+            po::store(po::parse_config_file(cfg, cmdline_options, true), vm_from_config);
+        }
+
+        // Parse command line and apply only explicit values so defaults do not
+        // clobber entries from the config file.
+        po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm_from_cli);
+
+        vm.clear();
+        merge_explicit(vm, vm_from_config);
+        merge_explicit(vm, vm_from_cli);
         po::notify(vm);
     } catch (const std::exception& ex) {
         cerr << appname
-             << " Failed to parse command-line arguments: " << ex.what() << endl;
+             << " Failed to parse command-line/config arguments: " << ex.what() << endl;
         return -1;
     }
 

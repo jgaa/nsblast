@@ -1,13 +1,133 @@
+:root {
+  --font-family-base: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-family-mono: "IBM Plex Mono", "Fira Code", monospace;
+
+  --color-primary: #185c37;
+  --color-primary-strong: #124528;
+  --color-secondary: #2f6f7e;
+  --color-surface: #ffffff;
+  --color-surface-muted: #e8ecef;
+  --color-background: #f2f5f7;
+  --color-text: #1a2630;
+  --color-text-muted: #4c5c68;
+  --color-border: #ccd5db;
+  --color-on-primary: #ffffff;
+  --color-on-secondary: #ffffff;
+
+  --status-success: #177245;
+  --status-warning: #c68a00;
+  --status-error: #b22a2a;
+  --status-info: #245f74;
+  --status-on-color: #ffffff;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --sidebar-width: 20%;
+  --brand-logo-url: url("/brand-logo.svg");
+  --brand-logo-height: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-family-base);
+  color: var(--color-text);
+  background: var(--color-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: var(--font-family-mono);
+}
+
+.w3-sidebar {
+  width: var(--sidebar-width) !important;
+  color: var(--color-on-primary);
+  border-color: var(--color-border) !important;
+}
+
+.w3-theme-d4 {
+  background-color: var(--color-primary) !important;
+  color: var(--color-on-primary) !important;
+}
+
+.w3-blue {
+  background-color: var(--color-secondary) !important;
+  color: var(--color-on-secondary) !important;
+}
+
+.w3-green {
+  background-color: var(--status-success) !important;
+  color: var(--status-on-color) !important;
+}
+
+.w3-red {
+  background-color: var(--status-error) !important;
+  color: var(--status-on-color) !important;
+}
+
+.w3-yellow {
+  background-color: var(--status-warning) !important;
+  color: var(--color-text) !important;
+}
+
+.w3-gray {
+  background-color: var(--color-surface-muted) !important;
+  color: var(--color-text) !important;
+}
+
+.w3-card,
+.w3-container,
+.w3-panel {
+  border-radius: var(--radius-md);
+}
+
+.w3-input {
+  border-color: var(--color-border) !important;
+}
+
+.w3-button {
+  border-radius: var(--radius-sm);
+}
+
+.ns-brand-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.ns-brand-logo {
+  height: var(--brand-logo-height);
+  width: min(160px, 100%);
+  background-image: var(--brand-logo-url);
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: left center;
+}
+
+.ns-brand-title {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+}
+
+.ns-status-name {
+  background-color: var(--color-secondary);
+  color: var(--color-on-secondary);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
 }

@@ -1,11 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { useAppState } from './AppState';
-import ErrorBoundary from './ErrorBoundary';
 
-
-interface LoginInterface {
-    setToken: ((token: string) => any);
-  }
+const isLocalHostname = (hostname: string): boolean =>
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 
 export default function Login() {
 
@@ -13,13 +10,24 @@ export default function Login() {
     const loginPasswd = useRef<HTMLInputElement>(null);
     const [hasError, setHasError] = useState(false);
     const [errorMsg, setError] = useState("");
-    const {getUrl, getAuthHeader, setToken} = useAppState();
+    const { api, setToken, state } = useAppState();
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        let name :string = loginName.current ? loginName.current.value : "";
-        let pass :string = loginPasswd.current ? loginPasswd.current.value : "";
+        if (window.location.protocol !== 'https:' && !isLocalHostname(window.location.hostname)) {
+            setHasError(true);
+            setError('HTTPS is required for production login. Serve the UI over HTTPS.');
+            return;
+        }
+        if (/^http:\/\//i.test(state.api) && !/^http:\/\/(localhost|127\.0\.0\.1|::1)(:\d+)?(\/|$)/i.test(state.api)) {
+            setHasError(true);
+            setError('Insecure API URL detected. Use HTTPS for production API endpoints.');
+            return;
+        }
+
+        const name :string = loginName.current ? loginName.current.value : "";
+        const pass :string = loginPasswd.current ? loginPasswd.current.value : "";
 
         const token = window.btoa(`${name}:${pass}`);
         const authValue = `basic ${token}`;
@@ -29,22 +37,16 @@ export default function Login() {
            the credentials are valid.
         */
         try {
-            const res = await fetch(getUrl('/version'), {
-                method: "get",
-                headers: { Authorization: authValue}
-                });
+            await api.request('/version', {
+                method: 'GET',
+                authorization: authValue
+            });
+            setToken(token);
 
-            console.log("fetch res: ", res)
-
-            if (res.ok) {
-                setToken(token)
-
-                // Reset the zones state
-                window.localStorage.setItem('zones.current', "")
-            }
+            // Reset the zones state
+            window.localStorage.setItem('zones.current', "");
 
         } catch(error) {
-            console.log("Fatch failed: ", error)
             //throw new Error("Failed to validate authentication with server")
             setHasError(true)
 

@@ -1,0 +1,44 @@
+name: UI
+
+on:
+  push:
+    paths:
+      - 'ui/nsblast-ui/**'
+      - '.github/workflows/ui.yml'
+  pull_request:
+    paths:
+      - 'ui/nsblast-ui/**'
+      - '.github/workflows/ui.yml'
+
+jobs:
+  ui-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/nsblast-ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ui/nsblast-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build

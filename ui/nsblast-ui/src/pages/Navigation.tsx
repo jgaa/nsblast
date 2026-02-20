@@ -23,8 +23,11 @@ export function Navigation(props: INavigationProps) {
 
   if (isLoggedIn()) {
     return (
-      <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block ' style={{width:"20%"}}>
-        <h1>nsBLAST</h1>
+      <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block'>
+        <div className="ns-brand-header">
+          <div className="ns-brand-logo" role="img" aria-label="nsBLAST logo"></div>
+          <h1 className="ns-brand-title">nsBLAST</h1>
+        </div>
         <nav>
           <Link className='w3-bar-item w3-button' to="dashboard"><FaChartSimple/> Dashboard</Link>
           <Link className='w3-bar-item w3-button' to="admin"><FaCrown/> Admin Console</Link>
@@ -41,8 +44,11 @@ export function Navigation(props: INavigationProps) {
   }
 
   return (
-    <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block ' style={{width:"20%"}}>
-      <h1>nsBLAST</h1>
+    <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block'>
+      <div className="ns-brand-header">
+        <div className="ns-brand-logo" role="img" aria-label="nsBLAST logo"></div>
+        <h1 className="ns-brand-title">nsBLAST</h1>
+      </div>
       </div>
   );
 }

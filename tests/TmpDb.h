@@ -37,7 +37,7 @@ class TmpDb {
 public:
     TmpDb(bool enableAuth = false)
         : path_{filesystem::temp_directory_path() /= getUuid()}
-        , c_{false, path_}
+        , c_{path_}
         , db_{make_shared<RocksDbResource>(c_)}
     {
         filesystem::create_directories(path_);

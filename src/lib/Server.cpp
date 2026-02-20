@@ -73,8 +73,10 @@ string cppStrandard() {
 template <typename T>
 class EmbeddedResHandler : public RequestHandler {
 public:
-    explicit EmbeddedResHandler(std::string prefix)
-        : prefix_{std::move(prefix)} {}
+    explicit EmbeddedResHandler(std::string prefix, bool enable_spa_fallback = false)
+        : prefix_{std::move(prefix)}
+        , route_dir_{routeLeaf(prefix_)}
+        , enable_spa_fallback_{enable_spa_fallback} {}
 
     Response onReqest(const Request& req) override {
         // Remove prefix
@@ -89,22 +91,91 @@ public:
             t = t.substr(1);
         }
 
+        if (const auto query_pos = t.find_first_of("?#"); query_pos != std::string_view::npos) {
+            t = t.substr(0, query_pos);
+        }
+
         if (t.empty()) {
             t = {"index.html"};
         }
 
-        if (const auto& data = T::get(t); !data.empty()) {
+        if (const auto& data = getResource(t); !data.empty()) {
             std::filesystem::path served = prefix_;
             served /= t;
             // TODO: Fix yahat so we can send a lambda to feed it with chunks.
             return {200, "OK", data.toString(), served.string()};
         }
 
+        if (enable_spa_fallback_ && isSpaRoute(t)) {
+            if (const auto& index = getResource("index.html"); !index.empty()) {
+                std::filesystem::path served = prefix_;
+                served /= "index.html";
+                return {200, "OK", index.toString(), served.string()};
+            }
+        }
+
         return {404, "Document not found"};
     }
 
 private:
+    static std::string routeLeaf(std::string_view prefix) {
+        while (!prefix.empty() && prefix.back() == '/') {
+            prefix.remove_suffix(1);
+        }
+        if (const auto pos = prefix.find_last_of('/'); pos != std::string_view::npos) {
+            prefix.remove_prefix(pos + 1);
+        }
+        return std::string{prefix};
+    }
+
+    auto getResource(std::string_view relPath) const {
+        if (const auto data = T::get(relPath); !data.empty()) {
+            return data;
+        }
+
+        const std::string dotted = "./" + std::string{relPath};
+        if (const auto data = T::get(dotted); !data.empty()) {
+            return data;
+        }
+
+        if (!route_dir_.empty()) {
+            const std::string rooted = route_dir_ + "/" + std::string{relPath};
+            if (const auto data = T::get(rooted); !data.empty()) {
+                return data;
+            }
+
+            const std::string dotted_rooted = "./" + rooted;
+            if (const auto data = T::get(dotted_rooted); !data.empty()) {
+                return data;
+            }
+        }
+
+        return T::get(relPath);
+    }
+
+    static bool hasExtension(const std::string_view path) {
+        const auto filename_start = path.find_last_of('/');
+        const auto filename = filename_start == std::string_view::npos
+            ? path
+            : path.substr(filename_start + 1);
+        return filename.find('.') != std::string_view::npos;
+    }
+
+    static bool isSpaRoute(const std::string_view path) {
+        if (path.empty()) {
+            return true;
+        }
+
+        if (hasExtension(path)) {
+            return false;
+        }
+
+        return true;
+    }
+
     const std::string prefix_;
+    const std::string route_dir_;
+    const bool enable_spa_fallback_ = false;
 };
 
 } // anon ns
@@ -283,11 +354,11 @@ void Server::startHttpServer()
 
 #ifdef NSBLAST_WITH_UI
     if (config().ui) {
-        const string_view ui_path = "/ui";
-        LOG_INFO << "Enabling ui at http/https://<fqdn>[:port]" << ui_path;
+        const string ui_path = "/ui";
+        LOG_INFO << "Enabling UI at http/https://<fqdn>[:port]" << ui_path;
 
         http_->addRoute(ui_path,
-                        make_shared<EmbeddedResHandler<lib::embedded::Ui>>(ui_path));
+                        make_shared<EmbeddedResHandler<lib::embedded::Ui>>(ui_path, true));
     }
 #endif
 

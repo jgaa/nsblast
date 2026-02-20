@@ -1,9 +1,11 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import App from './App';
 
-test('renders learn react link', () => {
-  render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+describe('App', () => {
+  it('renders app title', () => {
+    window.history.pushState({}, 'test ui', '/ui/');
+    render(<App />);
+    expect(screen.getByText(/nsBLAST/i)).toBeInTheDocument();
+  });
 });

@@ -1,21 +1,111 @@
-FROM ubuntu:noble
+# syntax=docker/dockerfile:1.7
+
+ARG UBUNTU_VERSION=24.04
+
+FROM ubuntu:${UBUNTU_VERSION} AS boost-builder
+LABEL maintainer="jgaa@jgaa.com"
+
+ARG BOOST_VERSION=1.90.0
+ARG BOOST_VERSION_UNDERSCORE=1_90_0
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -q update && \
+    apt-get -y -q --no-install-recommends install \
+        ca-certificates curl build-essential python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+
+RUN curl -fsSL "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz" \
+    -o boost.tar.gz && \
+    tar -xzf boost.tar.gz && \
+    cd "boost_${BOOST_VERSION_UNDERSCORE}" && \
+    ./bootstrap.sh && \
+    ./b2 -j"$(nproc)" \
+        variant=release \
+        link=static \
+        runtime-link=shared \
+        threading=multi \
+        cxxstd=20 \
+        --layout=system \
+        --with-program_options \
+        --with-date_time \
+        --with-coroutine \
+        --with-context \
+        --with-chrono \
+        --with-regex \
+        --with-json \
+        --with-url \
+        install \
+        --prefix=/opt/boost && \
+    rm -rf /tmp/boost.tar.gz "/tmp/boost_${BOOST_VERSION_UNDERSCORE}"
+
+FROM ubuntu:${UBUNTU_VERSION} AS build
+LABEL maintainer="jgaa@jgaa.com"
+
+ARG BUILD_TYPE=RelWithDebInfo
+ARG NSBLAST_RUN_TESTS=ON
+ARG NSBLAST_WITH_SWAGGER=ON
+ARG NSBLAST_WITH_UI=OFF
+ARG DO_STRIP=false
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -q update && \
+    apt-get -y -q --no-install-recommends install \
+        ca-certificates build-essential cmake ninja-build git curl file dpkg-dev \
+        libssl-dev zlib1g-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc \
+        libicu-dev libbz2-dev libsnappy-dev libgflags-dev libgtest-dev \
+        librocksdb-dev liblz4-dev libgrpc-dev libgrpc++-dev \
+        language-pack-en locales && \
+    if [ "${NSBLAST_WITH_UI}" = "ON" ]; then \
+        apt-get -y -q --no-install-recommends install npm; \
+    fi && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=boost-builder /opt/boost /opt/boost
+
+ENV BOOST_ROOT=/opt/boost
+ENV CMAKE_PREFIX_PATH=/opt/boost
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+WORKDIR /src
+COPY . /src
+
+RUN cmake -S /src -B /build -G Ninja \
+        -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+        -DNSBLAST_RUN_TESTS="${NSBLAST_RUN_TESTS}" \
+        -DNSBLAST_WITH_SWAGGER="${NSBLAST_WITH_SWAGGER}" \
+        -DNSBLAST_WITH_UI="${NSBLAST_WITH_UI}" \
+        -DNSBLAST_BOOST_USE_STATIC_LIBS=ON \
+        -DUSE_BOOST_VERSION=1.90 \
+        -DBoost_NO_SYSTEM_PATHS=ON \
+        -DBOOST_ROOT=/opt/boost \
+        -DCMAKE_PREFIX_PATH=/opt/boost && \
+    cmake --build /build -j"$(nproc)" && \
+    mkdir -p /opt/nsblast/bin && \
+    cp /build/bin/nsblast /opt/nsblast/bin/nsblast && \
+    if [ "${DO_STRIP}" = "true" ]; then strip /opt/nsblast/bin/nsblast; fi
+
+FROM ubuntu:${UBUNTU_VERSION} AS runtime
 LABEL maintainer="jgaa@jgaa.com"
 
 ENV USER_UID=999 USER_NAME=nsblast
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
-    DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
-    DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
+RUN apt-get -q update && \
+    apt-get -y -q --no-install-recommends install \
         libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
-        librocksdb8.9 libcap2-bin locales
+        librocksdb8.9 libcap2-bin locales && \
+    locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
 
+COPY --from=build /opt/nsblast/bin/nsblast /usr/local/bin/nsblast
 
-COPY bin/* /usr/local/bin/
-# COPY lib/* /usr/local/lib/
-
-RUN locale-gen en_US.UTF-8 &&\
-    update-locale LANG=en_US.UTF-8 &&\
-    groupadd -r -g ${USER_UID} ${USER_NAME} \
+RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
     && mkdir -m=755 -p /var/home/ \
     && useradd -r -m -k /dev/null -u ${USER_UID} -g ${USER_UID} -c "Nsblast user" \
     -d /var/home/${USER_NAME}/ -s /bin/false ${USER_NAME} \
@@ -24,7 +114,6 @@ RUN locale-gen en_US.UTF-8 &&\
     && mkdir -m=755 -p /etc/nsblast
 
 RUN ldconfig
-
 RUN setcap 'cap_net_bind_service=+ep' /usr/local/bin/nsblast
 
 USER ${USER_NAME}

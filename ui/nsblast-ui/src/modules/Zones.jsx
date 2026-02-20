@@ -49,7 +49,7 @@ const defaultZone = {
 
 function EditZone({ zone, caption }) {
   let z = zone ? zone : defaultZone;
-  const {getUrl, getAuthHeader, setToken} = useAppState();
+  const { api } = useAppState();
   const {close} = usePopupDialog();
 
   
@@ -65,7 +65,6 @@ function EditZone({ zone, caption }) {
     z.fqdn = fqdnRef.current.value;
     z.email = emailRef.current.value;
 
-    console.log(`EditZone submit zone ${z.fqdn}: `, e)
 
     if (fqdnRef.current.value == "") {
       throw Error("Missing fqdn!")
@@ -77,22 +76,13 @@ function EditZone({ zone, caption }) {
 
     // Todo validate valid fqdn
     try {
-      const res = await fetch(getUrl(`/zone/${z.fqdn}`), {
-          method: "post",
-          headers: {...getAuthHeader(), 
-            'Content-Type':'application/json'},
-          body: JSON.stringify(data)
-          });
-
-      console.log("fetch res: ", res)
-
-      if (res.ok) {
-          // Todo - some OK effect
-          close()
-      }
+      await api.request(`/zone/${z.fqdn}`, {
+        method: "POST",
+        body: data
+      });
+      close();
 
   } catch(error) {
-      console.log("Fatch failed: ", error)
       //throw new Error("Failed to validate authentication with server")
       setError("Request failed")
 
@@ -103,7 +93,6 @@ function EditZone({ zone, caption }) {
   }
 
   const onCancel = () => {
-    console.log('EditZone: onCancel called.')
     close();
   }
 
@@ -163,7 +152,7 @@ export function MetaButton({onClick, style, className, children, meta}) {
 export function ListZones({ max }) {
   const [zones, setZones] = useState(null)
   const [current, setCurrent] = useState(null)
-  const {getAuthHeader, getUrl } = useAppState()
+  const { api } = useAppState()
   const [error, setError] = useState();
   const [isedit, setEditOpen] = useState(false)
   const [editZoneCaption, setEditZoneCaption] = useState("Add Zone")
@@ -179,38 +168,27 @@ export function ListZones({ max }) {
     setCurrentDirection(direction)
   
     try {
-      let res = await fetch(getUrl('/zone' + qargs(from, max, null, direction)), {
-        method: "get",
-        headers: getAuthHeader()
+      const z = await api.request('/zone' + qargs(from, max, null, direction), {
+        method: 'GET'
       });
+      setZones(z.value);
+      setNavKeys({kfirst: z.kfirst, klast: z.klast});
 
-      if (res.ok) {
-        const z = await res.json();
-        console.log(`fetched: current="${current}" from=${from} direction=${direction} canFwd=${canMoveForward}, canBackw=${canMoveBackward} more=${z.more}: `, res);
-        console.log(`fetched json: `, z);
-        setZones(z.value);
-        setNavKeys({kfirst: z.kfirst, klast: z.klast})
-
-        if (direction == "forward") {
-          setCanMoveBackward(from !== null)
-          setCanMoveForward(z.more)
-        } else {
-          if (!z.more) {
-            // We have moved back  to the start.
-            setCurrent(null)
-            setCanMoveBackward(false)  
-            setCanMoveForward(zones.length === max)
-          } else {
-            setCanMoveBackward(true)
-            setCanMoveForward(true)
-          }
-        }
-
+      if (direction == "forward") {
+        setCanMoveBackward(from !== null);
+        setCanMoveForward(z.more);
       } else {
-        setError(Error(`Failed to fetch zones: ${res.statusText}`))
+        if (!z.more) {
+          // We have moved back  to the start.
+          setCurrent(null);
+          setCanMoveBackward(false);
+          setCanMoveForward(zones.length === max);
+        } else {
+          setCanMoveBackward(true);
+          setCanMoveForward(true);
+        }
       }
     } catch (err) {
-      console.log(`Caught error: `, err)
       setError(err)
     }
   }
@@ -255,7 +233,6 @@ export function ListZones({ max }) {
 
     const savedCurrent = window.localStorage.getItem('zones.current')
     const savedDirection = window.localStorage.getItem('zones.direction')
-    console.log('Saved current is: ', savedCurrent)
 
     let dir = null;
     if (savedDirection) {
@@ -264,22 +241,18 @@ export function ListZones({ max }) {
     }
 
     if (savedCurrent && savedCurrent.length) {
-      console.log("if (savedCurrent): ", savedCurrent)
       setCurrent(savedCurrent)
       reload(savedCurrent, dir)
     } else {
-      console.log('no saveCurrent! Calling pure reload()')
       reload();
     }
   }, []);
 
   useEffect(() => {
-    console.log('saving current: ', current)
     window.localStorage.setItem('zones.current', current ? current : "")
   },[current])
 
   useEffect(() => {
-    console.log('saving direction: ', currentDirection)
     window.localStorage.setItem('zones.direction', currentDirection)
   },[current])
 
@@ -293,7 +266,6 @@ export function ListZones({ max }) {
   }
 
   const onEditClosed = () => {
-    console.log('Edit Zone dialog closed')
     setEditOpen(false)
     reloadCurrent()
   }
@@ -303,22 +275,13 @@ export function ListZones({ max }) {
     if (window.confirm(`Do you really want to delete the zone ${zoneName}?\r\nThis cannot be un-done.`)) {
 
       try {
-      const res = await fetch(getUrl(`/zone/${zoneName}`), {
-        method: "delete",
-        headers: getAuthHeader()});
-
-        console.log("fetch delete: ", res)
-
-        if (res.ok) {
-            // Todo - some OK effect
-          reloadCurrent()
-          return
-        }
-
-        throw Error(res.statusText)
+        await api.request(`/zone/${zoneName}`, {
+          method: "DELETE"
+        });
+        reloadCurrent();
+        return;
 
       } catch(error) {
-        console.log("Fatch failed: ", error)
         //throw new Error("Failed to validate authentication with server")
         setError("Request failed")
 
@@ -330,13 +293,11 @@ export function ListZones({ max }) {
   }
 
   if (error) {
-    console.log("Got error err: ", error)
     throw Error("Error!")
   }
 
   if (!zones) return (<BeatLoader />);
 
-  console.log("Zones when rendering: ", zones)
 
   return (
     <div className="w3-container w3-cell w3-mobile">

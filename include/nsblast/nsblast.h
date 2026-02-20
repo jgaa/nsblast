@@ -22,6 +22,10 @@ static constexpr uint32_t DEFAULT_TTL = 2592000; // 30 days
 
 /*! The applications configuration */
 struct Config {
+    Config() = default;
+    Config(std::string dbPath)
+        : db_path(std::move(dbPath)) {}
+
     /*! \name Options */
     ///@{
 #ifdef NSBLAST_WITH_SWAGGER
