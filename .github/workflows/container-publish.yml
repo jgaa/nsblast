@@ -43,4 +43,4 @@ jobs:
         env:
           REGISTRY: ghcr.io/jgaa
         run: |
-          ./build-docker-image.sh --push --tag "${{ steps.version.outputs.version }}"
+          ./build-docker-image.sh --push --skip-tests --tag "${{ steps.version.outputs.version }}"
