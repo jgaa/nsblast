@@ -71,7 +71,7 @@ The project use CMake.
 
 It uses C++ 20 features and require g++-13 / clang-15 or newer.
 
-It require boost version 1.82 or newer.
+It requires boost version 1.85 or newer by default.
 
 Other dependencies that are handled automatically by CMake:
 
@@ -124,10 +124,10 @@ Example on building the application (with custom built boost-library in /opt):
 cd nsblast
 mkdir build
 cd build
-cmake -DBOOST_ROOT=/opt/boost/boost_1_83_0 ..
+cmake -DBOOST_ROOT=/opt/boost/boost_1_85_0 ..
 make -j `nproc`
-LD_LIBRARY_PATH=/opt/boost/boost_1_83_0/stage/lib/ ctest
-LD_LIBRARY_PATH=/opt/boost/boost_1_83_0/stage/lib/ ./bin/nsblast --help
+LD_LIBRARY_PATH=/opt/boost/boost_1_85_0/stage/lib/ ctest
+LD_LIBRARY_PATH=/opt/boost/boost_1_85_0/stage/lib/ ./bin/nsblast --help
 ```
 
 # Docker image
@@ -137,23 +137,13 @@ Building:
 ./build-docker-image.sh
 ```
 
-If you want [logbt](https://github.com/mapbox/logbt) to be used to dump backtraces from crashes in the containers log:
-```
-./build-docker-image.sh --logbt
-
-# With logbt, you need to set the coredump pattern, for example like this
-sudo bash -c "echo '/tmp/logbt-coredumps/core.%p.%E' > /proc/sys/kernel/core_pattern"
-```
-
 **Official image**
-You can also use the [official Docker image](https://hub.docker.com/repository/docker/jgaafromnorth/nsblast/general):
-```sh
-  docker pull jgaafromnorth/nsblast:latest
-```
+The official image is published by GitHub Actions to GitHub Container Registry:
+`ghcr.io/jgaa/nsblast`
 
 **Starting**:
 The example use the local docker IP. You can substitute that with a machines real IP.
 
 ```sh
-docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp jgaafromnorth/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
+docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp ghcr.io/jgaa/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
 ```
