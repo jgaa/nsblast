@@ -63,6 +63,20 @@ auto makeRrFilter(string_view tokens) {
     return filter;
 }
 
+bool isSingleDynIpEntry(const Entry& entry) {
+    if (entry.empty() || entry.count() != 1) {
+        return false;
+    }
+
+    const auto it = entry.begin();
+    if (it == entry.end()) {
+        return false;
+    }
+
+    const auto rtype = it->type();
+    return rtype == TYPE_A || rtype == TYPE_AAAA;
+}
+
 // Get the keys prev/next from an unsorted json array populated by iterating the database
 pair<string, string> getKeys(boost::json::array& json, std::string_view key = "", bool forward = true) {
     const auto val = [key](const boost::json::value& v) -> string {
@@ -1643,9 +1657,22 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     case Request::Type::PUT: {
 put:
-        if (!session->isAllowed(
-                existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR,
-                lowercaseFqdn)) {
+        const auto regular_perm = existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR;
+
+        bool allowed = session->isAllowed(regular_perm, lowercaseFqdn);
+        // if (!allowed && req.type == Request::Type::PUT) {
+        //     // DYNIP is a low-impact permission for dedicated accounts in untrusted environments.
+        //     // Only allow a PUT that writes exactly one A or AAAA RR, and only if the existing
+        //     // RR-set is empty or already constrained to a single A/AAAA RR.
+        //     if (session->isAllowed(pb::Permission::DYNIP, lowercaseFqdn)) {
+        //         const Entry requested{sb.buffer()};
+        //         const bool request_ok = isSingleDynIpEntry(requested);
+        //         const bool existing_ok = !existing.hasRr() || isSingleDynIpEntry(existing.rr());
+        //         allowed = request_ok && existing_ok;
+        //     }
+        // }
+
+        if (!allowed) {
             return {403, "Access Denied"};
         }
         if (existing.isSame()) {

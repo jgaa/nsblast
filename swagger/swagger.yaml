@@ -439,7 +439,7 @@ paths:
       tags:
       - rr
       summary: Replace the resource records for an existing fqdn
-      description: ""
+      description: "Replaces the RR set for a fqdn. Requires CREATE_RR/UPDATE_RR. As a low-impact alternative, accounts with DYNIP may use this endpoint only for updating exactly one A or one AAAA RR."
       operationId: "putFdqn"
       consumes:
       - "application/json"
@@ -1983,6 +1983,7 @@ definitions:
       - VERIFY_BACKUP
       - DELETE_BACKUP
       - METRICS
+      - DYNIP
 
   KeyValueList:
     type array:

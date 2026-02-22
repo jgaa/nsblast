@@ -97,6 +97,8 @@ enum Permission {
     DELETE_BACKUP = 46;
 
     METRICS = 47; // Gives access to GET /metrics
+    // Allows low-impact dynamic IP updates (single A or AAAA RR via PUT /rr/{fqdn})
+    DYNIP = 48;
 }
 
 /**
