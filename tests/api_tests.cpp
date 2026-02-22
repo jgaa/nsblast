@@ -290,6 +290,13 @@ auto makeRequest(MockServer& ms, const string& what, string_view fqdn, string js
     return req;
 }
 
+auto makeDynIpRequest(std::string target, std::string body, yahat::Request::Type type, const yahat::Auth& auth) {
+    yahat::Request req{std::move(target), std::move(body), type, {}};
+    req.route = "/nic";
+    req.auth = auth;
+    return req;
+}
+
 uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {
 
     auto trx = db.transaction();
@@ -2255,6 +2262,103 @@ TEST(ApiRequest, getRr) {
     LOG_DEBUG << "Result-json: " << res.body;
 
     EXPECT_EQ(res.body, R"({"rcode":200,"error":false,"message":"","value":{"fqdn":"example.com","ttl":1000,"soa":{"mname":"ns1.example.com","rname":"hostmaster.example.com","email":"hostmaster@example.com","serial":1000,"refresh":1001,"retry":1002,"expire":1003,"minimum":1004},"ns":["ns1.example.com","ns2.example.com"]}})");
+}
+
+TEST(ApiRequest, dynIpGetUpdateAndNoChange) {
+    MockServer svr;
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "DYNIP"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto tenantId = string{auth.account};
+    tenantId = tenantId.substr(0, tenantId.find('/'));
+
+    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
+    zoneReq.arguments["tenant"] = tenantId;
+    auto parsed = api.parse(zoneReq);
+    auto zoneRes = api.onZone(zoneReq, parsed);
+    ASSERT_EQ(zoneRes.code, 201);
+
+    auto req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.10",
+                                {},
+                                yahat::Request::Type::GET,
+                                auth);
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+    EXPECT_EQ(res.body, "good 203.0.113.10");
+
+    req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.10",
+                           {},
+                           yahat::Request::Type::GET,
+                           auth);
+    res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+    EXPECT_EQ(res.body, "nochg 203.0.113.10");
+}
+
+TEST(ApiRequest, dynIpGetDisabled) {
+    auto db = make_shared<TmpDb>();
+    db->config().dynip_enable_get = false;
+    MockServer svr{db};
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "DYNIP"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto tenantId = string{auth.account};
+    tenantId = tenantId.substr(0, tenantId.find('/'));
+
+    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
+    zoneReq.arguments["tenant"] = tenantId;
+    auto parsed = api.parse(zoneReq);
+    auto zoneRes = api.onZone(zoneReq, parsed);
+    ASSERT_EQ(zoneRes.code, 201);
+
+    auto req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.55",
+                                {},
+                                yahat::Request::Type::GET,
+                                auth);
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+    EXPECT_EQ(res.body, "!disabled");
+}
+
+TEST(ApiRequest, dynIpPostJson) {
+    MockServer svr;
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "DYNIP"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto tenantId = string{auth.account};
+    tenantId = tenantId.substr(0, tenantId.find('/'));
+
+    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
+    zoneReq.arguments["tenant"] = tenantId;
+    auto parsed = api.parse(zoneReq);
+    auto zoneRes = api.onZone(zoneReq, parsed);
+    ASSERT_EQ(zoneRes.code, 201);
+
+    auto req = makeDynIpRequest("/nic/update",
+                                R"({"hostname":"home.example.com","ip":"203.0.113.12","client_ref":"abc-123"})",
+                                yahat::Request::Type::POST,
+                                auth);
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 200);
+
+    const auto json = boost::json::parse(res.body).as_object();
+    EXPECT_EQ(json.at("status").as_string(), "good");
+    EXPECT_TRUE(json.at("changed").as_bool());
+    EXPECT_EQ(json.at("effective_ip").as_string(), "203.0.113.12");
+    EXPECT_EQ(json.at("record_type").as_string(), "A");
+    EXPECT_EQ(json.at("client_ref").as_string(), "abc-123");
 }
 
 int main(int argc, char **argv) {

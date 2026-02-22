@@ -341,6 +341,7 @@ void Server::startHttpServer()
     }, metrics_->metrics(), "nsblast "s + NSBLAST_VERSION);
 
     http_->addRoute("/api/v1", api_);
+    http_->addRoute("/nic", api_);
 
 #ifdef NSBLAST_WITH_SWAGGER
     if (config().swagger) {

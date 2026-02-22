@@ -237,6 +237,27 @@ struct Config {
 
     /// Default page size in a REST list reply
     size_t rest_default_page_size = 100;
+
+    /// Enable legacy DynDNS compatible GET /nic/update endpoint.
+    bool dynip_enable_get = true;
+
+    /// Enable JSON POST /nic/update endpoint.
+    bool dynip_enable_post_json = true;
+
+    /// Allow partial success for multi-host dynip updates.
+    bool dynip_allow_partial_multi_host = false;
+
+    /// Max number of hostnames in a single dynip request.
+    size_t dynip_max_hosts_per_request = 5;
+
+    /// Optional strict mode for User-Agent header presence (not currently enforced).
+    bool dynip_require_user_agent = false;
+
+    /// Allow updates to private IP ranges.
+    bool dynip_allow_private_ips = false;
+
+    /// Default TTL for DynIP-created RR sets.
+    uint32_t dynip_default_ttl_seconds = 300;
     ///@}
 
     /*! \name Authentication */

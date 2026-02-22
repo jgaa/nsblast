@@ -20,6 +20,8 @@ tags:
   description: Operations about a virtual zone (a super-zone on top on an existing zone that can be maintained by a tenant not owning the actual zone).
 - name: rr
   description: Operations about an individual DNS entry's resource record(s)
+- name: dynip
+  description: Dynamic DNS compatible update endpoint for low-impact A/AAAA changes.
 - name: "tenant"
   description: "Operations about a tenant"
 - name: "user"
@@ -34,6 +36,72 @@ schemes:
  - "http"
 
 paths:
+  /nic/update:
+    get:
+      tags:
+        - dynip
+      summary: DynDNS-compatible update endpoint
+      description: "Legacy compatibility endpoint. Returns plain text tokens like `good`, `nochg`, `badip`, and `badauth`."
+      parameters:
+        - name: hostname
+          in: query
+          required: true
+          description: fqdn to update.
+          type: string
+        - name: myip
+          in: query
+          required: false
+          description: IP address to set for hostname.
+          type: string
+      produces:
+        - text/plain
+      responses:
+        "200":
+          description: DynDNS token response.
+        "401":
+          description: Unauthorized.
+        "405":
+          description: Endpoint or method disabled.
+    post:
+      tags:
+        - dynip
+      summary: Dynamic IP update with JSON payload
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/DynIpUpdateRequest"
+      responses:
+        "200":
+          description: Update applied or no-change.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "400":
+          description: Invalid input.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "401":
+          description: Unauthorized.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "403":
+          description: Access denied.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "404":
+          description: Hostname not found.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "405":
+          description: Endpoint or method disabled.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+
   /version:
     get:
       tags:
@@ -2073,6 +2141,49 @@ definitions:
           type: string
       auth:
         $ref: "#/definitions/UserAuth"
+
+  DynIpUpdateRequest:
+    type: object
+    required:
+      - hostname
+    properties:
+      hostname:
+        type: string
+        description: fqdn to update.
+      ip:
+        type: string
+        description: Single IPv4 or IPv6 address.
+      ipv4:
+        type: string
+        description: IPv4 address (alternative to `ip`).
+      ipv6:
+        type: string
+        description: IPv6 address (alternative to `ip`).
+      client_ref:
+        type: string
+        description: Optional correlation value echoed in responses.
+
+  DynIpUpdateResponse:
+    type: object
+    properties:
+      status:
+        type: string
+        description: DynIP status token (`good`, `nochg`, `badip`, `badauth`, `nohost`, `911`).
+      changed:
+        type: boolean
+      hostname:
+        type: string
+      effective_ip:
+        type: string
+      record_type:
+        type: string
+        description: A or AAAA
+      message:
+        type: string
+      ts:
+        type: string
+      client_ref:
+        type: string
 
 
   Returns:

@@ -180,6 +180,27 @@ int main(int argc, char* argv[]) {
         ("http-num-threads",
             po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
             "Threads for the embedded HTTP server")
+        ("dynip-enable-get",
+            po::value<bool>(&config.dynip_enable_get)->default_value(config.dynip_enable_get),
+            "Enable GET /nic/update (legacy DynDNS compatible endpoint)")
+        ("dynip-enable-post-json",
+            po::value<bool>(&config.dynip_enable_post_json)->default_value(config.dynip_enable_post_json),
+            "Enable POST /nic/update with JSON payload")
+        ("dynip-allow-partial-multi-host",
+            po::value<bool>(&config.dynip_allow_partial_multi_host)->default_value(config.dynip_allow_partial_multi_host),
+            "Allow partial success when multiple hostnames are provided")
+        ("dynip-max-hosts-per-request",
+            po::value<size_t>(&config.dynip_max_hosts_per_request)->default_value(config.dynip_max_hosts_per_request),
+            "Maximum hostnames accepted in one DynIP request")
+        ("dynip-require-user-agent",
+            po::value<bool>(&config.dynip_require_user_agent)->default_value(config.dynip_require_user_agent),
+            "Require User-Agent for DynIP requests")
+        ("dynip-allow-private-ips",
+            po::value<bool>(&config.dynip_allow_private_ips)->default_value(config.dynip_allow_private_ips),
+            "Allow private IPv4/IPv6 ranges in DynIP updates")
+        ("dynip-default-ttl-seconds",
+            po::value<uint32_t>(&config.dynip_default_ttl_seconds)->default_value(config.dynip_default_ttl_seconds),
+            "Default TTL used when DynIP creates a new A/AAAA RR set")
         ;
 
     po::options_description odns("DNS server");

@@ -2,6 +2,8 @@
 #include <set>
 #include <ranges>
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
@@ -75,6 +77,69 @@ bool isSingleDynIpEntry(const Entry& entry) {
 
     const auto rtype = it->type();
     return rtype == TYPE_A || rtype == TYPE_AAAA;
+}
+
+std::optional<boost::asio::ip::address> getSingleDynIpAddress(const Entry& entry) {
+    if (!isSingleDynIpEntry(entry)) {
+        return {};
+    }
+
+    const auto it = entry.begin();
+    if (it == entry.end()) {
+        return {};
+    }
+
+    return RrA(entry.buffer(), it->offset()).address();
+}
+
+bool isPrivateIp(const boost::asio::ip::address& ip) {
+    if (ip.is_v4()) {
+        const auto bytes = ip.to_v4().to_bytes();
+        if (bytes[0] == 10) {
+            return true;
+        }
+        if (bytes[0] == 127) {
+            return true;
+        }
+        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) {
+            return true;
+        }
+        if (bytes[0] == 192 && bytes[1] == 168) {
+            return true;
+        }
+        if (bytes[0] == 169 && bytes[1] == 254) {
+            return true;
+        }
+        if (bytes[0] == 0) {
+            return true;
+        }
+        return false;
+    }
+
+    const auto v6 = ip.to_v6();
+    const auto bytes = v6.to_bytes();
+    if (v6.is_unspecified() || v6.is_loopback() || v6.is_link_local() || v6.is_multicast()) {
+        return true;
+    }
+    // RFC 4193 Unique local: fc00::/7
+    if ((bytes[0] & 0xfe) == 0xfc) {
+        return true;
+    }
+    return false;
+}
+
+vector<string> splitHostnames(string_view csv) {
+    vector<string> out;
+    for (auto const& token : boost::tokenizer{csv.begin(), csv.end(), boost::char_separator{","}}) {
+        if (!token.empty()) {
+            out.emplace_back(token);
+        }
+    }
+    return out;
+}
+
+Response legacyDynIpReply(string_view token) {
+    return {200, "OK", string{token}, {}, "text/plain"};
 }
 
 // Get the keys prev/next from an unsorted json array populated by iterating the database
@@ -484,6 +549,20 @@ Response RestApi::onReqest(const Request &req)
     const auto p = parse(req);
 
     try {
+        if (req.route == string_view{"/nic"}) {
+            if (p.what == "update") {
+                return onDynIpUpdate(req, p, true);
+            }
+            return {404, "Unknown subpath"};
+        }
+
+        if (p.what == "nic") {
+            if (p.target == "update" && p.operation.empty()) {
+                return onDynIpUpdate(req, p, false);
+            }
+            return {404, "Unknown subpath"};
+        }
+
         if (p.what == "rr") {
             return onResourceRecord(req, p);
         }
@@ -1545,6 +1624,342 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     return {rcode, "OK"};
 }
 
+Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed, bool legacyRoute)
+{
+    auto session = getSession(req);
+    if (!session) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("badauth");
+        }
+        return {401, "Unauthorized"};
+    }
+
+    auto nowUtc = [] {
+        const auto now = std::chrono::system_clock::now();
+        const auto tt = std::chrono::system_clock::to_time_t(now);
+        char buffer[32] = {};
+        const auto* tm = std::gmtime(&tt);
+        if (tm) {
+            std::strftime(buffer, sizeof(buffer), "%FT%TZ", tm);
+            return string{buffer};
+        }
+        return string{};
+    };
+
+    const auto makeJsonReply = [now = nowUtc()](int code,
+                                                string_view status,
+                                                bool changed,
+                                                string_view hostname,
+                                                string_view effectiveIp,
+                                                string_view recordType,
+                                                string_view message = {}) {
+        boost::json::object out;
+        out["status"] = status;
+        out["changed"] = changed;
+        if (!hostname.empty()) {
+            out["hostname"] = hostname;
+        }
+        if (!effectiveIp.empty()) {
+            out["effective_ip"] = effectiveIp;
+        }
+        if (!recordType.empty()) {
+            out["record_type"] = recordType;
+        }
+        if (!message.empty()) {
+            out["message"] = message;
+        }
+        if (!now.empty()) {
+            out["ts"] = now;
+        }
+        return Response{code, "OK", boost::json::serialize(out)};
+    };
+
+    vector<string> hostnames;
+    optional<string> reqIp;
+    optional<string> clientRef;
+
+    switch(req.type) {
+    case Request::Type::GET: {
+        if (!config_.dynip_enable_get) {
+            return legacyDynIpReply("!disabled");
+        }
+
+        if (auto h = getQueryArg(req, "hostname")) {
+            hostnames = splitHostnames(*h);
+        }
+        if (auto ip = getQueryArg(req, "myip")) {
+            reqIp = string{*ip};
+        }
+    } break;
+    case Request::Type::POST: {
+        if (!config_.dynip_enable_post_json) {
+            return {405, "Method Not Allowed"};
+        }
+
+        boost::json::value json;
+        try {
+            json = parseJson(req.body);
+        } catch (const Response&) {
+            return {400, "Failed to parse json"};
+        }
+
+        if (!json.is_object()) {
+            return {400, "Request body must be a JSON object"};
+        }
+
+        const auto& obj = json.as_object();
+        if (auto h = obj.if_contains("hostname")) {
+            if (h->is_string()) {
+                hostnames.emplace_back(h->as_string());
+            } else if (h->is_array()) {
+                for (const auto& v : h->as_array()) {
+                    if (!v.is_string()) {
+                        return {400, "hostname array must only contain strings"};
+                    }
+                    hostnames.emplace_back(v.as_string());
+                }
+            } else {
+                return {400, "hostname must be a string or an array of strings"};
+            }
+        }
+
+        if (auto p = obj.if_contains("client_ref"); p && p->is_string()) {
+            clientRef = string{p->as_string()};
+        }
+
+        const auto hasIp = obj.if_contains("ip") != nullptr;
+        const auto hasIpv4 = obj.if_contains("ipv4") != nullptr;
+        const auto hasIpv6 = obj.if_contains("ipv6") != nullptr;
+
+        if (hasIp && (hasIpv4 || hasIpv6)) {
+            return {400, "Use either 'ip' or 'ipv4'/'ipv6'"};
+        }
+
+        if (hasIp) {
+            const auto& v = *obj.if_contains("ip");
+            if (!v.is_string()) {
+                return {400, "'ip' must be a string"};
+            }
+            reqIp = string{v.as_string()};
+        } else {
+            if (hasIpv4 && hasIpv6) {
+                return {400, "Dual-stack update is not supported by this endpoint yet"};
+            }
+            if (hasIpv4) {
+                const auto& v = *obj.if_contains("ipv4");
+                if (!v.is_string()) {
+                    return {400, "'ipv4' must be a string"};
+                }
+                reqIp = string{v.as_string()};
+            } else if (hasIpv6) {
+                const auto& v = *obj.if_contains("ipv6");
+                if (!v.is_string()) {
+                    return {400, "'ipv6' must be a string"};
+                }
+                reqIp = string{v.as_string()};
+            }
+        }
+    } break;
+    default:
+        return {405, "Only GET and POST are supported"};
+    }
+
+    if (hostnames.empty()) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("notfqdn");
+        }
+        return makeJsonReply(400, "notfqdn", false, {}, {}, {}, "Missing hostname");
+    }
+
+    if (hostnames.size() > config_.dynip_max_hosts_per_request) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("numhost");
+        }
+        return makeJsonReply(400, "numhost", false, {}, {}, {}, "Too many hostnames");
+    }
+
+    // Single-host mode for now.
+    if (hostnames.size() > 1) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("numhost");
+        }
+        return makeJsonReply(400, "numhost", false, {}, {}, {}, "Multiple hostnames are not supported yet");
+    }
+
+    auto hostname = toLower(hostnames.front());
+    if (!validateFqdn(hostname)) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("notfqdn");
+        }
+        return makeJsonReply(400, "notfqdn", false, hostname, {}, {}, "Invalid hostname");
+    }
+
+    if (!reqIp.has_value() || reqIp->empty()) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("badip");
+        }
+        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Missing IP address");
+    }
+
+    boost::asio::ip::address effectiveIp;
+    try {
+        effectiveIp = boost::asio::ip::make_address(*reqIp);
+    } catch(const std::exception&) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("badip");
+        }
+        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Invalid IP address");
+    }
+
+    if (!config_.dynip_allow_private_ips && isPrivateIp(effectiveIp)) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("badip");
+        }
+        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Private IPs are disabled");
+    }
+
+    auto trx = resource_.transaction();
+    auto existing = trx->lookupEntryAndSoa(hostname);
+    if (!existing.hasSoa()) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("nohost");
+        }
+        return makeJsonReply(404, "nohost", false, hostname, {}, {}, "Hostname not found");
+    }
+
+    if (auto id = existing.soa().tenantId()) {
+        if (*id != session->tenantId()) {
+            if (req.type == Request::Type::GET) {
+                return legacyDynIpReply("badauth");
+            }
+            return makeJsonReply(403, "badauth", false, hostname, {}, {}, "Not your zone");
+        }
+    } else {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("911");
+        }
+        return makeJsonReply(500, "911", false, hostname, {}, {}, "Unable to resolve zone owner");
+    }
+
+    const auto regular_perm = existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR;
+    const bool has_regular_permission = session->isAllowed(regular_perm, hostname);
+    const bool has_dynip_permission = session->isAllowed(pb::Permission::DYNIP, hostname);
+    if (!has_regular_permission && !has_dynip_permission) {
+        if (req.type == Request::Type::GET) {
+            return legacyDynIpReply("badauth");
+        }
+        return makeJsonReply(403, "badauth", false, hostname, {}, {}, "Access denied");
+    }
+
+    const bool dynip_only = has_dynip_permission && !has_regular_permission;
+    if (dynip_only) {
+        const bool existing_ok = !existing.hasRr() || isSingleDynIpEntry(existing.rr());
+        if (!existing_ok) {
+            if (req.type == Request::Type::GET) {
+                return legacyDynIpReply("badauth");
+            }
+            return makeJsonReply(403, "badauth", false, hostname, {}, {}, "DYNIP only allows single A/AAAA RR");
+        }
+    }
+
+    if (existing.hasRr()) {
+        if (auto currentIp = getSingleDynIpAddress(existing.rr())) {
+            if (*currentIp == effectiveIp) {
+                if (req.type == Request::Type::GET) {
+                    return legacyDynIpReply(std::format("nochg {}", effectiveIp.to_string()));
+                }
+                auto reply = makeJsonReply(200,
+                                           "nochg",
+                                           false,
+                                           hostname,
+                                           effectiveIp.to_string(),
+                                           effectiveIp.is_v4() ? "A" : "AAAA",
+                                           "No change");
+                if (clientRef.has_value()) {
+                    auto json = parseJson(reply.body).as_object();
+                    json["client_ref"] = *clientRef;
+                    reply.body = boost::json::serialize(json);
+                }
+                return reply;
+            }
+        }
+    }
+
+    boost::json::object rr;
+    rr["ttl"] = static_cast<int64_t>(config_.dynip_default_ttl_seconds);
+    if (effectiveIp.is_v4()) {
+        rr["a"] = boost::json::array{effectiveIp.to_string()};
+    } else {
+        rr["aaaa"] = boost::json::array{effectiveIp.to_string()};
+    }
+
+    const auto fullTarget = format("/api/v1/rr/{}", hostname);
+    Request rrReq{fullTarget, boost::json::serialize(rr), Request::Type::PUT, req.yield, req.isHttps()};
+    rrReq.route = "/api/v1";
+    rrReq.auth = req.auth;
+    rrReq.arguments = req.arguments;
+    auto rrParsed = parse(rrReq);
+
+    const auto rrReply = onResourceRecord(rrReq, rrParsed);
+    if (!rrReply.ok()) {
+        if (req.type == Request::Type::GET) {
+            if (rrReply.code == 403) {
+                return legacyDynIpReply("badauth");
+            }
+            if (rrReply.code == 404) {
+                return legacyDynIpReply("nohost");
+            }
+            if (rrReply.code == 400) {
+                return legacyDynIpReply("badip");
+            }
+            return legacyDynIpReply("911");
+        }
+
+        string_view status = "911";
+        if (rrReply.code == 403) {
+            status = "badauth";
+        } else if (rrReply.code == 404) {
+            status = "nohost";
+        } else if (rrReply.code == 400) {
+            status = "badip";
+        }
+
+        auto reply = makeJsonReply(rrReply.code,
+                                   status,
+                                   false,
+                                   hostname,
+                                   {},
+                                   {},
+                                   rrReply.reason);
+        if (clientRef.has_value()) {
+            auto json = parseJson(reply.body).as_object();
+            json["client_ref"] = *clientRef;
+            reply.body = boost::json::serialize(json);
+        }
+        return reply;
+    }
+
+    if (req.type == Request::Type::GET) {
+        return legacyDynIpReply(std::format("good {}", effectiveIp.to_string()));
+    }
+
+    auto reply = makeJsonReply(200,
+                               "good",
+                               true,
+                               hostname,
+                               effectiveIp.to_string(),
+                               effectiveIp.is_v4() ? "A" : "AAAA",
+                               "updated");
+    if (clientRef.has_value()) {
+        auto json = parseJson(reply.body).as_object();
+        json["client_ref"] = *clientRef;
+        reply.body = boost::json::serialize(json);
+    }
+    (void)parsed;
+    (void)legacyRoute;
+    return reply;
+}
+
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
     auto [res, session, tenant, all] = getSessionAndTenant(req, server());
@@ -1660,17 +2075,17 @@ put:
         const auto regular_perm = existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR;
 
         bool allowed = session->isAllowed(regular_perm, lowercaseFqdn);
-        // if (!allowed && req.type == Request::Type::PUT) {
-        //     // DYNIP is a low-impact permission for dedicated accounts in untrusted environments.
-        //     // Only allow a PUT that writes exactly one A or AAAA RR, and only if the existing
-        //     // RR-set is empty or already constrained to a single A/AAAA RR.
-        //     if (session->isAllowed(pb::Permission::DYNIP, lowercaseFqdn)) {
-        //         const Entry requested{sb.buffer()};
-        //         const bool request_ok = isSingleDynIpEntry(requested);
-        //         const bool existing_ok = !existing.hasRr() || isSingleDynIpEntry(existing.rr());
-        //         allowed = request_ok && existing_ok;
-        //     }
-        // }
+        if (!allowed && req.type == Request::Type::PUT) {
+            // DYNIP is a low-impact permission for dedicated accounts in untrusted environments.
+            // Only allow a PUT that writes exactly one A or AAAA RR, and only if the existing
+            // RR-set is empty or already constrained to a single A/AAAA RR.
+            if (session->isAllowed(pb::Permission::DYNIP, lowercaseFqdn)) {
+                const Entry requested{sb.buffer()};
+                const bool request_ok = isSingleDynIpEntry(requested);
+                const bool existing_ok = !existing.hasRr() || isSingleDynIpEntry(existing.rr());
+                allowed = request_ok && existing_ok;
+            }
+        }
 
         if (!allowed) {
             return {403, "Access Denied"};
