@@ -43,3 +43,6 @@ __pycache__
 
 book
 
+# Rust (CLI workspace)
+target
+**/*.rs.bk

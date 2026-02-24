@@ -1,0 +1,3 @@
+[workspace]
+members = ["dynip-client"]
+resolver = "2"

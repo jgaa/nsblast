@@ -16,6 +16,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate dynip client
+        shell: bash
+        run: cargo check -p dynip-client --manifest-path cli/Cargo.toml
+
+      - name: Build dynip client release artifact
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cargo build --release -p dynip-client --manifest-path cli/Cargo.toml
+          mkdir -p dist
+          ASSET="nsblast-dynip-${RELEASE_TAG}-linux-x86_64"
+          cp cli/target/release/nsblast-dynip "dist/${ASSET}"
+          chmod +x "dist/${ASSET}"
+          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -39,3 +58,6 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: RELEASENOTES.md
           prerelease: true
+          files: |
+            dist/nsblast-dynip-${{ github.ref_name }}-linux-x86_64
+            dist/nsblast-dynip-${{ github.ref_name }}-linux-x86_64.sha256
