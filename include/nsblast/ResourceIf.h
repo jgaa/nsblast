@@ -49,6 +49,7 @@ public:
             TRXID,      // class uint64-trxid
             ZRR,        // zone-name, fqdn of RR in plain text
             TENANT_NAME,// Name of tenant, folded UTF8
+            META,       // metadata keys for internal housekeeping
             UNKNOWN_    // Not used as a Class
         };
 
@@ -361,4 +362,3 @@ std::string_view toName(const nsblast::lib::ResourceIf::RealKey::Class& kclass);
 
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Category& cat);
 std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::RealKey& key);
-

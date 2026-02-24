@@ -2363,7 +2363,9 @@ Response RestApi::onVersion(const yahat::Request &req, const Parsed &parsed)
     json["rcode"] = 200;
     json["error"] = false;
     json["message"] = "";
-    json["value"] = Server::getVersionInfo().toJson();
+    auto value = Server::getVersionInfo().toJson();
+    value["data_schema_version"] = server().auth().dataSchemaVersion();
+    json["value"] = std::move(value);
 
     return {200, "OK", boost::json::serialize(json)};
 }

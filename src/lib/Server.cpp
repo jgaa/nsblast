@@ -2,6 +2,8 @@
 #include <format>
 
 #include <boost/json.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ip/udp.hpp>
 
 #include "nsblast/DnsEngine.h"
 #include "nsblast/logging.h"
@@ -54,6 +56,141 @@ using namespace ::nsblast::lib;
 using namespace yahat;
 
 namespace {
+string_view trim(std::string_view in) {
+    constexpr auto ws = " \t\n\r\f\v";
+    const auto begin = in.find_first_not_of(ws);
+    if (begin == string_view::npos) {
+        return {};
+    }
+    const auto end = in.find_last_not_of(ws);
+    return in.substr(begin, end - begin + 1);
+}
+
+std::string_view unbracket(std::string_view host) {
+    host = trim(host);
+    if (host.size() >= 2 && host.front() == '[' && host.back() == ']') {
+        host.remove_prefix(1);
+        host.remove_suffix(1);
+    }
+    return host;
+}
+
+bool isLoopbackHost(std::string_view endpoint) {
+    endpoint = unbracket(endpoint);
+    if (endpoint.empty()) {
+        return false;
+    }
+
+    if (endpoint == "localhost" || endpoint == "127.0.0.1" || endpoint == "::1") {
+        return true;
+    }
+
+    boost::system::error_code ec;
+    const auto addr = boost::asio::ip::make_address(std::string{endpoint}, ec);
+    return !ec && addr.is_loopback();
+}
+
+bool isWildcardHost(std::string_view endpoint) {
+    endpoint = unbracket(endpoint);
+    if (endpoint.empty() || endpoint == "*" || endpoint == "0.0.0.0" || endpoint == "::") {
+        return true;
+    }
+
+    boost::system::error_code ec;
+    const auto addr = boost::asio::ip::make_address(std::string{endpoint}, ec);
+    return !ec && addr.is_unspecified();
+}
+
+std::optional<boost::asio::ip::address> getPrimaryLocalAddress() {
+    boost::system::error_code ec;
+    boost::asio::io_context io;
+
+    {
+        boost::asio::ip::udp::socket socket{io};
+        socket.open(boost::asio::ip::udp::v4(), ec);
+        if (!ec) {
+            socket.connect({boost::asio::ip::make_address_v4("8.8.8.8"), 53}, ec);
+            if (!ec) {
+                auto addr = socket.local_endpoint(ec).address();
+                if (!ec && !addr.is_unspecified() && !addr.is_loopback()) {
+                    return addr;
+                }
+            }
+        }
+    }
+
+    {
+        boost::asio::ip::udp::socket socket{io};
+        socket.open(boost::asio::ip::udp::v6(), ec);
+        if (!ec) {
+            socket.connect({boost::asio::ip::make_address_v6("2001:4860:4860::8888"), 53}, ec);
+            if (!ec) {
+                auto addr = socket.local_endpoint(ec).address();
+                if (!ec && !addr.is_unspecified() && !addr.is_loopback()) {
+                    return addr;
+                }
+            }
+        }
+    }
+
+    return {};
+}
+
+string urlHost(const boost::asio::ip::address& addr) {
+    if (addr.is_loopback()) {
+        return "localhost";
+    }
+    if (addr.is_v6()) {
+        return format("[{}]", addr.to_string());
+    }
+    return addr.to_string();
+}
+
+string urlHostFromEndpoint(const string& endpoint, const string& port) {
+    if (isLoopbackHost(endpoint)) {
+        return "localhost";
+    }
+
+    if (isWildcardHost(endpoint)) {
+        if (const auto primary = getPrimaryLocalAddress()) {
+            return urlHost(*primary);
+        }
+        return "localhost";
+    }
+
+    boost::system::error_code ec;
+    const auto ip = boost::asio::ip::make_address(string{unbracket(endpoint)}, ec);
+    if (!ec) {
+        return urlHost(ip);
+    }
+
+    boost::asio::io_context io;
+    boost::asio::ip::tcp::resolver resolver{io};
+    auto resolved = resolver.resolve(endpoint, port, ec);
+    if (!ec) {
+        for (const auto& e : resolved) {
+            const auto addr = e.endpoint().address();
+            if (!addr.is_unspecified()) {
+                return urlHost(addr);
+            }
+        }
+    }
+
+    return endpoint;
+}
+
+string getHttpBaseUrl(const yahat::HttpConfig& cfg) {
+    const bool https = !cfg.http_tls_key.empty() && !cfg.http_tls_cert.empty();
+    const string_view scheme = https ? "https" : "http";
+    const string default_port = https ? "443" : "80";
+    const string port = cfg.http_port.empty() ? default_port : cfg.http_port;
+    string base = format("{}://{}", scheme, urlHostFromEndpoint(cfg.http_endpoint, port));
+    if (port != default_port) {
+        base += ":" + port;
+    }
+    return base;
+}
+
 string cppStrandard() {
     if constexpr (__cplusplus == 202302L)
         return "C++23";
@@ -261,6 +398,14 @@ void Server::start()
     startReplicationAndRpc();
 #endif
 
+    {
+        bool apply_admin_fixes = true;
+#ifdef NSBLAST_CLUSTER
+        apply_admin_fixes = !isReplicationFollower();
+#endif
+        auth_->ensureAdminTenantRoleConsistency(apply_admin_fixes);
+    }
+
     if (!config_.disable_http) {
         LOG_DEBUG_N << "Starting Api...";
         startApi();
@@ -346,7 +491,7 @@ void Server::startHttpServer()
 #ifdef NSBLAST_WITH_SWAGGER
     if (config().swagger) {
         const string_view swagger_path = "/api/swagger";
-        LOG_INFO << "Enabling Swagger at http/https://<fqdn>[:port]" << swagger_path;
+        LOG_INFO << "Enabling Swagger at " << getHttpBaseUrl(config().http) << swagger_path;
 
         http_->addRoute(swagger_path,
                         make_shared<EmbeddedResHandler<lib::embedded::Swagger>>("/api/swagger"));
@@ -356,7 +501,7 @@ void Server::startHttpServer()
 #ifdef NSBLAST_WITH_UI
     if (config().ui) {
         const string ui_path = "/ui";
-        LOG_INFO << "Enabling UI at http/https://<fqdn>[:port]" << ui_path;
+        LOG_INFO << "Enabling UI at " << getHttpBaseUrl(config().http) << ui_path;
 
         http_->addRoute(ui_path,
                         make_shared<EmbeddedResHandler<lib::embedded::Ui>>(ui_path, true));
@@ -398,6 +543,8 @@ void Server::startAuth()
     if (wasBootstrapped()) {
         auth_->bootstrap();
     }
+
+    auth_->migrateStorage();
 }
 
 void Server::startBackupMgr(bool startAutoBackups )

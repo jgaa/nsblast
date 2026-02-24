@@ -42,13 +42,22 @@ public:
     explicit Lru(size_t capacity) : capacity_{capacity} {}
 
     void emplace(keyT key, dataT data) {
-        auto instance = std::make_unique<Item>(std::move(key), std::move(data));
         std::lock_guard lock{mutex_};
-        instance->lruIt_ = lru_.insert(lru_.begin(), instance.get());
-        auto [_, inserted] = items_.insert_or_assign(instance->key_, std::move(instance));
-        if (inserted) {
-            makeSpace();
+
+        if (auto it = items_.find(key); it != items_.end()) {
+            auto& item = *it->second;
+            item.data_ = std::move(data);
+            lru_.erase(item.lruIt_);
+            item.lruIt_ = lru_.insert(lru_.begin(), it->second.get());
+            assert(items_.size() == lru_.size());
+            return;
         }
+
+        auto instance = std::make_shared<Item>(std::move(key), std::move(data));
+        instance->lruIt_ = lru_.insert(lru_.begin(), instance.get());
+        auto [_, inserted] = items_.emplace(instance->key_, instance);
+        assert(inserted);
+        makeSpace();
         assert(items_.size() == lru_.size());
     }
 
@@ -56,7 +65,7 @@ public:
         {
             std::lock_guard lock{mutex_};
             assert(items_.size() == lru_.size());
-            if (auto it = items_.find(key) ; it != items_.end()) {
+            if (auto it = items_.find(keyT{key}) ; it != items_.end()) {
                 auto& item = *it->second;
 
                 lru_.erase(item.lruIt_);
@@ -113,7 +122,7 @@ private:
     }
 
     mutable std::mutex mutex_;
-    boost::unordered_flat_map<shadowKeyT, std::shared_ptr<Item>> items_;
+    boost::unordered_flat_map<keyT, std::shared_ptr<Item>> items_;
     std::list<Item *> lru_;
     const size_t capacity_;
 };
@@ -344,6 +353,13 @@ public:
      *      password is generated and written to a file: {dbpath}/password.txt
      */
     void bootstrap();
+    void migrateStorage();
+    // Startup sanity check for system tenant/admin role/user consistency.
+    // If applyFixes is true, persist repairs in the DB.
+    bool ensureAdminTenantRoleConsistency(bool applyFixes);
+    uint32_t dataSchemaVersion() const noexcept {
+        return data_schema_version_.load(std::memory_order_relaxed);
+    }
 
     static std::string createHash(std::string_view seed, std::string_view passwd);
 
@@ -375,11 +391,16 @@ private:
     void upsertTenantIndexes(trx_t& trx, const pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);
     void deleteTenantIndexes(trx_t& trx, const pb::Tenant& tenant);
+    uint32_t getDataSchemaVersion(trx_t& trx) const;
+    void setDataSchemaVersion(trx_t& trx, uint32_t version) const;
+    void migrateToV2AddDynip(trx_t& trx) const;
 
     Server& server_;
     detail::Lru<std::shared_ptr<Session>> keys_;
+    std::atomic<uint32_t> data_schema_version_{0};
     static bool has_auth_;
     static constexpr std::string_view admin_id_{"d98e539e-fc78-11ed-9f34-bbfe306147e3"};
+    static constexpr std::string_view data_schema_version_key_{"data_schema_version"};
 };
 
 } // ns

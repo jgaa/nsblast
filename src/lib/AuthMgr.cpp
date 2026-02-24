@@ -31,6 +31,14 @@ void validate(const pb::Zone& zone) {
     // TODO: Validate
 }
 
+bool hasPermission(const pb::Tenant& tenant, pb::Permission perm) {
+    return std::ranges::find(tenant.allowedpermissions(), perm) != tenant.allowedpermissions().end();
+}
+
+bool hasPermission(const pb::Role& role, pb::Permission perm) {
+    return std::ranges::find(role.permissions(), perm) != role.permissions().end();
+}
+
 template <typename T, ResourceIf::Category cat = ResourceIf::Category::ACCOUNT>
 void upsert(trx_t& trx, const ResourceIf::RealKey& key, const T& value, bool isNew) {
     validate(value);
@@ -332,6 +340,191 @@ void AuthMgr::bootstrap()
     createTenant(tenant);
 }
 
+void AuthMgr::migrateStorage()
+{
+    const auto target_version = CURRENT_DATA_SCHEMA_VERSION;
+    auto version = uint32_t{};
+    {
+        auto trx = server_.resource().transaction();
+        version = getDataSchemaVersion(*trx);
+    }
+
+    data_schema_version_.store(version, std::memory_order_relaxed);
+    LOG_INFO << "AuthMgr::migrateStorage - Current data schema version=" << version
+             << ", target=" << target_version;
+
+    if (version > target_version) {
+        throw runtime_error{format("Data schema version {} is newer than the binary supports ({})",
+                                   version, target_version)};
+    }
+
+    while (version < target_version) {
+        const auto to_version = version + 1;
+        const auto start = chrono::steady_clock::now();
+        auto trx = server_.resource().transaction();
+
+        switch (to_version) {
+        case 1:
+            // Initial schema-version marker only.
+            break;
+        case 2:
+            migrateToV2AddDynip(*trx);
+            break;
+        default:
+            throw runtime_error{format("No migration function for schema version {}", to_version)};
+        }
+
+        setDataSchemaVersion(*trx, to_version);
+        trx->commit();
+
+        const auto ms = chrono::duration_cast<chrono::milliseconds>(
+            chrono::steady_clock::now() - start);
+        LOG_INFO << "AuthMgr::migrateStorage - Applied migration to version "
+                 << to_version << " in " << ms.count() << " ms";
+        version = to_version;
+        data_schema_version_.store(version, std::memory_order_relaxed);
+    }
+
+    LOG_INFO << "AuthMgr::migrateStorage - Data schema migration complete. Version="
+             << version;
+}
+
+bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
+{
+    static constexpr std::string_view administrator_role_name = "Administrator";
+    static constexpr std::string_view admin_user_name = "admin";
+    const auto tenant_id = boost::uuids::to_string(nsblastTenantUuid);
+    ResourceIf::RealKey key{tenant_id, ResourceIf::RealKey::Class::TENANT};
+    auto trx = server_.resource().transaction();
+    auto tenant = get<pb::Tenant>(*trx, key);
+    if (!tenant) {
+        LOG_WARN << "AuthMgr::ensureAdminTenantRoleConsistency - System tenant not found: "
+                 << tenant_id;
+        return false;
+    }
+
+    bool changed = false;
+    auto& t = *tenant;
+
+    for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
+        if (!pb::Permission_IsValid(i)) {
+            continue;
+        }
+
+        const auto perm = static_cast<pb::Permission>(i);
+        if (hasPermission(t, perm)) {
+            continue;
+        }
+
+        const auto pname = pb::Permission_Name(perm);
+        if (applyFixes) {
+            t.add_allowedpermissions(perm);
+            changed = true;
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Adding missing tenant "
+                     << "permission " << pname << " to " << t.id();
+        } else {
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Missing tenant permission "
+                     << pname << " in " << t.id() << " (not applying on follower)";
+        }
+    }
+
+    pb::Role* administrator_role = nullptr;
+    for (auto& role : *t.mutable_roles()) {
+        if (compareCaseInsensitive(role.name(), administrator_role_name)) {
+            administrator_role = &role;
+            break;
+        }
+    }
+
+    if (!administrator_role) {
+        if (applyFixes) {
+            administrator_role = t.add_roles();
+            administrator_role->set_name(string{administrator_role_name});
+            auto* filter = administrator_role->mutable_filter();
+            filter->set_fqdn("");
+            filter->set_recursive(true);
+            changed = true;
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Re-created missing role "
+                     << "Administrator in " << t.id();
+        } else {
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Missing role Administrator "
+                     << "in " << t.id() << " (not applying on follower)";
+        }
+    }
+
+    if (administrator_role) {
+        for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
+            if (!pb::Permission_IsValid(i)) {
+                continue;
+            }
+
+            const auto perm = static_cast<pb::Permission>(i);
+            if (hasPermission(*administrator_role, perm)) {
+                continue;
+            }
+
+            const auto pname = pb::Permission_Name(perm);
+            if (applyFixes) {
+                administrator_role->add_permissions(perm);
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Adding missing "
+                         << "permission " << pname << " to role Administrator";
+            } else {
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Missing permission "
+                         << pname << " in role Administrator (not applying on follower)";
+            }
+        }
+    }
+
+    pb::User* admin_user = nullptr;
+    for (auto& user : *t.mutable_users()) {
+        if (compareCaseInsensitive(user.id(), admin_id_)
+            || compareCaseInsensitive(user.name(), admin_user_name)) {
+            admin_user = &user;
+            break;
+        }
+    }
+
+    if (!admin_user) {
+        LOG_WARN << "AuthMgr::ensureAdminTenantRoleConsistency - Could not find admin user in "
+                 << t.id();
+    } else {
+        for (const auto& role : t.roles()) {
+            bool has_role = false;
+            for (const auto& user_role : admin_user->roles()) {
+                if (compareCaseInsensitive(user_role, role.name())) {
+                    has_role = true;
+                    break;
+                }
+            }
+
+            if (has_role) {
+                continue;
+            }
+
+            if (applyFixes) {
+                admin_user->add_roles(role.name());
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Assigning missing role "
+                         << role.name() << " to admin user";
+            } else {
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Admin user missing role "
+                         << role.name() << " (not applying on follower)";
+            }
+        }
+    }
+
+    if (applyFixes && changed) {
+        string raw;
+        t.SerializeToString(&raw);
+        trx->write(key, raw, false, ResourceIf::Category::ACCOUNT);
+        trx->commit();
+        resetTokensForTenant(t.id());
+    }
+
+    return !changed || applyFixes;
+}
+
 string AuthMgr::createHash(std::string_view seed, std::string_view passwd)
 {
     return sha256(format("{}{}", seed, passwd));
@@ -606,6 +799,60 @@ void AuthMgr::deleteTenantIndexes(trx_t &trx, const pb::Tenant &tenant)
 {
     ResourceIf::RealKey key{tenant.name(), ResourceIf::RealKey::Class::TENANT_NAME};
     trx.remove(key, false, ResourceIf::Category::ACCOUNT);
+}
+
+uint32_t AuthMgr::getDataSchemaVersion(trx_t& trx) const
+{
+    const string key_name{data_schema_version_key_};
+    const ResourceIf::RealKey key{key_name, ResourceIf::RealKey::Class::META};
+    string raw;
+    if (!trx.read(key, raw, ResourceIf::Category::ACCOUNT, false)) {
+        return 0;
+    }
+
+    if (raw.size() != sizeof(uint32_t)) {
+        throw runtime_error{format("Invalid data schema version length: {}", raw.size())};
+    }
+
+    return get32bValueAt(raw, 0);
+}
+
+void AuthMgr::setDataSchemaVersion(trx_t& trx, uint32_t version) const
+{
+    const string key_name{data_schema_version_key_};
+    const ResourceIf::RealKey key{key_name, ResourceIf::RealKey::Class::META};
+    string raw(sizeof(uint32_t), '\0');
+    setValueAt(raw, 0, version);
+    trx.write(key, raw, false, ResourceIf::Category::ACCOUNT);
+}
+
+void AuthMgr::migrateToV2AddDynip(trx_t& trx) const
+{
+    ResourceIf::RealKey first{"", ResourceIf::RealKey::Class::TENANT};
+    vector<pair<ResourceIf::RealKey, pb::Tenant>> updates;
+
+    trx.iterate(first, [&updates](ResourceIf::TransactionIf::key_t key, span_t value) {
+        pb::Tenant tenant;
+        if (!tenant.ParseFromArray(value.data(), static_cast<int>(value.size()))) {
+            throw runtime_error{"Failed to parse tenant for key " + key.dataAsString()};
+        }
+
+        if (!hasPermission(tenant, pb::Permission::DYNIP)) {
+            tenant.add_allowedpermissions(pb::Permission::DYNIP);
+            updates.emplace_back(ResourceIf::RealKey{ResourceIf::RealKey::Binary{key.key()}},
+                                 std::move(tenant));
+        }
+        return true;
+    }, ResourceIf::Category::ACCOUNT);
+
+    for (auto& [key, tenant] : updates) {
+        string raw;
+        tenant.SerializeToString(&raw);
+        trx.write(key, raw, false, ResourceIf::Category::ACCOUNT);
+    }
+
+    LOG_INFO << "AuthMgr::migrateToV2AddDynip - Updated " << updates.size()
+             << " tenant records";
 }
 
 bool Session::isAllowed(pb::Permission perm, const Options& opts) const {

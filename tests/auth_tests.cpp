@@ -1,11 +1,14 @@
 
 #include <filesystem>
+#include <format>
+#include <ranges>
 
 #include "gtest/gtest.h"
 
 #include "TmpDb.h"
 
 #include "nsblast/errors.h"
+#include "nsblast/util.h"
 #include "proto/nsblast.pb.h"
 #include "proto_util.h"
 
@@ -198,6 +201,158 @@ TEST(AuthMgr, bootstrap) {
     pwd_file_path /= "password.txt";
     EXPECT_TRUE(filesystem::is_regular_file(pwd_file_path));
     EXPECT_EQ(filesystem::file_size(pwd_file_path), 42);
+}
+
+TEST(AuthMgr, migrateStorageWritesVersionKey) {
+    MockServer ms;
+
+    const std::string key_name = "data_schema_version";
+    const ResourceIf::RealKey version_key{key_name, ResourceIf::RealKey::Class::META};
+    string raw;
+
+    {
+        auto trx = ms->resource().transaction();
+        EXPECT_FALSE(trx->read(version_key, raw, ResourceIf::Category::ACCOUNT, false));
+    }
+
+    ms.auth().migrateStorage();
+
+    {
+        auto trx = ms->resource().transaction();
+        EXPECT_TRUE(trx->read(version_key, raw, ResourceIf::Category::ACCOUNT, false));
+        ASSERT_EQ(raw.size(), sizeof(uint32_t));
+        EXPECT_EQ(get32bValueAt(raw, 0), CURRENT_DATA_SCHEMA_VERSION);
+    }
+}
+
+TEST(AuthMgr, migrateStorageBackfillsDynipPermission) {
+    MockServer ms;
+
+    pb::Tenant tenant;
+    tenant.set_id(newUuidStr());
+    tenant.set_name(std::format("legacy-{}", tenant.id()));
+    tenant.set_active(true);
+    tenant.set_root("");
+    tenant.add_allowedpermissions(pb::Permission::USE_API);
+
+    auto* role = tenant.add_roles();
+    role->set_name("legacy-role");
+    role->add_permissions(pb::Permission::USE_API);
+
+    auto* user = tenant.add_users();
+    user->set_id(newUuidStr());
+    user->set_name(std::format("legacy-user-{}", tenant.id()));
+    user->set_active(true);
+    user->add_roles(role->name());
+    auto* auth = user->mutable_auth();
+    auth->set_password("secret");
+
+    const auto tenant_id = ms.auth().createTenant(tenant);
+
+    auto before = ms.auth().getTenant(tenant_id);
+    ASSERT_TRUE(before);
+    EXPECT_TRUE(std::ranges::find(before->allowedpermissions(), pb::Permission::DYNIP)
+                == before->allowedpermissions().end());
+
+    ms.auth().migrateStorage();
+
+    auto after = ms.auth().getTenant(tenant_id);
+    ASSERT_TRUE(after);
+    EXPECT_TRUE(std::ranges::find(after->allowedpermissions(), pb::Permission::DYNIP)
+                != after->allowedpermissions().end());
+    EXPECT_EQ(ms.auth().dataSchemaVersion(), CURRENT_DATA_SCHEMA_VERSION);
+}
+
+TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) {
+    MockServer ms;
+    static constexpr std::string_view administrator_role_name = "Administrator";
+    static constexpr std::string_view admin_user_name = "admin";
+    static constexpr std::string_view extra_role_name = "extra-role";
+
+    const auto system_tenant_id = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
+    auto tenant = ms.auth().getTenant(system_tenant_id);
+    ASSERT_TRUE(tenant);
+
+    // Add an extra role and remove DYNIP from tenant/Administrator.
+    auto* extra_role = tenant->add_roles();
+    extra_role->set_name(string{extra_role_name});
+    extra_role->add_permissions(pb::Permission::USE_API);
+
+    for (auto it = tenant->mutable_allowedpermissions()->begin();
+         it != tenant->mutable_allowedpermissions()->end();) {
+        if (*it == pb::Permission::DYNIP) {
+            it = tenant->mutable_allowedpermissions()->erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    auto* admin_role = [&]() -> pb::Role* {
+        for (auto& role : *tenant->mutable_roles()) {
+            if (compareCaseInsensitive(role.name(), administrator_role_name)) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+
+    ASSERT_TRUE(admin_role);
+    for (auto it = admin_role->mutable_permissions()->begin();
+         it != admin_role->mutable_permissions()->end();) {
+        if (*it == pb::Permission::DYNIP) {
+            it = admin_role->mutable_permissions()->erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    auto* admin_user = [&]() -> pb::User* {
+        for (auto& user : *tenant->mutable_users()) {
+            if (compareCaseInsensitive(user.name(), admin_user_name)) {
+                return &user;
+            }
+        }
+        return nullptr;
+    }();
+
+    ASSERT_TRUE(admin_user);
+    admin_user->clear_roles();
+    admin_user->add_roles(string{administrator_role_name});
+
+    ms.auth().upsertTenant(tenant->id(), *tenant, false);
+    EXPECT_TRUE(ms.auth().ensureAdminTenantRoleConsistency(true));
+
+    auto repaired = ms.auth().getTenant(system_tenant_id);
+    ASSERT_TRUE(repaired);
+
+    EXPECT_TRUE(std::ranges::find(repaired->allowedpermissions(), pb::Permission::DYNIP)
+                != repaired->allowedpermissions().end());
+
+    const auto* repaired_admin_role = [&]() -> const pb::Role* {
+        for (const auto& role : repaired->roles()) {
+            if (compareCaseInsensitive(role.name(), administrator_role_name)) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(repaired_admin_role);
+    EXPECT_TRUE(std::ranges::find(repaired_admin_role->permissions(), pb::Permission::DYNIP)
+                != repaired_admin_role->permissions().end());
+
+    const auto* repaired_admin_user = [&]() -> const pb::User* {
+        for (const auto& user : repaired->users()) {
+            if (compareCaseInsensitive(user.name(), admin_user_name)) {
+                return &user;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(repaired_admin_user);
+
+    EXPECT_TRUE(std::ranges::find_if(repaired_admin_user->roles(), [](const auto& rn) {
+                    return compareCaseInsensitive(rn, extra_role_name);
+                }) != repaired_admin_user->roles().end());
 }
 
 int main(int argc, char **argv) {
