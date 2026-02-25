@@ -35,7 +35,13 @@ FollowerReplication::Agent::Agent(FollowerReplication &parent)
 
 void FollowerReplication::Agent::init()
 {
-    current_trxid_ = parent_.server().db().getLastCommittedTransactionId();
+    if (parent_.server().config().cluster_force_full_resync) {
+        LOG_WARN_N << "FollowerReplication::Agent::init - Forcing full resync from trx-id 0.";
+        current_trxid_ = 0;
+    } else {
+        current_trxid_ = parent_.server().db().getLastCommittedTransactionId();
+    }
+
     if (parent_.server().haveMetrics() && parent_.server().isReplicationFollower()) {
         parent_.server().metrics().cluster_replication_in_sync().set(0);
     }

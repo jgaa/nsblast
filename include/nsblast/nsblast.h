@@ -107,6 +107,9 @@ struct Config {
     /// Milliseconds to wait before ackowledinging the current trx-id from a follower.
     size_t cluster_ack_delay = 200;
 
+    /// Start follower replication from trx-id 0 (maintenance mode / full resync intent).
+    bool cluster_force_full_resync = false;
+
 
     /*! Role of this server.
      *

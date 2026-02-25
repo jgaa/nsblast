@@ -185,6 +185,8 @@ public:
          return role_ == Role::CLUSTER_FOLLOWER;
     }
 
+    bool followerInSync() const noexcept;
+
     void startForwardingTransactionsToReplication();
 
 #endif
@@ -256,5 +258,4 @@ protected:
 
 std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role);
 std::ostream& operator << (std::ostream& out, const nsblast::Server::VersionInfo& vi);
-
 

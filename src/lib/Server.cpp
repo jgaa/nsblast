@@ -658,13 +658,22 @@ RocksDbResource &Server::db() const noexcept
     return dynamic_cast<lib::RocksDbResource&>(*resource_);
 }
 
-
+#ifdef NSBLAST_CLUSTER
 void Server::startForwardingTransactionsToReplication()
 {
     db().setTransactionCallback([this](PrimaryReplication::transaction_t && trx) {
         primaryReplication().onTransaction(std::move(trx));
     });
 }
+
+bool Server::followerInSync() const noexcept
+{
+    if (!follower_replication_) {
+        return false;
+    }
+    return follower_replication_->isInSync();
+}
+#endif // NSBLAST_CLUSTER
 
 uint32_t Server::getNewId()
 {

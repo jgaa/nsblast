@@ -4,12 +4,23 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <array>
+#include <thread>
+#include <chrono>
+#include <unordered_map>
 #include <boost/program_options.hpp>
+#include <boost/json.hpp>
 #include <boost/version.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
 #include "nsblast/Server.h"
+#include "nsblast/ResourceIf.h"
+#include "nsblast/util.h"
+#include "nsblast/DnsMessages.h"
+#include "proto/nsblast.pb.h"
+#include "RocksDbResource.h"
 
 using namespace std;
 using namespace nsblast;
@@ -32,6 +43,432 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
     return logfault::LogLevel::INFO;
 }
 
+boost::json::array& asArray(boost::json::object& v, string_view name) {
+    if (auto entry = v.if_contains(name)) {
+        assert(entry->is_array());
+        return entry->as_array();
+    }
+
+    auto [it, _] = v.emplace(name, boost::json::array{});
+    return it->value().as_array();
+}
+
+void rrToJson(const span_t buffer, const lib::Rr& rr, boost::json::object& obj) {
+    switch(rr.type()) {
+    case TYPE_A:
+        asArray(obj, "a").emplace_back(lib::RrA(buffer, rr.offset()).address().to_string());
+        break;
+    case TYPE_AAAA:
+        asArray(obj, "aaaa").emplace_back(lib::RrA(buffer, rr.offset()).address().to_string());
+        break;
+    case TYPE_NS:
+        asArray(obj, "ns").emplace_back(lib::RrNs(buffer, rr.offset()).ns().string());
+        break;
+    case TYPE_CNAME:
+        obj["cname"] = lib::RrCname(buffer, rr.offset()).cname().string();
+        break;
+    case TYPE_SOA: {
+        boost::json::object o;
+        const lib::RrSoa soa(buffer, rr.offset());
+        o["mname"] = soa.mname().string();
+        o["rname"] = soa.rname().string();
+        o["email"] = soa.email();
+        o["serial"] = soa.serial();
+        o["refresh"] = soa.refresh();
+        o["retry"] = soa.retry();
+        o["expire"] = soa.expire();
+        o["minimum"] = soa.minimum();
+        obj["soa"] = std::move(o);
+    } break;
+    case TYPE_PTR:
+        asArray(obj, "ptr").emplace_back(lib::RrPtr(buffer, rr.offset()).ptrdname().string());
+        break;
+    case TYPE_MX: {
+        boost::json::object o;
+        const lib::RrMx mx(buffer, rr.offset());
+        o["host"] = mx.host().string();
+        o["priority"] = mx.priority();
+        asArray(obj, "mx").emplace_back(std::move(o));
+    } break;
+    case TYPE_TXT:
+        asArray(obj, "txt").emplace_back(lib::RrTxt(buffer, rr.offset()).string());
+        break;
+    case TYPE_SRV: {
+        boost::json::object o;
+        const lib::RrSrv srv(buffer, rr.offset());
+        o["target"] = srv.target().string();
+        o["priority"] = srv.priority();
+        o["weight"] = srv.weight();
+        o["port"] = srv.port();
+        asArray(obj, "srv").emplace_back(std::move(o));
+    } break;
+    case TYPE_AFSDB: {
+        boost::json::object o;
+        const lib::RrAfsdb ad(buffer, rr.offset());
+        o["host"] = ad.host().string();
+        o["subtype"] = ad.subtype();
+        asArray(obj, "afsdb").emplace_back(std::move(o));
+    } break;
+    case TYPE_RP: {
+        boost::json::object o;
+        const lib::RrRp rp(buffer, rr.offset());
+        o["mbox"] = lib::RrSoa::ToEmail(rp.mbox().string());
+        o["txt"] = rp.txt().string();
+        obj["rp"] = std::move(o);
+    } break;
+    case TYPE_HINFO: {
+        boost::json::object o;
+        const lib::RrHinfo hi(buffer, rr.offset());
+        o["cpu"] = hi.cpu();
+        o["os"] = hi.os();
+        obj["hinfo"] = std::move(o);
+    } break;
+    case TYPE_DHCID:
+        obj["dhcid"] = lib::Base64Encode(rr.rdata());
+        break;
+    case TYPE_OPENPGPKEY:
+        obj["openpgpkey"] = lib::Base64Encode(rr.rdata());
+        break;
+    default:
+        asArray(obj, format("#{}", rr.type())).emplace_back(lib::Base64Encode(rr.rdata()));
+    }
+}
+
+boost::json::object entryToJson(const lib::Entry& entry) {
+    boost::json::object o;
+    bool has_label = false;
+    for(const auto& rr : entry) {
+        if (!has_label) {
+            o["fqdn"] = rr.labels().string();
+            o["ttl"] = rr.ttl();
+            has_label = true;
+        }
+
+        rrToJson(entry.buffer(), rr, o);
+    }
+
+    return o;
+}
+
+size_t findBestZoneIx(const vector<boost::json::object>& zones, string_view fqdn) {
+    optional<size_t> best_ix;
+    size_t best_len = 0;
+
+    for(size_t i = 0; i < zones.size(); ++i) {
+        const auto zone = string_view{zones[i].at("zone").as_string()};
+        if (zone.size() >= best_len && lib::isSameZone(zone, fqdn)) {
+            best_ix = i;
+            best_len = zone.size();
+        }
+    }
+
+    return best_ix.value_or(numeric_limits<size_t>::max());
+}
+
+size_t findBestZoneIx(const vector<string>& zones, string_view fqdn) {
+    optional<size_t> best_ix;
+    size_t best_len = 0;
+
+    for(size_t i = 0; i < zones.size(); ++i) {
+        const auto zone = string_view{zones[i]};
+        if (zone.size() >= best_len && lib::isSameZone(zone, fqdn)) {
+            best_ix = i;
+            best_len = zone.size();
+        }
+    }
+
+    return best_ix.value_or(numeric_limits<size_t>::max());
+}
+
+void dumpZones(Server& server, const filesystem::path& path) {
+    using key_class_t = lib::ResourceIf::RealKey::Class;
+
+    auto trx = server.resource().transaction();
+    vector<boost::json::object> zones;
+
+    lib::ResourceIf::RealKey zkey{"", key_class_t::ZONE};
+    trx->iterate(zkey, [&zones](lib::ResourceIf::TransactionIf::key_t key, span_t value) {
+        boost::json::object zone;
+        const auto fqdn = key.dataAsString();
+        zone["zone"] = fqdn;
+        zone["rrsets"] = boost::json::array{};
+
+        pb::Zone meta;
+        if (meta.ParseFromArray(value.data(), static_cast<int>(value.size()))) {
+            if (meta.has_id()) {
+                zone["id"] = meta.id();
+            }
+            if (meta.has_tenantid()) {
+                zone["tenantId"] = meta.tenantid();
+            }
+            if (meta.has_status()) {
+                zone["status"] = pb::ZoneStatus_Name(meta.status());
+            }
+        }
+
+        zones.emplace_back(std::move(zone));
+        return true;
+    }, lib::ResourceIf::Category::ACCOUNT);
+
+    lib::ResourceIf::RealKey ekey{"", key_class_t::ENTRY};
+    boost::json::array orphan_rrsets;
+    trx->iterate(ekey, [&zones, &orphan_rrsets](lib::ResourceIf::TransactionIf::key_t key, span_t value) {
+        const auto fqdn = key.dataAsString();
+        const auto zone_ix = findBestZoneIx(zones, fqdn);
+        if (zone_ix == numeric_limits<size_t>::max()) {
+            orphan_rrsets.emplace_back(entryToJson(lib::Entry{value}));
+            return true;
+        }
+
+        zones[zone_ix]["rrsets"].as_array().emplace_back(entryToJson(lib::Entry{value}));
+        return true;
+    });
+
+    boost::json::object root;
+    root["zoneCount"] = zones.size();
+    root["zones"] = boost::json::array{};
+    for(auto& zone : zones) {
+        root["zones"].as_array().emplace_back(std::move(zone));
+    }
+    root["orphanRrsetCount"] = orphan_rrsets.size();
+    root["orphanRrsets"] = std::move(orphan_rrsets);
+
+    if (auto dir = path.parent_path(); !dir.empty()) {
+        filesystem::create_directories(dir);
+    }
+
+    ofstream out(path, ios::trunc | ios::out);
+    if (!out.is_open()) {
+        throw runtime_error{"Failed to open dump file: " + path.string()};
+    }
+
+    out << boost::json::serialize(root) << '\n';
+}
+
+struct RepairZoneIndexesResult {
+    size_t zones_discovered = 0;
+    size_t zone_records_written = 0;
+    size_t tenant_zone_indexes_written = 0;
+    size_t rr_indexes_written = 0;
+    size_t orphan_rrsets = 0;
+};
+
+struct EmitFullSyncStreamResult {
+    uint64_t start_after_trxid = 0;
+    uint64_t first_emitted_trxid = 0;
+    uint64_t last_emitted_trxid = 0;
+    size_t emitted_transactions = 0;
+    size_t emitted_parts = 0;
+};
+
+RepairZoneIndexesResult repairZoneIndexes(Server& server) {
+    using key_class_t = lib::ResourceIf::RealKey::Class;
+
+    auto trx = server.resource().transaction();
+    unordered_map<string, pb::Zone> existing_zone_meta;
+
+    // Keep any existing IDs if zone metadata is present.
+    {
+        lib::ResourceIf::RealKey zkey{"", key_class_t::ZONE};
+        trx->iterate(zkey, [&existing_zone_meta](lib::ResourceIf::TransactionIf::key_t key, span_t value) {
+            pb::Zone zone;
+            if (zone.ParseFromArray(value.data(), static_cast<int>(value.size()))) {
+                existing_zone_meta.emplace(key.dataAsString(), std::move(zone));
+            }
+            return true;
+        }, lib::ResourceIf::Category::ACCOUNT);
+    }
+
+    unordered_map<string, string> zone_to_tenant;
+    lib::ResourceIf::RealKey ekey{"", key_class_t::ENTRY};
+    trx->iterate(ekey, [&zone_to_tenant](lib::ResourceIf::TransactionIf::key_t key, span_t value) {
+        const auto fqdn = key.dataAsString();
+        const lib::Entry entry{value};
+        if (!entry.hasSoa()) {
+            return true;
+        }
+
+        string tenant_id = boost::uuids::to_string(lib::nsblastTenantUuid);
+        if (auto tid = entry.tenantId()) {
+            tenant_id = boost::uuids::to_string(*tid);
+        }
+
+        zone_to_tenant.emplace(lib::toLower(fqdn), lib::toLower(tenant_id));
+        return true;
+    }, lib::ResourceIf::Category::ENTRY);
+
+    RepairZoneIndexesResult result;
+    result.zones_discovered = zone_to_tenant.size();
+
+    // Rebuild these indexes from scratch.
+    trx->remove(lib::ResourceIf::RealKey{"", key_class_t::ZONE}, true, lib::ResourceIf::Category::ACCOUNT);
+    trx->remove(lib::ResourceIf::RealKey{"", key_class_t::TZONE}, true, lib::ResourceIf::Category::ACCOUNT);
+    trx->remove(lib::ResourceIf::RealKey{"", key_class_t::ZRR}, true, lib::ResourceIf::Category::ACCOUNT);
+
+    vector<string> zones;
+    zones.reserve(zone_to_tenant.size());
+    for (const auto& [zone_fqdn, tenant_id] : zone_to_tenant) {
+        pb::Zone zone_meta;
+        if (auto it = existing_zone_meta.find(zone_fqdn); it != existing_zone_meta.end()) {
+            zone_meta = it->second;
+        }
+
+        if (!zone_meta.has_id()) {
+            zone_meta.set_id(lib::newUuidStr());
+        }
+        zone_meta.set_tenantid(tenant_id);
+        zone_meta.set_status(pb::ACTIVE);
+
+        string serialized_zone;
+        zone_meta.SerializeToString(&serialized_zone);
+
+        trx->write(lib::ResourceIf::RealKey{zone_fqdn, key_class_t::ZONE},
+                   serialized_zone, true, lib::ResourceIf::Category::ACCOUNT);
+        ++result.zone_records_written;
+
+        trx->write(lib::ResourceIf::RealKey{tenant_id, zone_fqdn, key_class_t::TZONE},
+                   zone_fqdn, true, lib::ResourceIf::Category::ACCOUNT);
+        ++result.tenant_zone_indexes_written;
+
+        zones.emplace_back(zone_fqdn);
+    }
+
+    // Rebuild the zone->rr index.
+    trx->iterate(ekey, [&zones, &result, &trx](lib::ResourceIf::TransactionIf::key_t key, span_t /*value*/) {
+        const auto fqdn = key.dataAsString();
+        const auto zone_ix = findBestZoneIx(zones, fqdn);
+        if (zone_ix == numeric_limits<size_t>::max()) {
+            ++result.orphan_rrsets;
+            return true;
+        }
+
+        const auto& zone = zones[zone_ix];
+        const auto zrr_key = lib::ResourceIf::RealKey{zone, fqdn, key_class_t::ZRR};
+        trx->write(zrr_key, "", false, lib::ResourceIf::Category::ACCOUNT);
+        ++result.rr_indexes_written;
+        return true;
+    }, lib::ResourceIf::Category::ENTRY);
+
+    trx->commit();
+    return result;
+}
+
+EmitFullSyncStreamResult emitFullSyncStream(Server& server, size_t max_parts_per_transaction = 2048) {
+    using category_t = lib::ResourceIf::Category;
+    using key_class_t = lib::ResourceIf::RealKey::Class;
+
+    if (max_parts_per_transaction == 0) {
+        throw runtime_error{"max_parts_per_transaction must be > 0"};
+    }
+
+    auto& db = server.db();
+    EmitFullSyncStreamResult result;
+    result.start_after_trxid = db.getLastCommittedTransactionId();
+
+    // Clear replication stream, but keep current in-memory trx counter at current value.
+    {
+        auto trx = db.dbTransaction();
+        trx->disableTrxlog();
+        vector<lib::ResourceIf::RealKey> keys;
+        lib::ResourceIf::RealKey start{uint64_t{0}, key_class_t::TRXID};
+        trx->iterate(start, [&keys](lib::ResourceIf::TransactionIf::key_t key, span_t) {
+            keys.emplace_back(lib::ResourceIf::RealKey::Binary{key.key()});
+            return true;
+        }, category_t::TRXLOG);
+        for (const auto& key : keys) {
+            trx->remove(key, false, category_t::TRXLOG);
+        }
+        trx->commit();
+    }
+
+    auto write_trx = db.dbTransaction();
+    write_trx->disableTrxlog();
+    pb::Transaction out;
+    size_t writes_since_commit = 0;
+
+    const auto flush = [&]() {
+        if (out.parts_size() == 0) {
+            return;
+        }
+
+        const auto id = db.createNewTrxId();
+        if (!result.first_emitted_trxid) {
+            result.first_emitted_trxid = id;
+        }
+        result.last_emitted_trxid = id;
+
+        out.set_id(id);
+        out.set_node(db.config().node_name);
+        out.set_time(std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch()).count());
+        const auto uuid = lib::newUuid();
+        out.set_uuid(uuid.begin(), uuid.size());
+
+        string serialized;
+        out.SerializeToString(&serialized);
+        const lib::ResourceIf::RealKey trx_key{static_cast<uint64_t>(id), key_class_t::TRXID};
+        write_trx->write(trx_key,
+                         span_t{serialized.data(), serialized.size()},
+                         false, category_t::TRXLOG);
+
+        ++result.emitted_transactions;
+        ++writes_since_commit;
+        out.Clear();
+
+        // Keep transaction sizes bounded.
+        if (writes_since_commit >= 256) {
+            write_trx->commit();
+            write_trx = db.dbTransaction();
+            write_trx->disableTrxlog();
+            writes_since_commit = 0;
+        }
+    };
+
+    const auto append_category = [&](category_t category, key_class_t kclass) {
+        auto read_trx = db.dbTransaction();
+        lib::ResourceIf::RealKey start_key{"", kclass};
+        read_trx->iterate(start_key, [&](lib::ResourceIf::TransactionIf::key_t key, span_t value) {
+            auto* part = out.add_parts();
+            part->set_columnfamilyix(static_cast<int32_t>(category));
+            part->set_key(key.data(), key.size());
+            part->set_value(value.data(), value.size());
+            ++result.emitted_parts;
+
+            if (out.parts_size() >= static_cast<int>(max_parts_per_transaction)) {
+                flush();
+            }
+            return true;
+        }, category);
+    };
+
+    // Build a deterministic full-state stream.
+    const array account_classes = {
+        key_class_t::TENANT,
+        key_class_t::TENANT_NAME,
+        key_class_t::USER,
+        key_class_t::ROLE,
+        key_class_t::ZONE,
+        key_class_t::TZONE,
+        key_class_t::ZRR,
+        key_class_t::META
+    };
+    for (const auto kclass : account_classes) {
+        append_category(category_t::ACCOUNT, kclass);
+    }
+
+    append_category(category_t::MASTER_ZONE, key_class_t::ENTRY);
+    append_category(category_t::ENTRY, key_class_t::ENTRY);
+    append_category(category_t::DIFF, key_class_t::DIFF);
+
+    flush();
+
+    if (writes_since_commit || out.parts_size() == 0) {
+        write_trx->commit();
+    }
+
+    return result;
+}
+
 }
 
 int main(int argc, char* argv[]) {
@@ -51,6 +488,10 @@ int main(int argc, char* argv[]) {
     bool trunc_log = true;
     int restore_backup_id = 0;
     int validate_backup_id = 0;
+    std::string dump_zones_path;
+    bool full_resync = false;
+    bool repair_zone_indexes = false;
+    bool emit_full_sync_stream = false;
     bool use_json_log_console = false;
     bool use_json_log_file = false;
 
@@ -90,6 +531,18 @@ int main(int argc, char* argv[]) {
         ("reset-auth",
             "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
             "The server will terminate after the changes are made.")
+        ("dump-zones",
+            po::value<string>(&dump_zones_path),
+            "Emergency: dump all zones and RR sets from the database to a JSON file and exit")
+        ("full-resync",
+            po::bool_switch(&full_resync),
+            "Follower-only maintenance mode: force replication sync from trx-id 0 and exit when IN_SYNC")
+        ("repair-zone-indexes",
+            po::bool_switch(&repair_zone_indexes),
+            "Emergency: rebuild ACCOUNT zone metadata/indexes (ZONE, TZONE, ZRR) from ENTRY data and exit")
+        ("emit-full-sync-stream",
+            po::bool_switch(&emit_full_sync_stream),
+            "Emergency: clear TRXLOG and emit a synthetic full-state replication stream from current DB content, then exit")
     ;
 
     po::options_description backup("Backup/Restore");
@@ -383,6 +836,8 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    config.cluster_force_full_resync = full_resync;
+
     LOG_INFO << appname << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
     LOG_INFO << "I am running as user=" << getuid() << " group=" << getgid();
 
@@ -409,6 +864,75 @@ int main(int argc, char* argv[]) {
         if (validate_backup_id) {
             server.startBackupMgr(false);
             server.validateBackup(validate_backup_id);
+            return 0;
+        }
+
+        if (!dump_zones_path.empty()) {
+            server.startRocksDb();
+            dumpZones(server, dump_zones_path);
+            return 0;
+        }
+
+        if (full_resync) {
+#ifdef NSBLAST_CLUSTER
+            server.startRocksDb();
+            server.initReplication();
+            if (!server.isReplicationFollower()) {
+                throw runtime_error{"--full-resync only works when --cluster-role=follower"};
+            }
+
+            LOG_INFO << "Starting follower full resync maintenance mode.";
+            server.startGrpcService();
+            server.StartReplication();
+            server.startIoThreads();
+
+            constexpr auto timeout = chrono::minutes{30};
+            const auto deadline = chrono::steady_clock::now() + timeout;
+
+            while(chrono::steady_clock::now() < deadline) {
+                if (server.followerInSync()) {
+                    LOG_INFO << "Follower reported IN_SYNC. Exiting full resync mode.";
+                    server.stop();
+                    return 0;
+                }
+                this_thread::sleep_for(chrono::milliseconds{200});
+            }
+
+            server.stop();
+            throw runtime_error{"Timed out waiting for follower replication to report IN_SYNC"};
+#else
+            throw runtime_error{"--full-resync requires cluster support (NSBLAST_CLUSTER)"};
+#endif
+        }
+
+        if (repair_zone_indexes) {
+            server.startRocksDb();
+            const auto result = repairZoneIndexes(server);
+            LOG_INFO << "Repair complete:"
+                     << " zones_discovered=" << result.zones_discovered
+                     << ", zone_records_written=" << result.zone_records_written
+                     << ", tenant_zone_indexes_written=" << result.tenant_zone_indexes_written
+                     << ", rr_indexes_written=" << result.rr_indexes_written
+                     << ", orphan_rrsets=" << result.orphan_rrsets;
+            const auto emit = emitFullSyncStream(server);
+            LOG_INFO << "Full sync stream emitted after repair:"
+                     << " start_after_trxid=" << emit.start_after_trxid
+                     << ", first_emitted_trxid=" << emit.first_emitted_trxid
+                     << ", last_emitted_trxid=" << emit.last_emitted_trxid
+                     << ", emitted_transactions=" << emit.emitted_transactions
+                     << ", emitted_parts=" << emit.emitted_parts;
+            return 0;
+        }
+
+        if (emit_full_sync_stream) {
+            server.startRocksDb();
+            const auto emit = emitFullSyncStream(server);
+            LOG_INFO << "Full sync stream emitted:"
+                     << " start_after_trxid=" << emit.start_after_trxid
+                     << ", first_emitted_trxid=" << emit.first_emitted_trxid
+                     << ", last_emitted_trxid=" << emit.last_emitted_trxid
+                     << ", emitted_transactions=" << emit.emitted_transactions
+                     << ", emitted_parts=" << emit.emitted_parts;
             return 0;
         }
 
