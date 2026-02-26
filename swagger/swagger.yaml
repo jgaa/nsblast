@@ -1619,12 +1619,6 @@ paths:
         - backup
       summary: List all successful backups that are still available
       operationId: listDbBackups
-      parameters:
-        - in: query
-          name: path
-          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
-          required: false
-          type: string
       consumes:
       - "application/json"
       produces:
@@ -1654,11 +1648,6 @@ paths:
       summary: Delete all backups that are still available
       operationId: deleteDbBackups
       parameters:
-        - in: query
-          name: path
-          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
-          required: false
-          type: string
         - in: query
           name: keep
           description: "Tells delete to keep the last # backups and delete everything else."
@@ -1705,8 +1694,8 @@ paths:
         description: "Backup ID (not uuid)"
       - in: body
         name: "body"
-        description: "Settings for the configuration."
-        required: true
+        description: "Optional verification settings."
+        required: false
         schema:
           $ref: "#/definitions/BackupVerifyReq"
       responses:
@@ -1740,11 +1729,6 @@ paths:
       summary: "Delete backup #"
       operationId: deleteDbBackup
       parameters:
-        - in: query
-          name: path
-          description: Path to the backup on the file system. The default is to use the folder 'backup' in the saervers database directory.
-          required: false
-          type: string
         - in: path
           name: id
           description: "Backlup id (not uuid)"
@@ -2236,19 +2220,13 @@ definitions:
   BackupReq:
     type: object
     properties:
-      path:
-        type: string
-        description: Path to the backup on storage. If unset, it use the same path as the database use,  and put the backup in the subfolder 'backup'
       flushBefore:
         type: boolean
         description: Flush the database prior to making the backup. Defaults to true.
 
   BackupVerifyReq:
     type: object
-    properties:
-      path:
-        type: string
-        description: Path to the backup on storage. If unset, it use the same path as the database use,  and put the backup in the subfolder 'backup'
+    properties: {}
 
   VersionInfo:
     type: object

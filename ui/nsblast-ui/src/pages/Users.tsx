@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../modules/AppState';
+import { encodePathSegment } from '../modules/url';
 
 type UserAuth = {
   hash?: string;
@@ -162,7 +163,7 @@ export default function Users() {
 
     setError('');
     try {
-      await api.request(queryWithTenant(`/user/${name}`, tenantId), {
+      await api.request(queryWithTenant(`/user/${encodePathSegment(name)}`, tenantId), {
         method: 'PUT',
         body: payload
       });
@@ -185,7 +186,7 @@ export default function Users() {
 
     setError('');
     try {
-      await api.request(queryWithTenant(`/user/${name}`, tenantId), { method: 'DELETE' });
+      await api.request(queryWithTenant(`/user/${encodePathSegment(name)}`, tenantId), { method: 'DELETE' });
       await loadData();
       resetForm();
     } catch (err) {

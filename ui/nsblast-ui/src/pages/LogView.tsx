@@ -54,7 +54,7 @@ export default function LogView() {
     setError('');
 
     try {
-      const response = await api.request<LogReply>('/log/show', { method: 'GET' });
+      const response = (await api.request('/log/show', { method: 'GET' })) as LogReply;
       setRows(response.value ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load logs');

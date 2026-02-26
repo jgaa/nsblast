@@ -21,6 +21,7 @@ import {
     useLocation
   } from "react-router-dom";
 import qargs from '../modules/qargs';
+import { encodePathSegment } from '../modules/url';
 
 const rrProto =
 // Defines valid RR's and their format
@@ -236,7 +237,7 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
     if (window.confirm(`Do you really want to delete fqdn ${rr.fqdn} ?`)) {
 
       try {
-        await api.request(`/rr/${rr.fqdn}`, {
+        await api.request(`/rr/${encodePathSegment(rr.fqdn)}`, {
           method: "DELETE"
         });
         onChange();
@@ -286,7 +287,7 @@ function RrCells({rr, onChange, onEdit, onAdd, rrIx}) {
     if (window.confirm(`Do you really want to delete this "${type}" Resorce Record?`)) {
 
       try {
-        await api.request(`/rr/${rr.fqdn}`, {
+        await api.request(`/rr/${encodePathSegment(rr.fqdn)}`, {
           method: "PUT",
           body: rr_obj
         });
@@ -338,7 +339,7 @@ function AddFqdn({args}) {
         const fqdn = `${nameRef.current.value}.${zone}`
     
         try {
-          await api.request(`/rr/${fqdn}`, {
+          await api.request(`/rr/${encodePathSegment(fqdn)}`, {
             method: "POST",
             body: {}
           });
@@ -719,7 +720,7 @@ function AddRr({args}) {
     const fqdn = args.fqdn
 
     try {
-      await api.request(`/rr/${fqdn}`, {
+      await api.request(`/rr/${encodePathSegment(fqdn)}`, {
         method: "PUT",
         body: new_rr
       });
@@ -785,7 +786,7 @@ function ListResourceRecords({ max, zone }) {
         setCurrentDirection(direction)
     
         try {
-          const z = await api.request(`/zone/${zone}` + qargs(from, max, 'verbose', direction), {
+          const z = await api.request(`/zone/${encodePathSegment(zone)}` + qargs(from, max, 'verbose', direction), {
             method: "GET"
           });
           setRrs(z.value);

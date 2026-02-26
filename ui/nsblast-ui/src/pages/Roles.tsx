@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../modules/AppState';
+import { encodePathSegment } from '../modules/url';
 
 type Role = {
   name: string;
@@ -110,7 +111,7 @@ export default function Roles() {
 
     setError('');
     try {
-      await api.request(queryWithTenant(`/role/${name}`, tenantId), {
+      await api.request(queryWithTenant(`/role/${encodePathSegment(name)}`, tenantId), {
         method: 'PUT',
         body: {
           name,
@@ -137,7 +138,7 @@ export default function Roles() {
 
     setError('');
     try {
-      await api.request(queryWithTenant(`/role/${name}`, tenantId), { method: 'DELETE' });
+      await api.request(queryWithTenant(`/role/${encodePathSegment(name)}`, tenantId), { method: 'DELETE' });
       await loadData();
       resetForm();
     } catch (err) {

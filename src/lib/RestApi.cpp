@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <charconv>
+#include <system_error>
 
 #include <boost/json/src.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
@@ -37,6 +39,18 @@ ostream& operator << (ostream& out, nsblast::lib::Session& session) {
 namespace nsblast::lib {
 
 namespace {
+
+int parseIntStrict(std::string_view input, std::string_view fieldName) {
+    int value = 0;
+    const auto* first = input.data();
+    const auto* last = input.data() + input.size();
+    const auto [ptr, ec] = std::from_chars(first, last, value);
+    if (ec != std::errc{} || ptr != last) {
+        throw Response{400, format("Invalid integer in '{}'", fieldName)};
+    }
+
+    return value;
+}
 
 auto makeRrFilter(string_view tokens) {
     static constexpr array<pair<string_view, uint16_t>, 10> rrs = {{
@@ -367,7 +381,11 @@ getSessionAndTenant(const yahat::Request &req, Server& server, bool allowAll = f
 
                 // Make a tmp session instance with the impersonated tenant_id.
                 session = make_shared<Session>(*session);
-                session->setTenantId(boost::uuids::string_generator()(tenant_id));
+                try {
+                    session->setTenantId(boost::uuids::string_generator()(tenant_id));
+                } catch (const std::exception&) {
+                    return {Response{400, "Invalid tenant id"}, {}, {}, {}};
+                }
             }
         } else {
             LOG_WARN << "In request" << req.uuid << ", session "
@@ -425,6 +443,7 @@ void toJson(const span_t buffer, const Rr& rr, boost::json::object& obj) {
     } break;
     case TYPE_PTR:
         asArray(obj, "ptr").emplace_back(RrPtr(buffer, rr.offset()).ptrdname().string());
+        break;
     case TYPE_MX: {
         boost::json::object o;
         const RrMx mx(buffer, rr.offset());
@@ -1106,17 +1125,19 @@ void RestApi::build(string_view fqdn, uint32_t ttl, StorageBuilder& sb,
             // The '#' is followed by a number identifying the RR type.
             // The payload for the rrdata must be a base64 encoded string
             if (!key.empty() && key.front() == '#') {
-                if (const auto id = stoi(key.substr(1))) {
-
-                    if (!obj.value().is_array()) {
-                        throw Response{400, format("#{} type must carry an array of values.", id)};
-                    }
-
-                    for(const auto& v: obj.value().as_array()) {
-                        addRr(sb, fqdn, id, v);
-                    }
-                    continue;
+                const auto id = parseIntStrict(std::string_view{key.data() + 1, key.size() - 1}, "rr.type");
+                if (id <= 0 || id > std::numeric_limits<uint16_t>::max()) {
+                    throw Response{400, "Invalid rr.type. Expected a value in range 1..65535"};
                 }
+
+                if (!obj.value().is_array()) {
+                    throw Response{400, format("#{} type must carry an array of values.", id)};
+                }
+
+                for(const auto& v: obj.value().as_array()) {
+                    addRr(sb, fqdn, static_cast<uint16_t>(id), v);
+                }
+                continue;
             }
 
             throw Response{400, "Unknown entity: "s + string(obj.key())};
@@ -2325,7 +2346,7 @@ Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &pars
     } catch (const exception& ex) {
         LOG_WARN << "Exception while processing config/master request "
                  << req.uuid << ": " << ex.what();
-        return {500, "Server Error/ "s + ex.what()};
+        return {500, "Server Error"};
     }
 
     return {200, "OK"};
@@ -2350,9 +2371,9 @@ Response RestApi::onBackup(const yahat::Request &req, const Parsed &parsed)
             return {400, "Invalid method"};
         }
     } catch (const exception& ex) {
-        LOG_WARN << "Exception while processing config/master request "
+        LOG_WARN << "Exception while processing backup request "
                  << req.uuid << ": " << ex.what();
-        return {500, "Server Error/ "s + ex.what()};
+        return {500, "Server Error"};
     }
 
     return {404, "Not Found"};
@@ -2362,7 +2383,9 @@ Response RestApi::onBackup(const yahat::Request &req, const Parsed &parsed)
 Response RestApi::onLog(const yahat::Request &req, const Parsed &parsed)
 {
     auto session = getSession(req);
-    assert(session);
+    if (!session) {
+        return {401, "Unauthorized"};
+    }
 
     if (!session->isAllowed(pb::Permission::SHOW_LOG)) {
         return {403, "Access Denied"};
@@ -2395,7 +2418,9 @@ Response RestApi::onLog(const yahat::Request &req, const Parsed &parsed)
 Response RestApi::onVersion(const yahat::Request &req, const Parsed &parsed)
 {
     auto session = getSession(req);
-    assert(session);
+    if (!session) {
+        return {401, "Unauthorized"};
+    }
 
     boost::json::object json;
     json["rcode"] = 200;
@@ -2747,7 +2772,12 @@ Response RestApi::listZone(const yahat::Request &req, const Parsed &parsed)
 size_t RestApi::getPageSize(const yahat::Request &req) const
 {
     if (auto it = req.arguments.find("limit"); it != req.arguments.end()) {
-        if (size_t psize = std::stoi(string{it->second})) {
+        const auto parsed = parseIntStrict(it->second, "limit");
+        if (parsed < 0) {
+            throw Response{400, "limit cannot be negative"};
+        }
+
+        if (size_t psize = static_cast<size_t>(parsed)) {
             return min(psize, server().config().rest_max_page_size);
         }
     }
@@ -2791,7 +2821,12 @@ bool RestApi::getAppend(const yahat::Request &req) const
 std::optional<bool> RestApi::waitForReplication(const yahat::Request &req, uint64_t trxid)
 {
     if (auto it = req.arguments.find("wait"); it != req.arguments.end()) {
-        if (auto seconds = std::stoi(string{it->second})) {
+        const auto seconds = parseIntStrict(it->second, "wait");
+        if (seconds < 0) {
+            throw Response{400, "wait cannot be negative"};
+        }
+
+        if (seconds > 0) {
             if (!trxid || !server().isPrimaryReplicationServer()) {
                 // Not for replication
                 return false;
@@ -2817,18 +2852,27 @@ Response RestApi::startBackup(const yahat::Request &req, const Parsed &parsed)
 
     const auto uuid = newUuid();
 
-    std::string db_path;
+    bool syncFirst = true;
+    if (!req.body.empty()) {
+        boost::system::error_code ec;
+        const auto body = boost::json::parse(req.body, ec);
+        if (ec) {
+            return {400, "Invalid JSON payload"};
+        }
 
-    const auto body = boost::json::parse(req.body);
-    if (body.is_object()) {
-        if (auto path = body.as_object().if_contains("path")) {
-            db_path = string{path->as_string()};
+        if (body.is_object()) {
+            if (auto flush = body.as_object().if_contains("flushBefore")) {
+                if (!flush->is_bool()) {
+                    return {400, "'flushBefore' must be boolean"};
+                }
+                syncFirst = flush->as_bool();
+            }
+        } else {
+            return {400, "JSON payload must be an object"};
         }
     }
 
-    bool syncFirst = true;
-
-    server().db().startBackup(db_path, syncFirst, uuid);
+    server().db().startBackup({}, syncFirst, uuid);
 
     boost::json::object json, v;
 
@@ -2847,18 +2891,25 @@ Response RestApi::verifyBackup(const yahat::Request &req, const Parsed &parsed)
         return {403, "Access Denied"};
     }
 
-    std::string db_path;
-    const auto body = boost::json::parse(req.body);
-    if (body.is_object()) {
-        if (auto path = body.as_object().if_contains("path")) {
-            db_path = string{path->as_string()};
+    if (!req.body.empty()) {
+        boost::system::error_code ec;
+        const auto body = boost::json::parse(req.body, ec);
+        if (ec) {
+            return {400, "Invalid JSON payload"};
+        }
+
+        if (!body.is_object()) {
+            return {400, "JSON payload must be an object"};
         }
     }
 
-    const auto id = std::stoi(string{parsed.target});
+    const auto id = parseIntStrict(parsed.target, "id");
+    if (id <= 0) {
+        return {400, "id must be greater than zero"};
+    }
 
     string message;
-    if (server().db().verifyBackup(id, db_path, &message)) {
+    if (server().db().verifyBackup(static_cast<unsigned int>(id), {}, &message)) {
         return {200, "OK"};
     }
 
@@ -2877,12 +2928,8 @@ Response RestApi::listBackups(const yahat::Request &req, const Parsed &parsed)
     }
 
     boost::json::object json, meta;
-    std::string backup_dir;
-    if (auto it = req.arguments.find("path"); it != req.arguments.end()) {
-        backup_dir = string{it->second};
-    }
 
-    server().db().listBackups(meta, backup_dir);
+    server().db().listBackups(meta, {});
 
     json["rcode"] = 200;
     json["error"] = false;
@@ -2897,24 +2944,26 @@ Response RestApi::deleteBackups(const yahat::Request &req, const Parsed &parsed)
         return {403, "Access Denied"};
     }
 
-    std::string backup_dir;
-    if (auto it = req.arguments.find("path"); it != req.arguments.end()) {
-        backup_dir = string{it->second};
-    }
-
     if (parsed.target.empty()) {
         int keep = 0;
 
         if (auto it = req.arguments.find("keep"); it != req.arguments.end()) {
-            keep = std::stoi(string{it->second});
+            keep = parseIntStrict(it->second, "keep");
+            if (keep < 0) {
+                return {400, "keep cannot be negative"};
+            }
         }
 
-        server().db().purgeBackups(keep, backup_dir);
+        server().db().purgeBackups(keep, {});
         return {200, "OK"};
     }
 
-    const auto id = std::stoi(string{parsed.target});
-    if (server().db().deleteBackup(id, backup_dir)) {
+    const auto id = parseIntStrict(parsed.target, "id");
+    if (id <= 0) {
+        return {400, "id must be greater than zero"};
+    }
+
+    if (server().db().deleteBackup(id, {})) {
         return {200, format("OK. Backup {} was deleted.", id)};
     }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from '../pages/Dashboard';
 import Login from './Login';
@@ -33,7 +33,40 @@ function LoggedIn() {
 }
 
 export default function RightPane() {
-    let { isLoggedIn, setToken } = useAppState()
+    let { isLoggedIn, setToken, api } = useAppState()
+
+    useEffect(() => {
+        if (!isLoggedIn()) {
+            return;
+        }
+
+        let active = true;
+        const validateSession = async () => {
+            try {
+                await api.request('/version', {
+                    method: 'GET',
+                    parse: 'none',
+                    retry: false,
+                    retries: 0
+                });
+            } catch (error) {
+                if (
+                    active &&
+                    typeof error === 'object' &&
+                    error !== null &&
+                    (error.status === 401 || error.status === 403)
+                ) {
+                    setToken('');
+                }
+            }
+        };
+
+        void validateSession();
+        return () => {
+            active = false;
+        };
+    }, [api, isLoggedIn, setToken]);
+
     if (isLoggedIn()) {
         return <LoggedIn />;
     }

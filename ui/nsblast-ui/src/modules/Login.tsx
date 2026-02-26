@@ -33,7 +33,7 @@ export default function Login() {
         const pass :string = loginPasswd.current ? loginPasswd.current.value : "";
 
         const token = window.btoa(`${name}:${pass}`);
-        const authValue = `basic ${token}`;
+        const authValue = `Basic ${token}`;
 
 
         /* Try to access an endpoint using HTTP Basic authentication. If ok,

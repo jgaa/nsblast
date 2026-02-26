@@ -69,7 +69,7 @@ function formatFieldName(key: string): string {
   if (!trimmed.length) {
     return 'Value';
   }
-  return `${trimmed[0].toUpperCase()}${trimmed.slice(1)}`;
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
 }
 
 function flattenVersionData(data: VersionResponse): VersionRow[] {
@@ -113,9 +113,9 @@ export default function About() {
 
     const loadVersion = async () => {
       try {
-        const response = await api.request<VersionResponse>('/version', {
+        const response = (await api.request('/version', {
           method: 'GET'
-        });
+        })) as VersionResponse;
         if (active) {
           setVersion(getVersionPayload(response));
         }

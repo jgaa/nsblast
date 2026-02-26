@@ -18,6 +18,7 @@ import { BeatLoader } from 'react-spinners';
 import PopupDialog, { usePopupDialog } from './PopupDialog';
 import { Link } from "react-router-dom";
 import qargs from './qargs';
+import { encodePathSegment } from './url';
 
 
 /* 
@@ -76,7 +77,7 @@ function EditZone({ zone, caption }) {
 
     // Todo validate valid fqdn
     try {
-      await api.request(`/zone/${z.fqdn}`, {
+      await api.request(`/zone/${encodePathSegment(z.fqdn)}`, {
         method: "POST",
         body: data
       });
@@ -275,7 +276,7 @@ export function ListZones({ max }) {
     if (window.confirm(`Do you really want to delete the zone ${zoneName}?\r\nThis cannot be un-done.`)) {
 
       try {
-        await api.request(`/zone/${zoneName}`, {
+        await api.request(`/zone/${encodePathSegment(zoneName)}`, {
           method: "DELETE"
         });
         reloadCurrent();

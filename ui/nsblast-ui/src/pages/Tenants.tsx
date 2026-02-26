@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAppState } from '../modules/AppState';
+import { encodePathSegment } from '../modules/url';
 
 type Tenant = {
   id: string;
@@ -83,7 +84,7 @@ export default function Tenants() {
 
     setError('');
     try {
-      await api.request(`/tenant/${id}`, {
+      await api.request(`/tenant/${encodePathSegment(id)}`, {
         method: 'PUT',
         body: {
           id,
@@ -112,7 +113,7 @@ export default function Tenants() {
 
     setError('');
     try {
-      await api.request(`/tenant/${id}`, { method: 'DELETE' });
+      await api.request(`/tenant/${encodePathSegment(id)}`, { method: 'DELETE' });
       await loadTenants();
       resetForm();
     } catch (err) {
