@@ -30,6 +30,8 @@ tags:
   description: "Local server configuration (admin access)"
 - name: role
   description: RBAC roles. RBAC are supported for users and api keys.
+- name: vars
+  description: Permanent server variables.
 
 schemes:
  - "https"
@@ -126,6 +128,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/definitions/Returns"
+
+  /admin/vars:
+    get:
+      tags:
+        - vars
+      summary: List permanent variables
+      description: Requires the `VARS_LIST` permission.
+      responses:
+        "200":
+          description: Success
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/vars/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        type: string
+        description: Variable name.
+    get:
+      tags:
+        - vars
+      summary: Get one permanent variable
+      description: Requires the `VARS_READ` permission.
+      responses:
+        "200":
+          description: Success
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    put:
+      tags:
+        - vars
+      summary: Set one permanent variable
+      description: Requires the `VARS_SET` permission.
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
+            properties:
+              value:
+                description: New variable value.
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+    delete:
+      tags:
+        - vars
+      summary: Reset one permanent variable to default
+      description: Requires the `VARS_UNSET` permission.
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
 
 
   /zone:

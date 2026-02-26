@@ -18,6 +18,7 @@
 #include "nsblast/logging.h"
 #include "nsblast/LogCapture.h"
 #include "nsblast/Server.h"
+#include "nsblast/Vars.h"
 #include "nsblast/ResourceIf.h"
 #include "nsblast/util.h"
 #include "nsblast/DnsMessages.h"
@@ -485,6 +486,8 @@ int main(int argc, char* argv[]) {
     std::string log_level_api = "info";
     std::string log_file;
     std::string config_file;
+    std::string bootstrap_cluster_role;
+    std::vector<std::string> bootstrap_sets;
     bool trunc_log = true;
     enum class Command {
         None,
@@ -497,11 +500,20 @@ int main(int argc, char* argv[]) {
         DumpZones,
         FullResync,
         RepairZoneIndexes,
-        EmitFullSyncStream
+        EmitFullSyncStream,
+        Vars,
+        VarsList,
+        VarsGet,
+        VarsSet,
+        VarsUnset
     };
     Command command = Command::None;
     int command_backup_id = 0;
     std::string dump_zones_path;
+    std::string command_var_assignment;
+    std::string command_var_name;
+    bool vars_json_output = false;
+    bool vars_force = false;
     bool use_json_log_console = false;
     bool use_json_log_file = false;
 
@@ -540,7 +552,16 @@ int main(int argc, char* argv[]) {
              "Log-file to write a log to. Default is to use the console.")
         ("json-log-file",
          po::bool_switch(&use_json_log_file),
-         "Use JSON format for the file log");
+         "Use JSON format for the file log")
+        ("set",
+         po::value<vector<string>>(&bootstrap_sets)->composing(),
+         "Override bootstrap vars with name=value (repeatable, bootstrap only)")
+        ("json",
+         po::bool_switch(&vars_json_output),
+         "JSON output for vars list/get")
+        ("force",
+         po::bool_switch(&vars_force),
+         "Force non-mutable vars update (vars set/unset only)");
 
     po::options_description backup("Backup/Restore");
     backup.add_options()
@@ -557,8 +578,8 @@ int main(int argc, char* argv[]) {
     po::options_description cluster("Cluster");
     cluster.add_options()
         ("cluster-role",
-         po::value(&config.cluster_role)->default_value(config.cluster_role),
-         "One of: \"primary\", \"follower\", \"none\" (not part of a nsblast cluster)")
+         po::value<string>(&bootstrap_cluster_role),
+         "One of: \"primary\", \"follower\", \"none\" (bootstrap only)")
         ("cluster-auth-key",
          po::value(&config.cluster_auth_key)->default_value(config.cluster_auth_key),
          "Path to a binary file containing a key (shared secret) to use for gRPC authentication. "
@@ -617,29 +638,7 @@ int main(int argc, char* argv[]) {
             "TLS cert for the embedded HTTP server")
         ("http-num-threads",
             po::value<size_t>(&config.http.num_http_threads)->default_value(config.http.num_http_threads),
-            "Threads for the embedded HTTP server")
-        ("dynip-enable-get",
-            po::value<bool>(&config.dynip_enable_get)->default_value(config.dynip_enable_get),
-            "Enable GET /nic/update (legacy DynDNS compatible endpoint)")
-        ("dynip-enable-post-json",
-            po::value<bool>(&config.dynip_enable_post_json)->default_value(config.dynip_enable_post_json),
-            "Enable POST /nic/update with JSON payload")
-        ("dynip-allow-partial-multi-host",
-            po::value<bool>(&config.dynip_allow_partial_multi_host)->default_value(config.dynip_allow_partial_multi_host),
-            "Allow partial success when multiple hostnames are provided")
-        ("dynip-max-hosts-per-request",
-            po::value<size_t>(&config.dynip_max_hosts_per_request)->default_value(config.dynip_max_hosts_per_request),
-            "Maximum hostnames accepted in one DynIP request")
-        ("dynip-require-user-agent",
-            po::value<bool>(&config.dynip_require_user_agent)->default_value(config.dynip_require_user_agent),
-            "Require User-Agent for DynIP requests")
-        ("dynip-allow-private-ips",
-            po::value<bool>(&config.dynip_allow_private_ips)->default_value(config.dynip_allow_private_ips),
-            "Allow private IPv4/IPv6 ranges in DynIP updates")
-        ("dynip-default-ttl-seconds",
-            po::value<uint32_t>(&config.dynip_default_ttl_seconds)->default_value(config.dynip_default_ttl_seconds),
-            "Default TTL used when DynIP creates a new A/AAAA RR set")
-        ;
+            "Threads for the embedded HTTP server");
 
     po::options_description odns("DNS server");
     odns.add_options()
@@ -754,16 +753,13 @@ int main(int argc, char* argv[]) {
             "-c", "--config", "-d", "--db-path", "--db-dir",
             "-C", "--log-to-console", "--log-to-api", "-l", "--log-level",
             "-L", "--log-file", "-T", "--truncate-log-file",
+            "--set",
             "--backup-path", "--hourly-backup-interval", "--sync-before-backup",
             "--cluster-role", "--cluster-auth-key", "--cluster-server-cert",
             "--cluster-server-key", "--cluster-ca-cert", "--cluster-server-address",
             "--cluster-repl-agent-queue-size",
             "-H", "--http-endpoint", "--http-port", "--http-tls-key",
             "--http-tls-cert", "--http-num-threads",
-            "--dynip-enable-get", "--dynip-enable-post-json",
-            "--dynip-allow-partial-multi-host", "--dynip-max-hosts-per-request",
-            "--dynip-require-user-agent", "--dynip-allow-private-ips",
-            "--dynip-default-ttl-seconds",
             "--dns-endpoint", "--dns-udp-port", "--dns-tcp-port",
             "--dns-tcp-idle-time", "--dns-num-threads", "--dns-enable-notify",
             "--dns-enable-ixfr", "--dns-notify-port", "--default-nameserver",
@@ -819,6 +815,48 @@ int main(int argc, char* argv[]) {
                 command = Command::RepairZoneIndexes;
             } else if (token == "emit-full-sync-stream") {
                 command = Command::EmitFullSyncStream;
+            } else if (token == "vars") {
+                command = Command::Vars;
+                for (size_t j = i + 1; j < static_cast<size_t>(argc); ++j) {
+                    const string_view arg{argv[j]};
+                    if (arg.empty() || arg[0] == '-') {
+                        continue;
+                    }
+                    command_sub_ix = j;
+                    if (arg == "list") {
+                        command = Command::VarsList;
+                    } else if (arg == "get") {
+                        command = Command::VarsGet;
+                    } else if (arg == "set") {
+                        command = Command::VarsSet;
+                    } else if (arg == "unset") {
+                        command = Command::VarsUnset;
+                    } else {
+                        throw runtime_error{format("Invalid vars subcommand '{}'", arg)};
+                    }
+
+                    if (command == Command::VarsGet
+                        || command == Command::VarsSet
+                        || command == Command::VarsUnset) {
+                        for (size_t k = j + 1; k < static_cast<size_t>(argc); ++k) {
+                            const string_view value_arg{argv[k]};
+                            if (value_arg.empty() || value_arg[0] == '-') {
+                                continue;
+                            }
+                            command_arg_ix = k;
+                            if (command == Command::VarsSet) {
+                                command_var_assignment = string{value_arg};
+                            } else {
+                                command_var_name = string{value_arg};
+                            }
+                            break;
+                        }
+                    }
+                    break;
+                }
+                if (command == Command::Vars && !has_help_flag) {
+                    throw runtime_error{"Missing vars subcommand. Use one of: list, get, set, unset"};
+                }
             } else if (token == "backup") {
                 command = Command::Backup;
                 for (size_t j = i + 1; j < static_cast<size_t>(argc); ++j) {
@@ -874,6 +912,10 @@ int main(int argc, char* argv[]) {
         cout << "  full-resync\n";
         cout << "  repair-zone-indexes\n";
         cout << "  emit-full-sync-stream\n";
+        cout << "  vars list\n";
+        cout << "  vars get <name>\n";
+        cout << "  vars set <name=value>\n";
+        cout << "  vars unset <name>\n";
         cout << "  backup list\n";
         cout << "  backup restore <id>\n";
         cout << "  backup validate <id>\n\n";
@@ -903,6 +945,9 @@ int main(int argc, char* argv[]) {
             cout << "Initializes a new database and default auth data, then exits.\n";
             cout << "Aborts if the database already exists.\n\n";
             print_shared();
+            cout << "Bootstrap options:\n";
+            cout << "  --cluster-role <primary|follower|none> (required)\n";
+            cout << "  --set <name=value> (repeatable)\n";
             break;
         case Command::ResetAuth:
             cout << appname << " [global-options] reset-auth\n\n";
@@ -926,12 +971,32 @@ int main(int argc, char* argv[]) {
             cout << "Follower-only maintenance mode: sync from trx-id 0 and exit when IN_SYNC.\n\n";
             print_shared();
             cout << "Cluster options:\n";
-            cout << "  --cluster-role <primary|follower|none>\n";
             cout << "  --cluster-auth-key <path>\n";
             cout << "  --cluster-server-address <host:port>\n";
             cout << "  --cluster-server-cert <path>\n";
             cout << "  --cluster-server-key <path>\n";
             cout << "  --cluster-ca-cert <path>\n";
+            break;
+        case Command::Vars:
+        case Command::VarsList:
+            cout << appname << " [global-options] vars list [--json]\n\n";
+            cout << "List permanent variables.\n\n";
+            print_shared();
+            break;
+        case Command::VarsGet:
+            cout << appname << " [global-options] vars get <name> [--json]\n\n";
+            cout << "Read one permanent variable.\n\n";
+            print_shared();
+            break;
+        case Command::VarsSet:
+            cout << appname << " [global-options] vars set <name=value> [--force]\n\n";
+            cout << "Set a permanent variable.\n\n";
+            print_shared();
+            break;
+        case Command::VarsUnset:
+            cout << appname << " [global-options] vars unset <name> [--force]\n\n";
+            cout << "Reset a permanent variable to compiled default.\n\n";
+            print_shared();
             break;
         case Command::RepairZoneIndexes:
             cout << appname << " [global-options] repair-zone-indexes\n\n";
@@ -1027,6 +1092,20 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    const auto has_explicit_option = [&vm](const string& key) {
+        return vm.count(key) && !vm[key].defaulted();
+    };
+
+    if (has_explicit_option("cluster-role") && command != Command::Bootstrap) {
+        cerr << "--cluster-role is only valid for the bootstrap command" << endl;
+        return -1;
+    }
+
+    if (has_explicit_option("set") && command != Command::Bootstrap) {
+        cerr << "--set is only valid for the bootstrap command" << endl;
+        return -1;
+    }
+
     if (vm.count("help")) {
         if (command == Command::None) {
             print_global_help();
@@ -1039,6 +1118,11 @@ int main(int argc, char* argv[]) {
     if (vm.count("version")) {
         cout << Server::getVersionInfo();
         return -3;
+    }
+
+    if (command == Command::Bootstrap && !has_help_flag && bootstrap_cluster_role.empty()) {
+        cerr << "bootstrap requires --cluster-role <primary|follower|none>" << endl;
+        return 2;
     }
 
     auto ring_level = logging::parseLogLevel(log_level_api, logfault::LogLevel::INFO);
@@ -1095,8 +1179,92 @@ int main(int argc, char* argv[]) {
 
         if (command == Command::Bootstrap) {
             server.startRocksDb(true, true);
+            if (bootstrap_cluster_role.empty()) {
+                throw runtime_error{"bootstrap requires --cluster-role <primary|follower|none>"};
+            }
+            server.bootstrapVars(bootstrap_cluster_role, bootstrap_sets);
             server.startAuth();
             LOG_INFO << "Database bootstrap complete.";
+            return 0;
+        }
+
+        if (command == Command::VarsList) {
+            server.startRocksDb();
+            const auto items = server.vars().list();
+            if (vars_json_output) {
+                boost::json::object out;
+                auto& arr = out["items"] = boost::json::array{};
+                for (const auto& item : items) {
+                    boost::json::object row;
+                    row["name"] = item.name;
+                    row["value"] = item.value;
+                    row["default"] = item.default_value;
+                    row["requires_restart"] = item.requires_restart;
+                    row["non_mutable"] = item.non_mutable;
+                    row["description"] = item.description;
+                    arr.as_array().emplace_back(std::move(row));
+                }
+                cout << boost::json::serialize(out) << endl;
+            } else {
+                for (const auto& item : items) {
+                    cout << item.name
+                         << "\tvalue=" << boost::json::serialize(item.value)
+                         << "\tdefault=" << boost::json::serialize(item.default_value)
+                         << "\trequires_restart=" << (item.requires_restart ? "true" : "false")
+                         << "\tnon_mutable=" << (item.non_mutable ? "true" : "false")
+                         << "\tdescription=" << item.description
+                         << '\n';
+                }
+            }
+            return 0;
+        }
+
+        if (command == Command::VarsGet) {
+            if (command_var_name.empty()) {
+                throw runtime_error{"vars get requires <name>"};
+            }
+            server.startRocksDb();
+            if (const auto item = server.vars().get(command_var_name)) {
+                if (vars_json_output) {
+                    boost::json::object out;
+                    out["name"] = item->name;
+                    out["value"] = item->value;
+                    out["default"] = item->default_value;
+                    out["requires_restart"] = item->requires_restart;
+                    out["non_mutable"] = item->non_mutable;
+                    out["description"] = item->description;
+                    cout << boost::json::serialize(out) << endl;
+                } else {
+                    cout << boost::json::serialize(item->value) << endl;
+                }
+                return 0;
+            }
+            return 3;
+        }
+
+        if (command == Command::VarsSet) {
+            if (command_var_assignment.empty()) {
+                throw runtime_error{"vars set requires <name=value>"};
+            }
+            server.startRocksDb();
+            try {
+                server.vars().setFromAssignment(command_var_assignment, vars_force, true);
+            } catch (const lib::Vars::Error& ex) {
+                return ex.code();
+            }
+            return 0;
+        }
+
+        if (command == Command::VarsUnset) {
+            if (command_var_name.empty()) {
+                throw runtime_error{"vars unset requires <name>"};
+            }
+            server.startRocksDb();
+            try {
+                server.vars().unset(command_var_name, vars_force, true);
+            } catch (const lib::Vars::Error& ex) {
+                return ex.code();
+            }
             return 0;
         }
 
@@ -1143,7 +1311,7 @@ int main(int argc, char* argv[]) {
             server.startRocksDb();
             server.initReplication();
             if (!server.isReplicationFollower()) {
-                throw runtime_error{"full-resync only works when --cluster-role=follower"};
+                throw runtime_error{"full-resync only works when cluster_role is follower"};
             }
 
             LOG_INFO << "Starting follower full resync maintenance mode.";

@@ -75,6 +75,7 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
+    ${NSBLAST_ROOT}/include/nsblast/Vars.h
     AuthMgr.cpp
     AuthMgr.h
     BackupMgr.cpp
@@ -103,6 +104,7 @@ add_library(${PROJECT_NAME}
     certs.cpp
     proto_util.h
     util.cpp
+    Vars.cpp
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

@@ -48,6 +48,7 @@ public:
     yahat::Response onBackup(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onLog(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onVersion(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onVars(const yahat::Request &req, const Parsed& parsed);
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
     bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;
     bool hasAccess(const yahat::Request& req, std::string_view lowercaseFqdn, pb::Permission) const noexcept;

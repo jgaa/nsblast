@@ -991,7 +991,11 @@ void Session::init(const pb::Tenant& tenant)
              | detail::getBit(pb::Permission::UPDATE_USER)
              | detail::getBit(pb::Permission::UPDATE_SELF_TENANT)
              | detail::getBit(pb::Permission::METRICS)
-             | detail::getBit(pb::Permission::SHOW_LOG));
+             | detail::getBit(pb::Permission::SHOW_LOG)
+             | detail::getBit(pb::Permission::VARS_LIST)
+             | detail::getBit(pb::Permission::VARS_READ)
+             | detail::getBit(pb::Permission::VARS_SET)
+             | detail::getBit(pb::Permission::VARS_UNSET));
         }
 
         if (role.filters_) {

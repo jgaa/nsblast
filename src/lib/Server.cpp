@@ -16,6 +16,7 @@
 #include "AuthMgr.h"
 #include "BackupMgr.h"
 #include "Metrics.h"
+#include "nsblast/Vars.h"
 
 #ifdef NSBLAST_CLUSTER
 #   include "PrimaryReplication.h"
@@ -427,6 +428,17 @@ void Server::start()
 {
     LOG_DEBUG_N << "Starting Rocksdb...";
     startRocksDb();
+    vars().ensureRequiredForRuntime();
+#ifndef NSBLAST_CLUSTER
+    {
+        const auto role_value = vars().snapshot()->cluster_role();
+        if (role_value != "none") {
+            throw runtime_error{
+                format("cluster_role={} requires NSBLAST_CLUSTER build support", role_value)
+            };
+        }
+    }
+#endif
     LOG_DEBUG_N << "Starting Auth...";
     startAuth();
 
@@ -518,6 +530,19 @@ void Server::startRocksDb(bool init, bool allow_bootstrap)
         //rdb->prepareDirs();
     }
     resource_ = rdb;
+    vars_ = make_shared<lib::Vars>(*this);
+    if (!allow_bootstrap) {
+        vars_->loadOrCreateForUpgrade();
+    }
+}
+
+void Server::bootstrapVars(std::string_view clusterRole,
+                           const std::vector<std::string>& overrides)
+{
+    if (!vars_) {
+        vars_ = make_shared<lib::Vars>(*this);
+    }
+    vars_->bootstrap(clusterRole, overrides);
 }
 
 void Server::startIoThreads()
@@ -612,9 +637,12 @@ void Server::startBackupMgr(bool startAutoBackups )
 #ifdef NSBLAST_CLUSTER
 void Server::initReplication()
 {
-    if (config_.cluster_role == "primary") {
+    const auto snap = vars().snapshot();
+    const auto role_value = snap->has_cluster_role() ? snap->cluster_role() : std::string{"none"};
+
+    if (role_value == "primary") {
         role_ = Role::CLUSTER_PRIMARY;
-    } else if (config_.cluster_role == "follower") {
+    } else if (role_value == "follower") {
         role_ = Role::CLUSTER_FOLLOWER;
     }
 }
@@ -757,6 +785,20 @@ void Server::restoreBackup(int id)
 void Server::validateBackup(int id)
 {
     return backup().validateBackup(id);
+}
+
+lib::Vars& Server::vars()
+{
+    if (!vars_) {
+        vars_ = make_shared<lib::Vars>(*this);
+        vars_->loadOrCreateForUpgrade();
+    }
+    return *vars_;
+}
+
+const lib::Vars& Server::vars() const
+{
+    return const_cast<Server*>(this)->vars();
 }
 
 void Server::listBackups()

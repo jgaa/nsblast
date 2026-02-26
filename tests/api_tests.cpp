@@ -8,6 +8,7 @@
 
 #include "nsblast/DnsMessages.h"
 #include "nsblast/logging.h"
+#include "nsblast/Vars.h"
 #include "yahat/HttpServer.h"
 
 using namespace std;
@@ -2266,6 +2267,8 @@ TEST(ApiRequest, getRr) {
 
 TEST(ApiRequest, dynIpGetUpdateAndNoChange) {
     MockServer svr;
+    svr.vars().set("dynip_realm", boost::json::value{"dynip.example.com"});
+    svr.vars().set("dynip_enabled", true);
     RestApi api{svr};
 
     const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
@@ -2330,6 +2333,8 @@ TEST(ApiRequest, dynIpGetDisabled) {
 
 TEST(ApiRequest, dynIpPostJson) {
     MockServer svr;
+    svr.vars().set("dynip_realm", boost::json::value{"dynip.example.com"});
+    svr.vars().set("dynip_enabled", true);
     RestApi api{svr};
 
     const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},

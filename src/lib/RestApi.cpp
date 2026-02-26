@@ -21,6 +21,7 @@
 #include "Notifications.h"
 #include "PrimaryReplication.h"
 #include "RocksDbResource.h"
+#include "nsblast/Vars.h"
 #include "nsblast/errors.h"
 #include "google/protobuf/util/json_util.h"
 #include "proto_util.h"
@@ -632,6 +633,10 @@ Response RestApi::onReqest(const Request &req)
 
         if (p.what == "version") {
             return onVersion(req, p);
+        }
+
+        if (p.what == "admin" && p.target == "vars") {
+            return onVars(req, p);
         }
     } catch(const nsblast::Exception& ex) {
         LOG_DEBUG << "RestApi::onReqest: Cautht exception while processing request "
@@ -1445,6 +1450,106 @@ Response RestApi::onPermissions(const yahat::Request &req, const Parsed &parsed)
     }
 }
 
+Response RestApi::onVars(const yahat::Request &req, const Parsed &parsed)
+{
+    auto session = getSession(req);
+    if (!session) {
+        return {401, "Unauthorized"};
+    }
+
+    auto itemToJson = [](const Vars::Item& item) {
+        boost::json::object obj;
+        obj["name"] = item.name;
+        obj["value"] = item.value;
+        obj["default"] = item.default_value;
+        obj["non_mutable"] = item.non_mutable;
+        obj["requires_restart"] = item.requires_restart;
+        obj["description"] = item.description;
+        return obj;
+    };
+
+    const auto name = toLower(parsed.operation);
+    switch (req.type) {
+    case Request::Type::GET:
+        if (name.empty()) {
+            if (!session->isAllowed(pb::Permission::VARS_LIST)) {
+                return {403, "Access Denied"};
+            }
+            boost::json::object out;
+            auto& items = out["items"] = boost::json::array{};
+            for (const auto& item : server().vars().list()) {
+                items.as_array().emplace_back(itemToJson(item));
+            }
+            return {200, "OK", boost::json::serialize(out)};
+        }
+
+        if (!session->isAllowed(pb::Permission::VARS_READ)) {
+            return {403, "Access Denied"};
+        }
+        if (auto item = server().vars().get(name)) {
+            return {200, "OK", boost::json::serialize(itemToJson(*item))};
+        }
+        return {404, "Variable not found"};
+
+    case Request::Type::PUT: {
+        if (name.empty()) {
+            return {400, "Missing variable name"};
+        }
+        if (!session->isAllowed(pb::Permission::VARS_SET)) {
+            return {403, "Access Denied"};
+        }
+        boost::json::value json;
+        try {
+            json = parseJson(req.body);
+        } catch (const Response&) {
+            return {400, "Failed to parse json"};
+        }
+        if (!json.is_object()) {
+            return {400, "Request body must be a JSON object"};
+        }
+        auto* val = json.as_object().if_contains("value");
+        if (!val) {
+            return {400, "Missing 'value' in request body"};
+        }
+        try {
+            server().vars().set(name, *val, false, false);
+        } catch (const Vars::Error& ex) {
+            if (ex.code() == 3) {
+                return {404, ex.what()};
+            }
+            return {400, ex.what()};
+        }
+        if (auto item = server().vars().get(name)) {
+            return {200, "OK", boost::json::serialize(itemToJson(*item))};
+        }
+        return {500, "Failed to load updated variable"};
+    }
+
+    case Request::Type::DELETE:
+        if (name.empty()) {
+            return {400, "Missing variable name"};
+        }
+        if (!session->isAllowed(pb::Permission::VARS_UNSET)) {
+            return {403, "Access Denied"};
+        }
+        try {
+            server().vars().unset(name, false, false);
+        } catch (const Vars::Error& ex) {
+            if (ex.code() == 3) {
+                return {404, ex.what()};
+            }
+            return {400, ex.what()};
+        }
+        if (auto item = server().vars().get(name)) {
+            return {200, "OK", boost::json::serialize(itemToJson(*item))};
+        }
+        return {404, "Variable not found"};
+
+    default:
+        return {405, "Method not allowed"};
+    }
+}
+
 Response RestApi::onUser(const yahat::Request &req, const Parsed &parsed)
 {
     auto [res, session, tenant, all] = getSessionAndTenant(req, server());
@@ -1652,6 +1757,7 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 
 Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed, bool legacyRoute)
 {
+    const auto vars = server().vars().snapshot();
     auto session = getSession(req);
     if (!session) {
         if (req.type == Request::Type::GET) {
@@ -1706,7 +1812,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
 
     switch(req.type) {
     case Request::Type::GET: {
-        if (!config_.dynip_enable_get) {
+        if (!vars->dynip_enabled() || !vars->dynip_enable_get()) {
             return legacyDynIpReply("!disabled");
         }
 
@@ -1718,7 +1824,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         }
     } break;
     case Request::Type::POST: {
-        if (!config_.dynip_enable_post_json) {
+        if (!vars->dynip_enabled() || !vars->dynip_enable_post_json()) {
             return {405, "Method Not Allowed"};
         }
 
@@ -1797,7 +1903,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         return makeJsonReply(400, "notfqdn", false, {}, {}, {}, "Missing hostname");
     }
 
-    if (hostnames.size() > config_.dynip_max_hosts_per_request) {
+    if (hostnames.size() > vars->dynip_max_hosts_per_request()) {
         if (req.type == Request::Type::GET) {
             return legacyDynIpReply("numhost");
         }
@@ -1837,7 +1943,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         return makeJsonReply(400, "badip", false, hostname, {}, {}, "Invalid IP address");
     }
 
-    if (!config_.dynip_allow_private_ips && isPrivateIp(effectiveIp)) {
+    if (!vars->dynip_allow_private_ips() && isPrivateIp(effectiveIp)) {
         if (req.type == Request::Type::GET) {
             return legacyDynIpReply("badip");
         }
@@ -1912,7 +2018,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     }
 
     boost::json::object rr;
-    rr["ttl"] = static_cast<int64_t>(config_.dynip_default_ttl_seconds);
+    rr["ttl"] = static_cast<int64_t>(vars->dynip_default_ttl());
     if (effectiveIp.is_v4()) {
         rr["a"] = boost::json::array{effectiveIp.to_string()};
     } else {

@@ -2,6 +2,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <string_view>
+#include <vector>
 
 #include <boost/unordered/unordered_flat_set.hpp>
 
@@ -24,6 +26,7 @@ namespace lib {
     class RocksDbResource;
     class BackupMgr;
     class Metrics;
+    class Vars;
 
 #ifdef NSBLAST_CLUSTER
     class GrpcPrimary;
@@ -85,6 +88,8 @@ public:
     void startAuth();
 
     void startBackupMgr(bool startAutoBackups = true);
+    void bootstrapVars(std::string_view clusterRole,
+                       const std::vector<std::string>& overrides);
 
 #ifdef NSBLAST_CLUSTER
     void StartReplication();
@@ -157,6 +162,9 @@ public:
     auto& auth() noexcept {
         return *auth_;
     }
+
+    lib::Vars& vars();
+    const lib::Vars& vars() const;
 
 #ifdef NSBLAST_CLUSTER
     void initReplication();
@@ -240,6 +248,7 @@ protected:
     std::shared_ptr<lib::DnsEngine> dns_;
     std::shared_ptr<lib::AuthMgr> auth_;
     std::shared_ptr<lib::BackupMgr> backup_;
+    mutable std::shared_ptr<lib::Vars> vars_;
 #ifdef NSBLAST_CLUSTER
     std::shared_ptr<lib::GrpcPrimary> grpc_primary_;
     std::shared_ptr<lib::GrpcFollow> grpc_follow_;

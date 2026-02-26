@@ -100,6 +100,32 @@ enum Permission {
     // Allows low-impact dynamic IP updates (single A or AAAA RR via PUT /rr/{fqdn})
     DYNIP = 48;
     SHOW_LOG = 49; // Gives access to GET /log/show
+    VARS_LIST = 50; // Gives access to GET /admin/vars
+    VARS_READ = 51; // Gives access to GET /admin/vars/{name}
+    VARS_SET = 52; // Gives access to PUT /admin/vars/{name}
+    VARS_UNSET = 53; // Gives access to DELETE /admin/vars/{name}
+}
+
+message VarsSnapshot {
+    uint32 schema_version = 1;
+
+    bool pv_bootstrapped = 2;
+    optional string cluster_role = 3;
+
+    bool dynip_enabled = 100;
+    string dynip_realm = 101;
+    uint32 dynip_max_hosts_per_root = 102;
+    uint32 dynip_default_ttl = 103;
+    uint32 dynip_min_ttl = 104;
+    uint32 dynip_max_ttl = 105;
+    bool dynip_allow_txt = 106;
+
+    bool dynip_enable_get = 120;
+    bool dynip_enable_post_json = 121;
+    bool dynip_allow_partial_multi_host = 122;
+    uint32 dynip_max_hosts_per_request = 123;
+    bool dynip_require_user_agent = 124;
+    bool dynip_allow_private_ips = 125;
 }
 
 /**
