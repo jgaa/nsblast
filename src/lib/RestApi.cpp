@@ -11,6 +11,7 @@
 
 #include "RestApi.h"
 #include "nsblast/logging.h"
+#include "nsblast/LogCapture.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
 #include "SlaveMgr.h"
@@ -604,6 +605,10 @@ Response RestApi::onReqest(const Request &req)
 
         if (p.what == "backup") {
             return onBackup(req, p);
+        }
+
+        if (p.what == "log") {
+            return onLog(req, p);
         }
 
         if (p.what == "version") {
@@ -2352,6 +2357,39 @@ Response RestApi::onBackup(const yahat::Request &req, const Parsed &parsed)
 
     return {404, "Not Found"};
 
+}
+
+Response RestApi::onLog(const yahat::Request &req, const Parsed &parsed)
+{
+    auto session = getSession(req);
+    assert(session);
+
+    if (!session->isAllowed(pb::Permission::SHOW_LOG)) {
+        return {403, "Access Denied"};
+    }
+
+    if (req.type != Request::Type::GET) {
+        return {400, "Invalid method"};
+    }
+
+    if (parsed.target != "show" || !parsed.operation.empty()) {
+        return {404, "Unknown subpath"};
+    }
+
+    boost::json::array lines;
+    for (const auto& line : logging::LogRingBuffer::instance().snapshot()) {
+        boost::json::object row;
+        row["level"] = line.level;
+        row["line"] = line.line;
+        lines.emplace_back(std::move(row));
+    }
+
+    boost::json::object json;
+    json["error"] = false;
+    json["status"] = 200;
+    json["value"] = std::move(lines);
+
+    return {200, "OK", boost::json::serialize(json)};
 }
 
 Response RestApi::onVersion(const yahat::Request &req, const Parsed &parsed)

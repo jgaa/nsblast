@@ -99,6 +99,7 @@ enum Permission {
     METRICS = 47; // Gives access to GET /metrics
     // Allows low-impact dynamic IP updates (single A or AAAA RR via PUT /rr/{fqdn})
     DYNIP = 48;
+    SHOW_LOG = 49; // Gives access to GET /log/show
 }
 
 /**

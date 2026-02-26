@@ -9,6 +9,7 @@ import Tenants from '../pages/Tenants';
 import Users from '../pages/Users';
 import NotImplementedPage from '../pages/NotImplementedPage';
 import About from '../pages/About';
+import LogView from '../pages/LogView';
 
 function LoggedIn() {
     return (
@@ -23,7 +24,7 @@ function LoggedIn() {
                 <Route path="/admin" element={<NotImplementedPage title="Admin Console" />} />
                 <Route path="/apikeys" element={<NotImplementedPage title="API Keys" />} />
                 <Route path="/events" element={<NotImplementedPage title="Events" />} />
-                <Route path="/log" element={<NotImplementedPage title="Log" />} />
+                <Route path="/log" element={<LogView />} />
                 <Route path="/about" element={<About />} />
 
             </Routes>

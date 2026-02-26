@@ -18,10 +18,46 @@ export interface INavigationProps {
 }
 
 export function Navigation(props: INavigationProps) {
+  const { state, api } = useAppState();
+  const loggedIn = state.loginToken.length > 0;
+  const [canShowLog, setCanShowLog] = React.useState(false);
 
-  const {isLoggedIn} = useAppState();
+  React.useEffect(() => {
+    let active = true;
 
-  if (isLoggedIn()) {
+    if (!loggedIn) {
+      setCanShowLog(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const probeLogAccess = async () => {
+      try {
+        await api.request('/log/show', {
+          method: 'GET',
+          parse: 'none',
+          retry: false,
+          retries: 0
+        });
+        if (active) {
+          setCanShowLog(true);
+        }
+      } catch {
+        if (active) {
+          setCanShowLog(false);
+        }
+      }
+    };
+
+    void probeLogAccess();
+
+    return () => {
+      active = false;
+    };
+  }, [api, loggedIn, state.loginToken]);
+
+  if (loggedIn) {
     return (
       <div className='w3-theme-d4 w3-sidebar w3-border w3-bar-block'>
         <div className="ns-brand-header">
@@ -36,7 +72,7 @@ export function Navigation(props: INavigationProps) {
           <Link className='w3-bar-item w3-button' to="users"><FaUsers/> Users</Link>
           <Link className='w3-bar-item w3-button' to="apikeys"><FaKey/> API Keys</Link>
           <Link className='w3-bar-item w3-button' to="events"><FaRectangleList/> Events</Link>
-          <Link className='w3-bar-item w3-button' to="log"><FaFileLines/> Log</Link>
+          {canShowLog && <Link className='w3-bar-item w3-button' to="log"><FaFileLines/> Log</Link>}
           <Link className='w3-bar-item w3-button' to="about"><FaFileCircleQuestion/> About</Link>
         </nav>
       </div>

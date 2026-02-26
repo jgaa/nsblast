@@ -71,6 +71,7 @@ add_library(${PROJECT_NAME}
     ${NSBLAST_ROOT}/include/nsblast/certs.h
     ${NSBLAST_ROOT}/include/nsblast/detail/write_labels.hpp
     ${NSBLAST_ROOT}/include/nsblast/errors.h
+    ${NSBLAST_ROOT}/include/nsblast/LogCapture.h
     ${NSBLAST_ROOT}/include/nsblast/logging.h
     ${NSBLAST_ROOT}/include/nsblast/nsblast.h
     ${NSBLAST_ROOT}/include/nsblast/util.h
@@ -82,6 +83,7 @@ add_library(${PROJECT_NAME}
     DnsMessages.cpp
     FollowerReplication.cpp
     FollowerReplication.h
+    LogCapture.cpp
     Metrics.cpp
     Metrics.h
     Notifications.cpp

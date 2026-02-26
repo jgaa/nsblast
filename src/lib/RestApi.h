@@ -46,6 +46,7 @@ public:
     yahat::Response onDynIpUpdate(const yahat::Request &req, const Parsed& parsed, bool legacyRoute);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onBackup(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onLog(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onVersion(const yahat::Request &req, const Parsed& parsed);
     void checkSrv(span_t span, ResourceIf::TransactionIf& trx);
     bool hasAccess(const yahat::Request& req, pb::Permission) const noexcept;

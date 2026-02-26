@@ -15,6 +15,7 @@
 
 #include "nsblast/nsblast.h"
 #include "nsblast/logging.h"
+#include "nsblast/LogCapture.h"
 #include "nsblast/Server.h"
 #include "nsblast/ResourceIf.h"
 #include "nsblast/util.h"
@@ -32,15 +33,12 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
         return {};
     }
 
-    if (name == "debug") {
-        return logfault::LogLevel::DEBUGGING;
+    const auto level = logging::parseLogLevel(name, logfault::LogLevel::INFO);
+    if (level == logfault::LogLevel::DISABLED) {
+        return {};
     }
 
-    if (name == "trace") {
-        return logfault::LogLevel::TRACE;
-    }
-
-    return logfault::LogLevel::INFO;
+    return level;
 }
 
 boost::json::array& asArray(boost::json::object& v, string_view name) {
@@ -483,6 +481,7 @@ int main(int argc, char* argv[]) {
     config.http.http_basic_auth_realm = "nsBLAST";
     std::string log_level = "info";
     std::string log_level_console = "info";
+    std::string log_level_api = "info";
     std::string log_file;
     std::string config_file;
     bool trunc_log = true;
@@ -513,6 +512,9 @@ int main(int argc, char* argv[]) {
         ("log-to-console,C",
              po::value<string>(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+        ("log-to-api",
+             po::value<string>(&log_level_api)->default_value(log_level_api),
+             "Log-level for the API log buffer (/log/show); one of 'info', 'debug', 'trace'.")
         ("json-log-to-console",
              po::bool_switch(&use_json_log_console),
              "Use JSON format for the console log")
@@ -798,6 +800,13 @@ int main(int argc, char* argv[]) {
         cout << Server::getVersionInfo();
         return -3;
     }
+
+    auto ring_level = logging::parseLogLevel(log_level_api, logfault::LogLevel::INFO);
+    if (ring_level == logfault::LogLevel::DISABLED) {
+        ring_level = logfault::LogLevel::INFO;
+    }
+    logfault::LogManager::Instance().AddHandler(
+            make_unique<logging::RingBufferHandler>(ring_level));
 
     if (!log_file.empty()) {
         if (auto level = toLogLevel(log_level)) {
