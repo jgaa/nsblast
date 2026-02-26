@@ -1,14 +1,17 @@
 name: Security
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/security.yml'
+      - '.gitleaks.toml'
       - 'ui/nsblast-ui/**'
       - 'functional-tests/**'
   pull_request:
     paths:
       - '.github/workflows/security.yml'
+      - '.gitleaks.toml'
       - 'ui/nsblast-ui/**'
       - 'functional-tests/**'
   schedule:
