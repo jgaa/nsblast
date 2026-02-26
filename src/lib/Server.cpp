@@ -1,5 +1,6 @@
 
 #include <format>
+#include <filesystem>
 
 #include <boost/json.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -488,11 +489,27 @@ void Server::resetAuth()
     auth_->bootstrap();
 }
 
-void Server::startRocksDb(bool init)
+void Server::startRocksDb(bool init, bool allow_bootstrap)
 {
     auto rdb = make_shared<lib::RocksDbResource>(*this);
 
     if (init) {
+        std::filesystem::path db_path = config_.db_path;
+        db_path /= "rocksdb";
+
+        if (allow_bootstrap) {
+            if (std::filesystem::exists(db_path)) {
+                throw runtime_error{
+                    format("Refusing to bootstrap existing database at {}", db_path.string())
+                };
+            }
+        } else if (!std::filesystem::is_directory(db_path)) {
+            throw runtime_error{
+                format("Database is not initialized at {}. Run `nsblast bootstrap` first.",
+                       db_path.string())
+            };
+        }
+
         LOG_DEBUG << "Initializing RocksDB";
         rdb->init();
 

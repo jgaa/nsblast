@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
 #include <boost/program_options.hpp>
 #include <boost/json.hpp>
 #include <boost/version.hpp>
@@ -485,12 +486,22 @@ int main(int argc, char* argv[]) {
     std::string log_file;
     std::string config_file;
     bool trunc_log = true;
-    int restore_backup_id = 0;
-    int validate_backup_id = 0;
+    enum class Command {
+        None,
+        Backup,
+        Bootstrap,
+        ResetAuth,
+        BackupList,
+        BackupRestore,
+        BackupValidate,
+        DumpZones,
+        FullResync,
+        RepairZoneIndexes,
+        EmitFullSyncStream
+    };
+    Command command = Command::None;
+    int command_backup_id = 0;
     std::string dump_zones_path;
-    bool full_resync = false;
-    bool repair_zone_indexes = false;
-    bool emit_full_sync_stream = false;
     bool use_json_log_console = false;
     bool use_json_log_file = false;
 
@@ -529,23 +540,7 @@ int main(int argc, char* argv[]) {
              "Log-file to write a log to. Default is to use the console.")
         ("json-log-file",
          po::bool_switch(&use_json_log_file),
-         "Use JSON format for the file log")
-        ("reset-auth",
-            "Resets the 'admin' account and the 'nsBLAST' tenant to it's default, initial state."
-            "The server will terminate after the changes are made.")
-        ("dump-zones",
-            po::value<string>(&dump_zones_path),
-            "Emergency: dump all zones and RR sets from the database to a JSON file and exit")
-        ("full-resync",
-            po::bool_switch(&full_resync),
-            "Follower-only maintenance mode: force replication sync from trx-id 0 and exit when IN_SYNC")
-        ("repair-zone-indexes",
-            po::bool_switch(&repair_zone_indexes),
-            "Emergency: rebuild ACCOUNT zone metadata/indexes (ZONE, TZONE, ZRR) from ENTRY data and exit")
-        ("emit-full-sync-stream",
-            po::bool_switch(&emit_full_sync_stream),
-            "Emergency: clear TRXLOG and emit a synthetic full-state replication stream from current DB content, then exit")
-    ;
+         "Use JSON format for the file log");
 
     po::options_description backup("Backup/Restore");
     backup.add_options()
@@ -557,19 +552,7 @@ int main(int argc, char* argv[]) {
          "If set, nsblast will start an automatic backup every # hours.")
         ("sync-before-backup",
          po::value(&config.sync_before_backup)->default_value(config.sync_before_backup),
-         "Tells RocksDB to sync the database before starting a backup")
-        ("restore-backup",
-         po::value(&restore_backup_id),
-         "This option will attempt to restore backup id# to the database directory and "
-         "then exit the application. USE WITH CARE!")
-        ("validate-backup",
-         po::value(&validate_backup_id),
-         "This option will attempt to validate backup id# "
-         "and then exit the application.")
-        ("list-backups",
-         "This option will attempt to list the available backups "
-         "and then exit the application.")
-        ;
+         "Tells RocksDB to sync the database before starting a backup");
 
     po::options_description cluster("Cluster");
     cluster.add_options()
@@ -743,10 +726,264 @@ int main(int argc, char* argv[]) {
 
     po::options_description cmdline_options;
     cmdline_options.add(general).add(backup).add(cluster).add(odns).add(http).add(rocksdb).add(cg);
+
+    const auto has_help_flag = [&] {
+        for (int i = 1; i < argc; ++i) {
+            const string_view token{argv[i]};
+            if (token == "-h" || token == "--help") {
+                return true;
+            }
+        }
+        return false;
+    }();
+
+    auto parse_positive_int = [](string_view value, string_view name) -> int {
+        size_t pos = 0;
+        const int parsed = stoi(string{value}, &pos);
+        if (pos != value.size() || parsed <= 0) {
+            throw runtime_error{format("Invalid {} value '{}'", name, value)};
+        }
+        return parsed;
+    };
+
+    size_t command_ix = numeric_limits<size_t>::max();
+    size_t command_sub_ix = numeric_limits<size_t>::max();
+    size_t command_arg_ix = numeric_limits<size_t>::max();
+    const auto option_takes_value = [](string_view opt) {
+        static const unordered_set<string_view> options = {
+            "-c", "--config", "-d", "--db-path", "--db-dir",
+            "-C", "--log-to-console", "--log-to-api", "-l", "--log-level",
+            "-L", "--log-file", "-T", "--truncate-log-file",
+            "--backup-path", "--hourly-backup-interval", "--sync-before-backup",
+            "--cluster-role", "--cluster-auth-key", "--cluster-server-cert",
+            "--cluster-server-key", "--cluster-ca-cert", "--cluster-server-address",
+            "--cluster-repl-agent-queue-size",
+            "-H", "--http-endpoint", "--http-port", "--http-tls-key",
+            "--http-tls-cert", "--http-num-threads",
+            "--dynip-enable-get", "--dynip-enable-post-json",
+            "--dynip-allow-partial-multi-host", "--dynip-max-hosts-per-request",
+            "--dynip-require-user-agent", "--dynip-allow-private-ips",
+            "--dynip-default-ttl-seconds",
+            "--dns-endpoint", "--dns-udp-port", "--dns-tcp-port",
+            "--dns-tcp-idle-time", "--dns-num-threads", "--dns-enable-notify",
+            "--dns-enable-ixfr", "--dns-notify-port", "--default-nameserver",
+            "--rocksdb-db-write-buffer-size", "--rocksdb-optimize-for-small-db",
+            "--rocksdb-background-threads",
+            "--create-cert-subject", "--create-certs-num-clients", "--create-certs-path",
+            "--create-certs-num-years", "--create-ca-certs-num-years",
+            "--create-certs-key-bytes", "--create-certs-ca-name",
+            "--restore-backup", "--validate-backup"
+        };
+        return options.contains(opt);
+    };
+
+    try {
+        bool skip_next_value = false;
+        for (size_t i = 1; i < static_cast<size_t>(argc); ++i) {
+            const string_view token{argv[i]};
+            if (token.empty()) {
+                continue;
+            }
+
+            if (skip_next_value) {
+                skip_next_value = false;
+                continue;
+            }
+
+            if (token[0] == '-') {
+                if (token.find('=') == string_view::npos && option_takes_value(token)) {
+                    skip_next_value = true;
+                }
+                continue;
+            }
+
+            command_ix = i;
+            if (token == "bootstrap") {
+                command = Command::Bootstrap;
+            } else if (token == "reset-auth") {
+                command = Command::ResetAuth;
+            } else if (token == "dump-zones") {
+                command = Command::DumpZones;
+                for (size_t j = i + 1; j < static_cast<size_t>(argc); ++j) {
+                    const string_view arg{argv[j]};
+                    if (arg.empty() || arg[0] == '-') {
+                        continue;
+                    }
+                    command_arg_ix = j;
+                    dump_zones_path = string{arg};
+                    break;
+                }
+            } else if (token == "full-resync") {
+                command = Command::FullResync;
+            } else if (token == "repair-zone-indexes") {
+                command = Command::RepairZoneIndexes;
+            } else if (token == "emit-full-sync-stream") {
+                command = Command::EmitFullSyncStream;
+            } else if (token == "backup") {
+                command = Command::Backup;
+                for (size_t j = i + 1; j < static_cast<size_t>(argc); ++j) {
+                    const string_view arg{argv[j]};
+                    if (arg.empty() || arg[0] == '-') {
+                        continue;
+                    }
+                    command_sub_ix = j;
+                    if (arg == "list") {
+                        command = Command::BackupList;
+                    } else if (arg == "restore") {
+                        command = Command::BackupRestore;
+                    } else if (arg == "validate") {
+                        command = Command::BackupValidate;
+                    } else {
+                        throw runtime_error{format("Invalid backup subcommand '{}'", arg)};
+                    }
+
+                    if (command == Command::BackupRestore || command == Command::BackupValidate) {
+                        for (size_t k = j + 1; k < static_cast<size_t>(argc); ++k) {
+                            const string_view id_arg{argv[k]};
+                            if (id_arg.empty() || id_arg[0] == '-') {
+                                continue;
+                            }
+                            command_arg_ix = k;
+                            command_backup_id = parse_positive_int(id_arg, "backup id");
+                            break;
+                        }
+                    }
+                    break;
+                }
+                if (command == Command::Backup && !has_help_flag) {
+                    throw runtime_error{"Missing backup subcommand. Use one of: list, restore, validate"};
+                }
+            } else {
+                throw runtime_error{format("Unknown command '{}'", token)};
+            }
+            break;
+        }
+    } catch (const std::exception& ex) {
+        cerr << appname
+             << " Failed to parse command-line/config arguments: " << ex.what() << endl;
+        return -1;
+    }
+
+    auto print_global_help = [&]() {
+        cout << appname << " [global-options]\n";
+        cout << appname << " [global-options] <command> [command-arguments]\n\n";
+        cout << "Available commands:\n";
+        cout << "  bootstrap\n";
+        cout << "  reset-auth\n";
+        cout << "  dump-zones <path>\n";
+        cout << "  full-resync\n";
+        cout << "  repair-zone-indexes\n";
+        cout << "  emit-full-sync-stream\n";
+        cout << "  backup list\n";
+        cout << "  backup restore <id>\n";
+        cout << "  backup validate <id>\n\n";
+        cout << cmdline_options << std::endl;
+    };
+
+    auto print_command_help = [&]() {
+        const auto print_shared = [&]() {
+            cout << "Relevant global options:\n";
+            cout << "  -h, --help\n";
+            cout << "  --version\n";
+            cout << "  -c, --config <path>\n";
+            cout << "  -d, --db-path <path>\n";
+            cout << "  --db-dir <path>\n";
+            cout << "  -C, --log-to-console <level>\n";
+            cout << "  --log-to-api <level>\n";
+            cout << "  --json-log-to-console\n";
+            cout << "  -l, --log-level <level>\n";
+            cout << "  -L, --log-file <path>\n";
+            cout << "  -T, --truncate-log-file <bool>\n";
+            cout << "  --json-log-file\n";
+        };
+
+        switch (command) {
+        case Command::Bootstrap:
+            cout << appname << " [global-options] bootstrap\n\n";
+            cout << "Initializes a new database and default auth data, then exits.\n";
+            cout << "Aborts if the database already exists.\n\n";
+            print_shared();
+            break;
+        case Command::ResetAuth:
+            cout << appname << " [global-options] reset-auth\n\n";
+            cout << "Resets the 'admin' account and the 'nsBLAST' tenant to the default state.\n\n";
+            print_shared();
+            break;
+        case Command::Backup:
+            cout << appname << " [global-options] backup <list|restore|validate> [id]\n\n";
+            cout << "Manage local backups without starting network endpoints.\n\n";
+            print_shared();
+            cout << "Backup options:\n";
+            cout << "  --backup-path <path>\n";
+            break;
+        case Command::DumpZones:
+            cout << appname << " [global-options] dump-zones <path>\n\n";
+            cout << "Dumps all zones and RR sets from the database to JSON and exits.\n\n";
+            print_shared();
+            break;
+        case Command::FullResync:
+            cout << appname << " [global-options] full-resync\n\n";
+            cout << "Follower-only maintenance mode: sync from trx-id 0 and exit when IN_SYNC.\n\n";
+            print_shared();
+            cout << "Cluster options:\n";
+            cout << "  --cluster-role <primary|follower|none>\n";
+            cout << "  --cluster-auth-key <path>\n";
+            cout << "  --cluster-server-address <host:port>\n";
+            cout << "  --cluster-server-cert <path>\n";
+            cout << "  --cluster-server-key <path>\n";
+            cout << "  --cluster-ca-cert <path>\n";
+            break;
+        case Command::RepairZoneIndexes:
+            cout << appname << " [global-options] repair-zone-indexes\n\n";
+            cout << "Rebuild ACCOUNT zone metadata/indexes from ENTRY data and exits.\n\n";
+            print_shared();
+            break;
+        case Command::EmitFullSyncStream:
+            cout << appname << " [global-options] emit-full-sync-stream\n\n";
+            cout << "Clears TRXLOG and emits a full-state replication stream, then exits.\n\n";
+            print_shared();
+            break;
+        case Command::BackupList:
+            cout << appname << " [global-options] backup list\n\n";
+            cout << "Lists available backups and exits.\n\n";
+            print_shared();
+            cout << "Backup options:\n";
+            cout << "  --backup-path <path>\n";
+            break;
+        case Command::BackupRestore:
+            cout << appname << " [global-options] backup restore <id>\n\n";
+            cout << "Restores backup <id> to the database directory and exits.\n\n";
+            print_shared();
+            cout << "Backup options:\n";
+            cout << "  --backup-path <path>\n";
+            break;
+        case Command::BackupValidate:
+            cout << appname << " [global-options] backup validate <id>\n\n";
+            cout << "Validates backup <id> and exits.\n\n";
+            print_shared();
+            cout << "Backup options:\n";
+            cout << "  --backup-path <path>\n";
+            break;
+        case Command::None:
+            print_global_help();
+            break;
+        }
+    };
+
+    vector<string> filtered_args;
+    filtered_args.reserve(static_cast<size_t>(argc));
+    filtered_args.emplace_back(argv[0]);
+    for (size_t i = 1; i < static_cast<size_t>(argc); ++i) {
+        if (i == command_ix || i == command_sub_ix || i == command_arg_ix) {
+            continue;
+        }
+        filtered_args.emplace_back(argv[i]);
+    }
+
     po::variables_map vm;
     try {
         // Parse only --config first so we can load defaults from file.
-        po::store(po::command_line_parser(argc, argv)
+        po::store(po::command_line_parser(filtered_args)
                     .options(config_options)
                     .allow_unregistered()
                     .run(),
@@ -778,7 +1015,7 @@ int main(int argc, char* argv[]) {
 
         // Parse command line and apply only explicit values so defaults do not
         // clobber entries from the config file.
-        po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm_from_cli);
+        po::store(po::command_line_parser(filtered_args).options(cmdline_options).run(), vm_from_cli);
 
         vm.clear();
         merge_explicit(vm, vm_from_config);
@@ -791,8 +1028,11 @@ int main(int argc, char* argv[]) {
     }
 
     if (vm.count("help")) {
-        cout << appname << " [options]";
-        cout << cmdline_options << std::endl;
+        if (command == Command::None) {
+            print_global_help();
+        } else {
+            print_command_help();
+        }
         return -2;
     }
 
@@ -845,7 +1085,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    config.cluster_force_full_resync = full_resync;
+    config.cluster_force_full_resync = command == Command::FullResync;
 
     LOG_INFO << appname << ' ' << NSBLAST_VERSION  " starting up. Log level: " << log_level;
     LOG_INFO << "I am running as user=" << getuid() << " group=" << getgid();
@@ -853,41 +1093,57 @@ int main(int argc, char* argv[]) {
     try {        
         Server server{config};
 
-        if (vm.count("reset-auth")) {
+        if (command == Command::Bootstrap) {
+            server.startRocksDb(true, true);
+            server.startAuth();
+            LOG_INFO << "Database bootstrap complete.";
+            return 0;
+        }
+
+        if (command == Command::ResetAuth) {
             server.resetAuth();
             return 0;
         }
 
-        if (vm.count("list-backups")) {
+        if (command == Command::BackupList) {
             server.startBackupMgr(false);
             server.listBackups();
             return 0;
         }
 
-        if (restore_backup_id) {
+        if (command == Command::BackupRestore) {
+            if (!command_backup_id) {
+                throw runtime_error{"backup restore requires <id>"};
+            }
             server.startBackupMgr(false);
-            server.restoreBackup(restore_backup_id);
+            server.restoreBackup(command_backup_id);
             return 0;
         }
 
-        if (validate_backup_id) {
+        if (command == Command::BackupValidate) {
+            if (!command_backup_id) {
+                throw runtime_error{"backup validate requires <id>"};
+            }
             server.startBackupMgr(false);
-            server.validateBackup(validate_backup_id);
+            server.validateBackup(command_backup_id);
             return 0;
         }
 
-        if (!dump_zones_path.empty()) {
+        if (command == Command::DumpZones) {
+            if (dump_zones_path.empty()) {
+                throw runtime_error{"dump-zones requires <path>"};
+            }
             server.startRocksDb();
             dumpZones(server, dump_zones_path);
             return 0;
         }
 
-        if (full_resync) {
+        if (command == Command::FullResync) {
 #ifdef NSBLAST_CLUSTER
             server.startRocksDb();
             server.initReplication();
             if (!server.isReplicationFollower()) {
-                throw runtime_error{"--full-resync only works when --cluster-role=follower"};
+                throw runtime_error{"full-resync only works when --cluster-role=follower"};
             }
 
             LOG_INFO << "Starting follower full resync maintenance mode.";
@@ -910,11 +1166,11 @@ int main(int argc, char* argv[]) {
             server.stop();
             throw runtime_error{"Timed out waiting for follower replication to report IN_SYNC"};
 #else
-            throw runtime_error{"--full-resync requires cluster support (NSBLAST_CLUSTER)"};
+            throw runtime_error{"full-resync requires cluster support (NSBLAST_CLUSTER)"};
 #endif
         }
 
-        if (repair_zone_indexes) {
+        if (command == Command::RepairZoneIndexes) {
             server.startRocksDb();
             const auto result = repairZoneIndexes(server);
             LOG_INFO << "Repair complete:"
@@ -933,7 +1189,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        if (emit_full_sync_stream) {
+        if (command == Command::EmitFullSyncStream) {
             server.startRocksDb();
             const auto emit = emitFullSyncStream(server);
             LOG_INFO << "Full sync stream emitted:"
