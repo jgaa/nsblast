@@ -56,6 +56,39 @@ using namespace ::nsblast::lib;
 using namespace yahat;
 
 namespace {
+const auto process_started_at = std::chrono::steady_clock::now();
+
+std::string formatUptime(std::uint64_t total_seconds) {
+    const auto days = total_seconds / 86400;
+    total_seconds %= 86400;
+    const auto hours = total_seconds / 3600;
+    total_seconds %= 3600;
+    const auto minutes = total_seconds / 60;
+    const auto seconds = total_seconds % 60;
+
+    std::string out;
+    auto append = [&out](std::uint64_t value, std::string_view unit) {
+        if (!out.empty()) {
+            out += " ";
+        }
+        out += std::to_string(value);
+        out += unit;
+    };
+
+    if (days > 0) {
+        append(days, "d");
+    }
+    if (hours > 0 || days > 0) {
+        append(hours, "h");
+    }
+    if (minutes > 0 || hours > 0 || days > 0) {
+        append(minutes, "m");
+    }
+    append(seconds, "s");
+
+    return out;
+}
+
 string_view trim(std::string_view in) {
     constexpr auto ws = " \t\n\r\f\v";
     const auto begin = in.find_first_not_of(ws);
@@ -382,6 +415,9 @@ Server::VersionInfo Server::getVersionInfo()
     v.components.emplace_back("Platform", BOOST_PLATFORM);
     v.components.emplace_back("Compiler", BOOST_COMPILER);
     v.components.emplace_back("Build date", __DATE__);
+    v.uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - process_started_at).count();
+    v.uptime = formatUptime(v.uptime_seconds);
 
     return v;
 }
@@ -782,6 +818,8 @@ boost::json::object Server::VersionInfo::toJson() const
     boost::json::object vi;
     vi["app"] = appname;
     vi["version"] = nsblast;
+    vi["uptime"] = uptime;
+    vi["uptime_seconds"] = static_cast<std::int64_t>(uptime_seconds);
     for(const auto& [n, v]: components) {
         vi[n] = v;
     }

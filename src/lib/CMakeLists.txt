@@ -15,10 +15,29 @@ endif()
 
 if (NSBLAST_WITH_UI)
     set(UI_DEST ${CMAKE_CURRENT_BINARY_DIR}/ui)
+    set(UI_ROOT ${NSBLAST_ROOT}/ui/nsblast-ui)
+    if (NSBLAST_UI_ALLOW_HTTP_LOGIN)
+        set(NSBLAST_UI_ALLOW_HTTP_LOGIN_ENV "true")
+    else()
+        set(NSBLAST_UI_ALLOW_HTTP_LOGIN_ENV "false")
+    endif()
+
+    file(GLOB_RECURSE UI_SOURCES CONFIGURE_DEPENDS
+        ${UI_ROOT}/src/*
+        ${UI_ROOT}/public/*
+        ${UI_ROOT}/index.html
+        ${UI_ROOT}/package.json
+        ${UI_ROOT}/package-lock.json
+        ${UI_ROOT}/vite.config.*
+        ${UI_ROOT}/tsconfig*.json
+    )
+    set(UI_BUILD_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/ui-build-config.txt)
+    file(WRITE ${UI_BUILD_CONFIG_FILE} "VITE_ALLOW_HTTP_LOGIN=${NSBLAST_UI_ALLOW_HTTP_LOGIN_ENV}\n")
+
     add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${UI_DEST}
-        COMMAND ${CMAKE_COMMAND} -E env UI_BASE_PATH=/ui/ ${NPM_EXECUTABLE} --prefix ${NSBLAST_ROOT}/ui/nsblast-ui run build -- --outDir ${UI_DEST}
-        DEPENDS ${NSBLAST_ROOT}/ui/nsblast-ui/package.json
+        COMMAND ${CMAKE_COMMAND} -E env UI_BASE_PATH=/ui/ VITE_ALLOW_HTTP_LOGIN=${NSBLAST_UI_ALLOW_HTTP_LOGIN_ENV} ${NPM_EXECUTABLE} --prefix ${UI_ROOT} run build -- --outDir ${UI_DEST}
+        DEPENDS ${UI_SOURCES} ${UI_BUILD_CONFIG_FILE}
         OUTPUT ${UI_DEST}/index.html
         COMMENT "Building react based UI..."
         )

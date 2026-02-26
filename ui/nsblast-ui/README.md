@@ -9,6 +9,7 @@ The UI supports build-time and runtime configuration for base path and API URL.
 - `UI_BASE_PATH` (default: `/ui/`)
 - `API_BASE_URL` (default: `/api/v1`)
 - `UI_ROUTER_MODE` (default: `browser`, optional `hash`)
+- `ALLOW_HTTP_LOGIN` (default: `false`, local testing only)
 
 ### Build-time
 
@@ -29,11 +30,24 @@ Edit `public/ui-config.js` (or the deployed `ui-config.js`) to override without 
 window.__NSBLAST_UI_CONFIG__ = {
   UI_BASE_PATH: '/ui/',
   API_BASE_URL: '/api/v1',
-  UI_ROUTER_MODE: 'browser' // or 'hash'
+  UI_ROUTER_MODE: 'browser', // or 'hash'
+  ALLOW_HTTP_LOGIN: false
 };
 ```
 
 `UI_ROUTER_MODE=hash` is useful when the hosting layer cannot provide SPA rewrites.
+
+For local HTTP testing only, you can temporarily allow insecure login checks.
+This override is only honored when the UI is loaded from a loopback host (`localhost`, `127.0.0.1`, `::1`):
+
+```js
+window.__NSBLAST_UI_CONFIG__ = {
+  ALLOW_HTTP_LOGIN: true
+};
+```
+
+You can also set build-time env `VITE_ALLOW_HTTP_LOGIN=true`.
+Do not enable this in production.
 
 ## Standalone Hosting
 

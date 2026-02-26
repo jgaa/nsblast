@@ -39,6 +39,19 @@ bool hasPermission(const pb::Role& role, pb::Permission perm) {
     return std::ranges::find(role.permissions(), perm) != role.permissions().end();
 }
 
+bool isUiTarget(std::string_view target) {
+    if (!target.starts_with("/ui")) {
+        return false;
+    }
+
+    if (target.size() == 3) {
+        return true;
+    }
+
+    const auto next = target[3];
+    return next == '/' || next == '?';
+}
+
 template <typename T, ResourceIf::Category cat = ResourceIf::Category::ACCOUNT>
 void upsert(trx_t& trx, const ResourceIf::RealKey& key, const T& value, bool isNew) {
     validate(value);
@@ -78,6 +91,16 @@ AuthMgr::AuthMgr(Server &server)
 
 yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 {
+    if (
+#ifdef NSBLAST_WITH_UI
+        server().config().ui && isUiTarget(ar.req.target)
+#else
+        false
+#endif
+        ) {
+        return {"anonymous-ui", true};
+    }
+
     auto required_perm = pb::Permission::USE_API;
     if (ar.req.target == "/metrics") {
         if (server().config().disable_metrics) {

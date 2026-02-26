@@ -8,6 +8,7 @@ import Roles from '../pages/Roles';
 import Tenants from '../pages/Tenants';
 import Users from '../pages/Users';
 import NotImplementedPage from '../pages/NotImplementedPage';
+import About from '../pages/About';
 
 function LoggedIn() {
     return (
@@ -23,7 +24,7 @@ function LoggedIn() {
                 <Route path="/apikeys" element={<NotImplementedPage title="API Keys" />} />
                 <Route path="/events" element={<NotImplementedPage title="Events" />} />
                 <Route path="/log" element={<NotImplementedPage title="Log" />} />
-                <Route path="/about" element={<NotImplementedPage title="About" description="UI placeholder until backend/system details endpoint is available." />} />
+                <Route path="/about" element={<About />} />
 
             </Routes>
         </div>

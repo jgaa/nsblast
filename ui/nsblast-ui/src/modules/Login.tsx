@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useAppState } from './AppState';
+import { ALLOW_HTTP_LOGIN } from '../config';
 
 const isLocalHostname = (hostname: string): boolean =>
     hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
@@ -11,16 +12,18 @@ export default function Login() {
     const [hasError, setHasError] = useState(false);
     const [errorMsg, setError] = useState("");
     const { api, setToken, state } = useAppState();
+    const localUiHost = isLocalHostname(window.location.hostname);
+    const allowInsecureLocalLogin = ALLOW_HTTP_LOGIN && localUiHost;
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (window.location.protocol !== 'https:' && !isLocalHostname(window.location.hostname)) {
+        if (!allowInsecureLocalLogin && window.location.protocol !== 'https:' && !localUiHost) {
             setHasError(true);
             setError('HTTPS is required for production login. Serve the UI over HTTPS.');
             return;
         }
-        if (/^http:\/\//i.test(state.api) && !/^http:\/\/(localhost|127\.0\.0\.1|::1)(:\d+)?(\/|$)/i.test(state.api)) {
+        if (!allowInsecureLocalLogin && /^http:\/\//i.test(state.api) && !/^http:\/\/(localhost|127\.0\.0\.1|::1)(:\d+)?(\/|$)/i.test(state.api)) {
             setHasError(true);
             setError('Insecure API URL detected. Use HTTPS for production API endpoints.');
             return;

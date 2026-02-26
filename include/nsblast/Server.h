@@ -1,5 +1,7 @@
 ﻿#pragma once
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 
 #include <boost/unordered/unordered_flat_set.hpp>
 
@@ -46,6 +48,8 @@ public:
         std::string appname;
         std::string nsblast;
         std::vector<std::pair<std::string, std::string>> components;
+        std::string uptime;
+        std::uint64_t uptime_seconds = 0;
 
         boost::json::object toJson() const;
     };
@@ -258,4 +262,3 @@ protected:
 
 std::ostream& operator << (std::ostream& out, const nsblast::Server::Role& role);
 std::ostream& operator << (std::ostream& out, const nsblast::Server::VersionInfo& vi);
-

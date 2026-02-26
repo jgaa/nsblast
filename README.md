@@ -121,6 +121,7 @@ Optional features:
 - Tests (`NSBLAST_WITH_TESTS=ON`): `libgtest-dev` (Debian/Ubuntu), `gtest-devel` (Fedora), `gtest` (Arch)
 - Docs (`NSBLAST_WITH_DOCS=ON`): `doxygen`
 - UI (`NSBLAST_WITH_UI=ON`): `npm`/`nodejs`
+- UI local HTTP login override (`NSBLAST_UI_ALLOW_HTTP_LOGIN=ON`): disable HTTPS-only login checks in the built UI (local testing only, default `OFF`)
 
 Example on building the application (with custom built boost-library in /opt):
 ```sh

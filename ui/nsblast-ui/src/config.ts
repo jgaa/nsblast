@@ -6,6 +6,7 @@ type RuntimeConfig = {
   UI_ROUTER_MODE?: string;
   BRAND_LOGO_URL?: string;
   BRAND_LOGO_HEIGHT?: string;
+  ALLOW_HTTP_LOGIN?: boolean | string;
 };
 
 const DEFAULT_UI_BASE_PATH = '/ui/';
@@ -30,6 +31,31 @@ function normalizeBasePath(value: string | undefined): string {
 
 function normalizeRouterMode(value: string | undefined): RouterMode {
   return value?.toLowerCase() === 'hash' ? 'hash' : DEFAULT_ROUTER_MODE;
+}
+
+function normalizeBoolean(value: boolean | string | undefined, fallback = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    switch (value.trim().toLowerCase()) {
+      case '1':
+      case 'true':
+      case 'yes':
+      case 'on':
+        return true;
+      case '0':
+      case 'false':
+      case 'no':
+      case 'off':
+        return false;
+      default:
+        return fallback;
+    }
+  }
+
+  return fallback;
 }
 
 function readRuntimeConfig(): RuntimeConfig {
@@ -63,6 +89,11 @@ export const BRAND_LOGO_URL = (
 export const BRAND_LOGO_HEIGHT = (
   runtimeConfig.BRAND_LOGO_HEIGHT ?? import.meta.env.VITE_BRAND_LOGO_HEIGHT ?? DEFAULT_BRAND_LOGO_HEIGHT
 ).trim() || DEFAULT_BRAND_LOGO_HEIGHT;
+
+export const ALLOW_HTTP_LOGIN = normalizeBoolean(
+  runtimeConfig.ALLOW_HTTP_LOGIN ?? import.meta.env.VITE_ALLOW_HTTP_LOGIN,
+  false
+);
 
 export function applyBrandingVariables(): void {
   if (typeof document === 'undefined') {
