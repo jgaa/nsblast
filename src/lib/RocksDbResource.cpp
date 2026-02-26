@@ -679,8 +679,18 @@ void RocksDbResource::backup(std::filesystem::path backupDir,
 void RocksDbResource::startBackup(const std::filesystem::path &backupDir,
                                   bool syncFirst, boost::uuids::uuid uuid)
 {
+    bool expected = false;
+    if (!backup_worker_running_.compare_exchange_strong(expected, true)) {
+        if (server_) {
+            server_->metrics().backup_already_running().inc();
+        }
+        LOG_ERROR_N << "Failed to start backup. A backup is already running.";
+        throw runtime_error{"Backup related operation already in progress"};
+    }
+
     unique_lock lock(backup_mutex_, try_to_lock);
     if (!lock.owns_lock()) {
+        backup_worker_running_.store(false);
         if (server_) {
             server_->metrics().backup_already_running().inc();
         };
@@ -699,27 +709,35 @@ void RocksDbResource::startBackup(const std::filesystem::path &backupDir,
         backup_thread_.reset();
     }
 
-    backup_thread_.emplace([backupDir, uuid, syncFirst, this] {
-        LOG_DEBUG << "Starting async backup " << uuid;
-        assert(server_);
+    try {
+        backup_thread_.emplace([backupDir, uuid, syncFirst, this] {
+            LOG_DEBUG << "Starting async backup " << uuid;
+            assert(server_);
+            ScopedExit setBackupIdle{[this] {
+                backup_worker_running_.store(false);
+            }};
 
-        // Handle metrics
-        server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::RUNNING);
-        ScopedExit se{[this] {
-            server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::IDLE);
-        }};
-        auto duration = server_->metrics().backup_duration().scoped();
+            // Handle metrics
+            server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::RUNNING);
+            ScopedExit se{[this] {
+                server_->metrics().backup_state().setExclusiveState(Metrics::BackupState::IDLE);
+            }};
+            auto duration = server_->metrics().backup_duration().scoped();
 
-        try {
-            backup(backupDir, syncFirst, uuid);
-            server_->metrics().backups_ok().inc();
-        } catch(const exception& ex) {
-            LOG_ERROR << "Caught exception from backup " << uuid <<": " << ex.what();
-            server_->metrics().backups_failed().inc();
-        }
+            try {
+                backup(backupDir, syncFirst, uuid);
+                server_->metrics().backups_ok().inc();
+            } catch(const exception& ex) {
+                LOG_ERROR << "Caught exception from backup " << uuid <<": " << ex.what();
+                server_->metrics().backups_failed().inc();
+            }
 
-        LOG_DEBUG << "Async backup " << uuid << " is done.";
-    });
+            LOG_DEBUG << "Async backup " << uuid << " is done.";
+        });
+    } catch (...) {
+        backup_worker_running_.store(false);
+        throw;
+    }
 }
 
 void RocksDbResource::listBackups(boost::json::object &meta, std::filesystem::path backupDir)

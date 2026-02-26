@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <boost/json.hpp>
 
 #include "nsblast/nsblast.h"
@@ -293,6 +294,7 @@ private:
     std::weak_ptr<rocksdb::BackupEngine> active_backup_;
     std::optional<std::thread> backup_thread_;
     boost::uuids::uuid active_backup_uuid_;
+    std::atomic_bool backup_worker_running_{false};
 
     yahat::Metrics::Counter<double> *backup_already_running_{};
     yahat::Metrics::Counter<double> *backups_ok{};
