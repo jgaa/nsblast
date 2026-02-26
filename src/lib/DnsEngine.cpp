@@ -3,6 +3,7 @@
 #include <boost/scope_exit.hpp>
 #include <boost/chrono.hpp>
 #include <boost/asio/spawn.hpp>
+#include <unordered_set>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsEngine.h"
@@ -1073,10 +1074,13 @@ void DnsEngine::processRequest(const DnsEngine::Request &request,
         const auto qtype = query.type();
         const auto orig_fqdn = query.labels();
         bool persuing_cname = false;
+        size_t cname_hops = 0;
+        std::unordered_set<std::string> seen_cname_keys;
 
         const auto qtall_resp = getQtypeAllResponse(request, query.type());
 
         auto key = labelsToFqdnKey(orig_fqdn);
+        seen_cname_keys.insert(key.string());
 
         if (qtype == QTYPE_AXFR) {
             return doAxfr(request, send, message, mb, {key, key_class_t::ENTRY}, *trx);
@@ -1110,8 +1114,23 @@ again:
                     return; // Truncated
                 }
 
+                if (++cname_hops > 16) {
+                    LOG_WARN << "CNAME chain exceeded maximum depth for " << orig_fqdn.string();
+                    mb->setRcode(Message::Header::RCODE::SERVER_FAILURE);
+                    server_.metrics().dns_requests_error().inc();
+                    return;
+                }
+
+                auto next = labelsToFqdnKey(RrCname{rr_cname->span(), rr_cname->offset()}.cname());
+                if (!seen_cname_keys.insert(next.string()).second) {
+                    LOG_WARN << "Detected CNAME cycle while resolving " << orig_fqdn.string();
+                    mb->setRcode(Message::Header::RCODE::SERVER_FAILURE);
+                    server_.metrics().dns_requests_error().inc();
+                    return;
+                }
+
                 persuing_cname = true;
-                key = labelsToFqdnKey(rr_cname->labels());
+                key = std::move(next);
                 goto again;
             }
 

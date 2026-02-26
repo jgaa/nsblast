@@ -27,6 +27,11 @@ const char query_example_com[] =
         "\x10\x00\x00\x00\x00\x00\x00\x0c\x00\x0a\x00\x08\xb9\x72\xa1\xe6" \
         "\x66\x5e\xe1\x97";
 
+const char query_alias_example_com[] =
+        "\x12\x34\x01\x20\x00\x01\x00\x00\x00\x00\x00\x00\x05\x61\x6c\x69" \
+        "\x61\x73\x07\x65\x78\x61\x6d\x70\x6c\x65\x03\x63\x6f\x6d\x00\x00" \
+        "\x01\x00\x01";
+
 } // anon ns
 
 TEST(DnsEngine, requestQueryA) {
@@ -165,6 +170,64 @@ TEST(DnsEngine, requestAllRespHinfo) {
         nsblast::lib::RrHinfo hinfo{msg.span(), msg.getAnswers().begin()->offset()};
         EXPECT_EQ(hinfo.cpu(), "RFC8482");
         EXPECT_TRUE(hinfo.os().empty());
+    }
+}
+
+TEST(DnsEngine, requestAThroughCnameFollowsTarget) {
+
+    MockServer ms;
+    {
+        ms->createTestZone();
+
+        StorageBuilder sb;
+        sb.createCname("alias.example.com", 1000, "example.com");
+        sb.finish();
+        Entry entry{sb.buffer()};
+        ASSERT_EQ(entry.count(), 1);
+        {
+            const auto cn = RrCname{entry.buffer(), entry.begin()->offset()};
+            ASSERT_EQ(cn.cname().string(), "example.com");
+        }
+        auto tx = ms->resource().transaction();
+        const string_view alias = "alias.example.com";
+        tx->write({alias, key_class_t::ENTRY}, sb.buffer(), true);
+        tx->commit();
+
+        DnsEngine dns{ms};
+        DnsEngine::Request req;
+        req.span = query_alias_example_com;
+
+        Message orig{query_alias_example_com};
+
+        shared_ptr<MessageBuilder> mb;
+        auto cb = [&mb](shared_ptr<MessageBuilder>& data, bool final) {
+            mb = data;
+            EXPECT_TRUE(final);
+        };
+
+        dns.processRequest(req, cb);
+        Message msg{mb->span()};
+
+        EXPECT_EQ(msg.header().id(), orig.header().id());
+        EXPECT_EQ(msg.header().rcode(), Message::Header::RCODE::OK);
+        EXPECT_EQ(msg.getQuestions().count(), orig.getQuestions().count());
+
+        size_t cname_count = 0;
+        size_t a_count = 0;
+        for (const auto& rr : msg.getAnswers()) {
+            if (rr.type() == TYPE_CNAME) {
+                ++cname_count;
+                const auto cn = RrCname{msg.span(), rr.offset()};
+                EXPECT_EQ(cn.labels().string(), "alias.example.com");
+                EXPECT_EQ(cn.cname().string(), "example.com");
+            }
+            if (rr.type() == TYPE_A) {
+                ++a_count;
+            }
+        }
+
+        EXPECT_EQ(cname_count, 1);
+        EXPECT_EQ(a_count, 2);
     }
 }
 
