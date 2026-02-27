@@ -94,7 +94,7 @@ message VarsSnapshot {
   // =========================
 
   bool pv_bootstrapped = 2; This is a non-mutable variable that is set by the server.
-  string cluster_role = 3; // Migrate `--cluster-role` from globel to bootstrap cli arg and update the C++ code to use the arg. This is a non-mutable variable that cannot be changed once it's set. Valid roles are "primary", "follower", and "none". None simply means stand-alone server (usually fo testing). The server cannot start up and serve gRPC, DNS or HTTP without having a valid role.
+  string cluster_role = 3; // Migrate `--cluster-role` from global to bootstrap cli arg and update the C++ code to use the arg. This is a non-mutable variable that cannot be changed once it's set. Valid roles are "primary", "follower", and "none". None simply means stand-alone server (usually fo testing). The server cannot start up and serve gRPC, DNS or HTTP without having a valid role.
 
   // =========================
   // DynIP Feature
@@ -455,3 +455,43 @@ This design was chosen because:
 * Per-cluster variable replication (future)
 * Feature flag grouping
 
+---
+
+# 16. Testability Strategy
+
+As runtime configuration moves from `Config` to permanent variables, tests MUST use PV paths instead of mutating `Config`.
+
+## 16.1 Rules for New and Migrated Variables
+
+* If a runtime behavior is PV-backed, tests MUST set it via `Vars` APIs.
+* Tests MUST NOT configure PV-backed behavior via `Config`.
+* `Config` remains for process/bootstrap wiring and non-PV concerns only.
+
+## 16.2 Test Fixture API
+
+Shared fixtures (for example `MockServer`) SHOULD provide helpers to reduce churn:
+
+* `setVar(name, value, force=false, allowForce=false)`
+* `setVars({"name=value", ...}, force=false, allowForce=false)`
+* `setClusterRole("primary" | "follower" | "none")`
+
+This keeps tests aligned with production code paths and avoids repeated direct calls into low-level setup.
+
+## 16.3 Component Seams
+
+Components that only need read access to runtime variables SHOULD depend on a read-only interface:
+
+* `VarsViewIf` with `snapshot()` access
+
+This allows unit tests to inject fake snapshots without requiring full `Server` + RocksDB setup.
+
+Naming convention for pure interfaces is `*If` (not `I*`).
+
+## 16.4 Migration Procedure for Tests
+
+When a variable is migrated from `Config` to PV:
+
+1. Update production code to read from `VarsSnapshot`.
+2. Add/update fixture helper if needed.
+3. Replace `Config`-based test setup with fixture var helper calls.
+4. Keep one focused test that verifies required-var startup/runtime failure behavior when unset.

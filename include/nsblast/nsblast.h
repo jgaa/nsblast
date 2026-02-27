@@ -110,20 +110,6 @@ struct Config {
     /// Start follower replication from trx-id 0 (maintenance mode / full resync intent).
     bool cluster_force_full_resync = false;
 
-
-    /*! Role of this server.
-     *
-     *  - none:    This server is not part of a nsblast cluster
-     *
-     *  - primary: The one server that handles changes to the zones and
-     *             is the source of truth.
-     *
-     *  - follower: A server that replicates changes from the primary,
-     *             but don't allow any locally initiated changes. A follower
-     *             is not prepared to act as a fail-over agent.
-     */
-    std::string cluster_role = "none";
-
     ///@}
 
     /*! \name DNS */
@@ -241,26 +227,6 @@ struct Config {
     /// Default page size in a REST list reply
     size_t rest_default_page_size = 100;
 
-    /// Enable legacy DynDNS compatible GET /nic/update endpoint.
-    bool dynip_enable_get = true;
-
-    /// Enable JSON POST /nic/update endpoint.
-    bool dynip_enable_post_json = true;
-
-    /// Allow partial success for multi-host dynip updates.
-    bool dynip_allow_partial_multi_host = false;
-
-    /// Max number of hostnames in a single dynip request.
-    size_t dynip_max_hosts_per_request = 5;
-
-    /// Optional strict mode for User-Agent header presence (not currently enforced).
-    bool dynip_require_user_agent = false;
-
-    /// Allow updates to private IP ranges.
-    bool dynip_allow_private_ips = false;
-
-    /// Default TTL for DynIP-created RR sets.
-    uint32_t dynip_default_ttl_seconds = 300;
     ///@}
 
     /*! \name Authentication */

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <string_view>
 
 #include "yahat/Metrics.h"
 
@@ -107,6 +108,12 @@ public:
         return *request_latency_ok_;
     }
 
+    void incDynipUpdate(std::string_view result);
+
+    summary_t& dynip_update_latency() {
+        return *dynip_update_latency_;
+    }
+
     enum class BackupState{
         IDLE,
         RUNNING
@@ -139,6 +146,16 @@ private:
     counter_t * backups_failed_{};
     summary_t * backup_duration_{}; // Duration of backups in seconds
     summary_t * request_latency_ok_{}; // Latency of requests in seconds
+    counter_t * dynip_updates_ok_{};
+    counter_t * dynip_updates_nochg_{};
+    counter_t * dynip_updates_badauth_{};
+    counter_t * dynip_updates_nohost_{};
+    counter_t * dynip_updates_badip_{};
+    counter_t * dynip_updates_numhost_{};
+    counter_t * dynip_updates_notfqdn_{};
+    counter_t * dynip_updates_disabled_{};
+    counter_t * dynip_updates_error_{};
+    summary_t * dynip_update_latency_{}; // DynIP update response latency in seconds
     yahat::Metrics::Stateset<2> * backup_state_{};
 };
 

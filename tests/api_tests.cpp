@@ -293,7 +293,13 @@ auto makeRequest(MockServer& ms, const string& what, string_view fqdn, string js
 
 auto makeDynIpRequest(std::string target, std::string body, yahat::Request::Type type, const yahat::Auth& auth) {
     yahat::Request req{std::move(target), std::move(body), type, {}};
-    req.route = "/nic";
+    if (req.target.starts_with("/api/v1/")) {
+        req.route = "/api/v1";
+    } else if (req.target.starts_with("/nic")) {
+        req.route = "/nic";
+    } else {
+        req.route = "/";
+    }
     req.auth = auth;
     return req;
 }
@@ -2272,60 +2278,78 @@ TEST(ApiRequest, dynIpGetUpdateAndNoChange) {
     RestApi api{svr};
 
     const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
-                                             {"USE_API", "DYNIP"});
+                                             {"USE_API", "DYNIP_PROVISION", "DYNIP_CREATE", "DYNIP_LIST"});
     const auto auth = svr.getAuthAs(tenantUser, user_passwd);
     ASSERT_TRUE(auth.access);
 
-    auto tenantId = string{auth.account};
-    tenantId = tenantId.substr(0, tenantId.find('/'));
-
-    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
-    zoneReq.arguments["tenant"] = tenantId;
+    auto zoneReq = makeRequest(svr, "zone", "dynip.example.com", boost::json::serialize(getZoneJson("dynip.example.com")), yahat::Request::Type::POST);
     auto parsed = api.parse(zoneReq);
     auto zoneRes = api.onZone(zoneReq, parsed);
     ASSERT_EQ(zoneRes.code, 201);
 
-    auto req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.10",
+    auto provisionRootReq = makeDynIpRequest("/api/v1/dynip/home", "{}", yahat::Request::Type::POST, auth);
+    auto provisionRootRes = api.onReqest(provisionRootReq);
+    ASSERT_EQ(provisionRootRes.code, 201);
+
+    auto provisionHostReq = makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::POST, auth);
+    auto provisionHostRes = api.onReqest(provisionHostReq);
+    ASSERT_EQ(provisionHostRes.code, 201);
+    const auto provisionJson = boost::json::parse(provisionHostRes.body).as_object();
+    const auto token = string{provisionJson.at("token").as_string()};
+
+    yahat::Auth capabilityAuth;
+    capabilityAuth.access = true;
+    capabilityAuth.extra = std::format("Bearer {}", token);
+
+    auto req = makeDynIpRequest("/nic/update?hostname=router.home.dynip.example.com&myip=203.0.113.10",
                                 {},
                                 yahat::Request::Type::GET,
-                                auth);
+                                capabilityAuth);
     auto res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);
     EXPECT_EQ(res.body, "good 203.0.113.10");
 
-    req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.10",
+    req = makeDynIpRequest("/nic/update?hostname=router.home.dynip.example.com&myip=203.0.113.10",
                            {},
                            yahat::Request::Type::GET,
-                           auth);
+                           capabilityAuth);
     res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);
     EXPECT_EQ(res.body, "nochg 203.0.113.10");
 }
 
 TEST(ApiRequest, dynIpGetDisabled) {
-    auto db = make_shared<TmpDb>();
-    db->config().dynip_enable_get = false;
-    MockServer svr{db};
+    MockServer svr;
+    svr.vars().set("dynip_realm", boost::json::value{"dynip.example.com"});
+    svr.vars().set("dynip_enabled", true);
+    svr.vars().set("dynip_enable_get", false);
     RestApi api{svr};
 
     const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
-                                             {"USE_API", "DYNIP"});
+                                             {"USE_API", "DYNIP_PROVISION", "DYNIP_CREATE"});
     const auto auth = svr.getAuthAs(tenantUser, user_passwd);
     ASSERT_TRUE(auth.access);
 
-    auto tenantId = string{auth.account};
-    tenantId = tenantId.substr(0, tenantId.find('/'));
-
-    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
-    zoneReq.arguments["tenant"] = tenantId;
+    auto zoneReq = makeRequest(svr, "zone", "dynip.example.com", boost::json::serialize(getZoneJson("dynip.example.com")), yahat::Request::Type::POST);
     auto parsed = api.parse(zoneReq);
     auto zoneRes = api.onZone(zoneReq, parsed);
     ASSERT_EQ(zoneRes.code, 201);
 
-    auto req = makeDynIpRequest("/nic/update?hostname=home.example.com&myip=203.0.113.55",
+    auto provisionRootReq = makeDynIpRequest("/api/v1/dynip/home", "{}", yahat::Request::Type::POST, auth);
+    ASSERT_EQ(api.onReqest(provisionRootReq).code, 201);
+    auto provisionHostReq = makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::POST, auth);
+    auto provisionHostRes = api.onReqest(provisionHostReq);
+    ASSERT_EQ(provisionHostRes.code, 201);
+    const auto token = string{boost::json::parse(provisionHostRes.body).as_object().at("token").as_string()};
+
+    yahat::Auth capabilityAuth;
+    capabilityAuth.access = true;
+    capabilityAuth.extra = std::format("Bearer {}", token);
+
+    auto req = makeDynIpRequest("/nic/update?hostname=router.home.dynip.example.com&myip=203.0.113.55",
                                 {},
                                 yahat::Request::Type::GET,
-                                auth);
+                                capabilityAuth);
     auto res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);
     EXPECT_EQ(res.body, "!disabled");
@@ -2338,23 +2362,30 @@ TEST(ApiRequest, dynIpPostJson) {
     RestApi api{svr};
 
     const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
-                                             {"USE_API", "DYNIP"});
+                                             {"USE_API", "DYNIP_PROVISION", "DYNIP_CREATE"});
     const auto auth = svr.getAuthAs(tenantUser, user_passwd);
     ASSERT_TRUE(auth.access);
 
-    auto tenantId = string{auth.account};
-    tenantId = tenantId.substr(0, tenantId.find('/'));
-
-    auto zoneReq = makeRequest(svr, "zone", "example.com", boost::json::serialize(getZoneJson("example.com")), yahat::Request::Type::POST);
-    zoneReq.arguments["tenant"] = tenantId;
+    auto zoneReq = makeRequest(svr, "zone", "dynip.example.com", boost::json::serialize(getZoneJson("dynip.example.com")), yahat::Request::Type::POST);
     auto parsed = api.parse(zoneReq);
     auto zoneRes = api.onZone(zoneReq, parsed);
     ASSERT_EQ(zoneRes.code, 201);
 
-    auto req = makeDynIpRequest("/nic/update",
-                                R"({"hostname":"home.example.com","ip":"203.0.113.12","client_ref":"abc-123"})",
+    auto provisionRootReq = makeDynIpRequest("/api/v1/dynip/home", "{}", yahat::Request::Type::POST, auth);
+    ASSERT_EQ(api.onReqest(provisionRootReq).code, 201);
+    auto provisionHostReq = makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::POST, auth);
+    auto provisionHostRes = api.onReqest(provisionHostReq);
+    ASSERT_EQ(provisionHostRes.code, 201);
+    const auto token = string{boost::json::parse(provisionHostRes.body).as_object().at("token").as_string()};
+
+    yahat::Auth capabilityAuth;
+    capabilityAuth.access = true;
+    capabilityAuth.extra = std::format("Bearer {}", token);
+
+    auto req = makeDynIpRequest("/api/v1/dynip/update",
+                                R"({"fqdn":"router.home.dynip.example.com","ip":"203.0.113.12"})",
                                 yahat::Request::Type::POST,
-                                auth);
+                                capabilityAuth);
     auto res = api.onReqest(req);
     EXPECT_EQ(res.code, 200);
 
@@ -2363,7 +2394,7 @@ TEST(ApiRequest, dynIpPostJson) {
     EXPECT_TRUE(json.at("changed").as_bool());
     EXPECT_EQ(json.at("effective_ip").as_string(), "203.0.113.12");
     EXPECT_EQ(json.at("record_type").as_string(), "A");
-    EXPECT_EQ(json.at("client_ref").as_string(), "abc-123");
+    EXPECT_EQ(json.at("fqdn").as_string(), "router.home.dynip.example.com");
 }
 
 int main(int argc, char **argv) {

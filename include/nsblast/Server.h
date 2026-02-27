@@ -27,6 +27,7 @@ namespace lib {
     class BackupMgr;
     class Metrics;
     class Vars;
+    class VarsViewIf;
 
 #ifdef NSBLAST_CLUSTER
     class GrpcPrimary;
@@ -165,6 +166,8 @@ public:
 
     lib::Vars& vars();
     const lib::Vars& vars() const;
+    virtual lib::VarsViewIf& varsView();
+    virtual const lib::VarsViewIf& varsView() const;
 
 #ifdef NSBLAST_CLUSTER
     void initReplication();

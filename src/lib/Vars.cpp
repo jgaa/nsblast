@@ -80,6 +80,7 @@ Vars::Vars(Server& server)
 }
 
 pb::VarsSnapshot Vars::defaults(const Config& config) {
+    (void)config;
     pb::VarsSnapshot snap;
     snap.set_schema_version(kSchemaVersion);
     snap.set_pv_bootstrapped(false);
@@ -92,12 +93,12 @@ pb::VarsSnapshot Vars::defaults(const Config& config) {
     snap.set_dynip_max_ttl(3600);
     snap.set_dynip_allow_txt(false);
 
-    snap.set_dynip_enable_get(config.dynip_enable_get);
-    snap.set_dynip_enable_post_json(config.dynip_enable_post_json);
-    snap.set_dynip_allow_partial_multi_host(config.dynip_allow_partial_multi_host);
-    snap.set_dynip_max_hosts_per_request(static_cast<uint32_t>(config.dynip_max_hosts_per_request));
-    snap.set_dynip_require_user_agent(config.dynip_require_user_agent);
-    snap.set_dynip_allow_private_ips(config.dynip_allow_private_ips);
+    snap.set_dynip_enable_get(true);
+    snap.set_dynip_enable_post_json(true);
+    snap.set_dynip_allow_partial_multi_host(false);
+    snap.set_dynip_max_hosts_per_request(5);
+    snap.set_dynip_require_user_agent(false);
+    snap.set_dynip_allow_private_ips(false);
 
     return snap;
 }
@@ -130,7 +131,7 @@ void Vars::validate(const pb::VarsSnapshot& snap) {
         throw Error{2, "dynip_max_hosts_per_request must be greater than zero"};
     }
 
-    if (snap.has_cluster_role()) {
+    if (!snap.cluster_role().empty()) {
         const auto role = normalize(snap.cluster_role());
         if (role != "none" && role != "primary" && role != "follower") {
             throw Error{2, "cluster_role must be one of: none, primary, follower"};
@@ -148,7 +149,7 @@ void Vars::validate(const pb::VarsSnapshot& snap) {
 }
 
 void Vars::validateRequired(const pb::VarsSnapshot& snap) {
-    if (!snap.has_cluster_role() || trimView(snap.cluster_role()).empty()) {
+    if (trimView(snap.cluster_role()).empty()) {
         LOG_ERROR << "Missing required variable: cluster_role";
         throw Error{4, "Missing required variable: cluster_role"};
     }
@@ -290,14 +291,14 @@ boost::json::value Vars::parseStringValue(string_view raw, ValueType type) {
 
 bool Vars::hasExplicitValue(const pb::VarsSnapshot& snap, string_view name) {
     if (name == "cluster_role") {
-        return snap.has_cluster_role();
+        return !snap.cluster_role().empty();
     }
     return true;
 }
 
 bool Vars::isNonMutableSet(const pb::VarsSnapshot& snap, string_view name) {
     if (name == "cluster_role") {
-        return snap.has_cluster_role() && !trimView(snap.cluster_role()).empty();
+        return !trimView(snap.cluster_role()).empty();
     }
     return hasExplicitValue(snap, name);
 }
@@ -465,7 +466,7 @@ boost::json::value Vars::getValue(const pb::VarsSnapshot& snap, string_view name
     const auto lower = toLower(name);
     if (lower == "schema_version") return static_cast<int64_t>(snap.schema_version());
     if (lower == "pv_bootstrapped") return snap.pv_bootstrapped();
-    if (lower == "cluster_role") return snap.has_cluster_role() ? boost::json::value{snap.cluster_role()} : boost::json::value{};
+    if (lower == "cluster_role") return !snap.cluster_role().empty() ? boost::json::value{snap.cluster_role()} : boost::json::value{};
 
     if (lower == "dynip_enabled") return snap.dynip_enabled();
     if (lower == "dynip_realm") return boost::json::value{snap.dynip_realm()};

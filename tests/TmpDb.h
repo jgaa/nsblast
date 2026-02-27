@@ -4,12 +4,14 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/json.hpp>
 
 #include <filesystem>
 #include "nsblast/logging.h"
 #include "RocksDbResource.h"
 #include "AuthMgr.h"
 #include "nsblast/Server.h"
+#include "nsblast/Vars.h"
 
 //#include "test_res.h"
 
@@ -178,6 +180,25 @@ public:
 
     auto getAuthAs(std::string_view user, std::string_view passwd) {
         return auth_->login(user, passwd);
+    }
+
+    void setVar(std::string_view name,
+                const boost::json::value& value,
+                bool force = false,
+                bool allowForce = false) {
+        vars().set(name, value, force, allowForce);
+    }
+
+    void setVars(const std::initializer_list<std::string_view>& assignments,
+                 bool force = false,
+                 bool allowForce = false) {
+        for (const auto& assignment : assignments) {
+            vars().setFromAssignment(assignment, force, allowForce);
+        }
+    }
+
+    void setClusterRole(std::string_view role) {
+        setVar("cluster_role", boost::json::value{std::string{role}});
     }
 
     template <typename PermissionsT = std::initializer_list<std::string>>

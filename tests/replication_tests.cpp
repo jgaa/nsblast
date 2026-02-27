@@ -86,7 +86,7 @@ public:
 TEST(ReplicationPrimary, NewAgentNoBacklog) {
 
     MockServer ms;
-    ms->config().cluster_role = "primary";
+    ms.setClusterRole("primary");
     ms.initReplication();
     ms.StartReplication();
     ms.startIoThreads();
@@ -131,7 +131,7 @@ TEST(ReplicationPrimary, NewAgentNoBacklog) {
 TEST(ReplicationPrimary, NewAgentWithBacklog) {
 
     MockServer ms;
-    ms->config().cluster_role = "primary";
+    ms.setClusterRole("primary");
     ms.initReplication();
     ms.StartReplication();
     ms.startIoThreads();
@@ -201,7 +201,7 @@ TEST(ReplicationPrimary, NewAgentWithBacklog) {
 TEST(ReplicationPrimary, NewAgentFillBacklog) {
 
     MockServer ms;
-    ms->config().cluster_role = "primary";
+    ms.setClusterRole("primary");
     ms.initReplication();
     ms.StartReplication();
     ms.startForwardingTransactionsToReplication();

@@ -50,6 +50,10 @@ public:
             ZRR,        // zone-name, fqdn of RR in plain text
             TENANT_NAME,// Name of tenant, folded UTF8
             META,       // metadata keys for internal housekeeping
+            DYNIP_ROOT, // dynip root metadata by root
+            DYNIP_TROOT,// dynip root index by tenant/root
+            DYNIP_HOST, // dynip host metadata by root/host
+            DYNIP_TOKEN,// dynip token->host lookup
             UNKNOWN_    // Not used as a Class
         };
 

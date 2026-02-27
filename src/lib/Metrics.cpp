@@ -59,6 +59,17 @@ Metrics::Metrics(Server& server)
     backup_state_ = metrics_.AddStateset<2>("nsblast_backup_state", "Backup state", {}, {}, {"idle", "running"});
     backup_state_->setExclusiveState(BackupState::IDLE);
 
+    dynip_updates_ok_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "good"}});
+    dynip_updates_nochg_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "nochg"}});
+    dynip_updates_badauth_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "badauth"}});
+    dynip_updates_nohost_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "nohost"}});
+    dynip_updates_badip_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "badip"}});
+    dynip_updates_numhost_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "numhost"}});
+    dynip_updates_notfqdn_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "notfqdn"}});
+    dynip_updates_disabled_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "disabled"}});
+    dynip_updates_error_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "error"}});
+    dynip_update_latency_ = metrics_.AddSummary("nsblast_dynip_update_latency", "DynIP update response latency", "seconds", {}, {{0.5, 0.9, 0.95, 0.99}});
+
     if (server.isCluster()) {
         if (server.isPrimaryReplicationServer()) {
             cluster_replication_followers_ = metrics_.AddGauge("nsblast_cluster_replication", "Number of followers connected to us", {});
@@ -70,6 +81,28 @@ Metrics::Metrics(Server& server)
 
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::ERROR, errors_));
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::WARN, warnings_));
+}
+
+void Metrics::incDynipUpdate(std::string_view result) {
+    if (result == "good") {
+        dynip_updates_ok_->inc();
+    } else if (result == "nochg") {
+        dynip_updates_nochg_->inc();
+    } else if (result == "badauth") {
+        dynip_updates_badauth_->inc();
+    } else if (result == "nohost") {
+        dynip_updates_nohost_->inc();
+    } else if (result == "badip") {
+        dynip_updates_badip_->inc();
+    } else if (result == "numhost") {
+        dynip_updates_numhost_->inc();
+    } else if (result == "notfqdn") {
+        dynip_updates_notfqdn_->inc();
+    } else if (result == "!disabled" || result == "disabled") {
+        dynip_updates_disabled_->inc();
+    } else {
+        dynip_updates_error_->inc();
+    }
 }
 
 

@@ -638,12 +638,22 @@ void Server::startBackupMgr(bool startAutoBackups )
 void Server::initReplication()
 {
     const auto snap = vars().snapshot();
-    const auto role_value = snap->has_cluster_role() ? snap->cluster_role() : std::string{"none"};
 
-    if (role_value == "primary") {
-        role_ = Role::CLUSTER_PRIMARY;
-    } else if (role_value == "follower") {
-        role_ = Role::CLUSTER_FOLLOWER;
+    if (const auto &role = snap->cluster_role(); !role.empty()) {
+
+        if (role == "primary") {
+            role_ = Role::CLUSTER_PRIMARY;
+        } else if (role == "follower") {
+            role_ = Role::CLUSTER_FOLLOWER;
+        } else if (role == "none"){
+            role_ = Role::NONE;
+        } else {
+            LOG_ERROR << "Invalid role: '" << role << "'.";
+            throw runtime_error{"Server: invalid role: "s + role};
+        }
+    } else {
+        LOG_ERROR_N << "Role is undefined";
+        throw runtime_error{"Server: Role is undefined"};
     }
 }
 
@@ -799,6 +809,16 @@ lib::Vars& Server::vars()
 const lib::Vars& Server::vars() const
 {
     return const_cast<Server*>(this)->vars();
+}
+
+lib::VarsViewIf& Server::varsView()
+{
+    return vars();
+}
+
+const lib::VarsViewIf& Server::varsView() const
+{
+    return vars();
 }
 
 void Server::listBackups()

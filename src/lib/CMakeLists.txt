@@ -82,6 +82,8 @@ add_library(${PROJECT_NAME}
     BackupMgr.h
     DnsEngine.cpp
     DnsMessages.cpp
+    DynIpStore.cpp
+    DynIpStore.h
     FollowerReplication.cpp
     FollowerReplication.h
     LogCapture.cpp

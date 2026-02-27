@@ -10,6 +10,7 @@
 #include <boost/json.hpp>
 
 #include "nsblast/nsblast.h"
+#include "nsblast/VarsViewIf.h"
 #include "proto/nsblast.pb.h"
 
 namespace nsblast {
@@ -18,7 +19,7 @@ class Server;
 
 namespace nsblast::lib {
 
-class Vars {
+class Vars : public VarsViewIf {
 public:
     struct Item {
         std::string name;
@@ -62,7 +63,7 @@ public:
                bool force = false,
                bool allowForce = false);
 
-    std::shared_ptr<const pb::VarsSnapshot> snapshot() const;
+    std::shared_ptr<const pb::VarsSnapshot> snapshot() const override;
 
 private:
     enum class ValueType {

@@ -104,13 +104,17 @@ enum Permission {
     VARS_READ = 51; // Gives access to GET /admin/vars/{name}
     VARS_SET = 52; // Gives access to PUT /admin/vars/{name}
     VARS_UNSET = 53; // Gives access to DELETE /admin/vars/{name}
+    DYNIP_PROVISION = 54; // Create/delete DynIP roots
+    DYNIP_CREATE = 55; // Create DynIP hosts under roots
+    DYNIP_DELETE = 56; // Delete DynIP hosts
+    DYNIP_LIST = 57; // List DynIP roots/hosts
 }
 
 message VarsSnapshot {
     uint32 schema_version = 1;
 
     bool pv_bootstrapped = 2;
-    optional string cluster_role = 3;
+    string cluster_role = 3; // Unset if empty
 
     bool dynip_enabled = 100;
     string dynip_realm = 101;
@@ -126,6 +130,38 @@ message VarsSnapshot {
     uint32 dynip_max_hosts_per_request = 123;
     bool dynip_require_user_agent = 124;
     bool dynip_allow_private_ips = 125;
+}
+
+message DynipRoot {
+    string tenant_id = 1;
+    string root = 2;
+    string fqdn = 3;
+    uint32 host_limit = 4;
+    string created_at = 5;
+    string updated_at = 6;
+}
+
+message DynipHost {
+    string tenant_id = 1;
+    string root = 2;
+    string host = 3;
+    string fqdn = 4;
+    string token_hash = 5;
+    uint32 ttl = 6;
+    string last_update = 7;
+    string last_ip = 8;
+    uint64 update_count = 9;
+    bool disabled = 10;
+}
+
+message DynipTokenIndex {
+    string token_hash = 1;
+    string tenant_id = 2;
+    string root = 3;
+    string host = 4;
+    string fqdn = 5;
+    uint32 ttl = 6;
+    bool disabled = 7;
 }
 
 /**

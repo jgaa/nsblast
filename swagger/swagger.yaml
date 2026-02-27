@@ -43,7 +43,7 @@ paths:
       tags:
         - dynip
       summary: DynDNS-compatible update endpoint
-      description: "Legacy compatibility endpoint. Returns plain text tokens like `good`, `nochg`, `badip`, and `badauth`."
+      description: "Legacy compatibility endpoint. Returns plain text tokens like `good`, `nochg`, `badip`, and `badauth`. This endpoint is compatibility-only."
       parameters:
         - name: hostname
           in: query
@@ -67,7 +67,7 @@ paths:
     post:
       tags:
         - dynip
-      summary: Dynamic IP update with JSON payload
+      summary: Dynamic IP update with JSON payload (legacy alias)
       consumes:
         - application/json
       produces:
@@ -103,6 +103,91 @@ paths:
           description: Endpoint or method disabled.
           schema:
             $ref: "#/definitions/DynIpUpdateResponse"
+
+  /dynip/update:
+    post:
+      tags:
+        - dynip
+      summary: Dynamic IP update with JSON payload
+      description: Primary DynIP update endpoint. Uses capability credentials (`Bearer` or `Basic`).
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/DynIpUpdateRequest"
+      responses:
+        "200":
+          description: Update applied or no-change.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "400":
+          description: Invalid input.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "401":
+          description: Unauthorized.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+        "404":
+          description: Hostname not found.
+          schema:
+            $ref: "#/definitions/DynIpUpdateResponse"
+
+  /dynip/:
+    get:
+      tags:
+        - dynip
+      summary: List DynIP roots owned by the authenticated tenant
+
+  /dynip/{root}:
+    parameters:
+      - in: path
+        name: root
+        required: true
+        type: string
+    post:
+      tags:
+        - dynip
+      summary: Create DynIP root
+    delete:
+      tags:
+        - dynip
+      summary: Delete DynIP root and associated hosts
+
+  /dynip/{root}/hosts:
+    parameters:
+      - in: path
+        name: root
+        required: true
+        type: string
+    get:
+      tags:
+        - dynip
+      summary: List DynIP hosts under root
+
+  /dynip/{root}/{host}:
+    parameters:
+      - in: path
+        name: root
+        required: true
+        type: string
+      - in: path
+        name: host
+        required: true
+        type: string
+    post:
+      tags:
+        - dynip
+      summary: Create DynIP host
+    delete:
+      tags:
+        - dynip
+      summary: Delete DynIP host
 
   /version:
     get:
@@ -2208,23 +2293,17 @@ definitions:
   DynIpUpdateRequest:
     type: object
     required:
-      - hostname
+      - fqdn
     properties:
-      hostname:
+      fqdn:
         type: string
         description: fqdn to update.
+      hostname:
+        type: string
+        description: Legacy alias for `fqdn`.
       ip:
         type: string
-        description: Single IPv4 or IPv6 address.
-      ipv4:
-        type: string
-        description: IPv4 address (alternative to `ip`).
-      ipv6:
-        type: string
-        description: IPv6 address (alternative to `ip`).
-      client_ref:
-        type: string
-        description: Optional correlation value echoed in responses.
+        description: Single IPv4 or IPv6 address, or `auto`.
 
   DynIpUpdateResponse:
     type: object
@@ -2234,7 +2313,7 @@ definitions:
         description: DynIP status token (`good`, `nochg`, `badip`, `badauth`, `nohost`, `911`).
       changed:
         type: boolean
-      hostname:
+      fqdn:
         type: string
       effective_ip:
         type: string

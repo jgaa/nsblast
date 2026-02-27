@@ -25,6 +25,8 @@
 #include "nsblast/errors.h"
 #include "google/protobuf/util/json_util.h"
 #include "proto_util.h"
+#include "DynIpStore.h"
+#include "Metrics.h"
 
 //#include "glad/AsyncCache.hpp"
 
@@ -156,6 +158,28 @@ vector<string> splitHostnames(string_view csv) {
 
 Response legacyDynIpReply(string_view token) {
     return {200, "OK", string{token}, {}, "text/plain"};
+}
+
+optional<string> getDynIpAuthHeader(const yahat::Request& req) {
+    try {
+        if (const auto raw = any_cast<string>(&req.auth.extra)) {
+            return *raw;
+        }
+    } catch (const std::bad_any_cast&) {
+    }
+    return {};
+}
+
+bool secureEquals(std::string_view left, std::string_view right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    unsigned char diff = 0;
+    for (size_t i = 0; i < left.size(); ++i) {
+        diff |= static_cast<unsigned char>(left[i] ^ right[i]);
+    }
+    return diff == 0;
 }
 
 // Get the keys prev/next from an unsorted json array populated by iterating the database
@@ -582,6 +606,13 @@ Response RestApi::onReqest(const Request &req)
                 return onDynIpUpdate(req, p, false);
             }
             return {404, "Unknown subpath"};
+        }
+
+        if (p.what == "dynip") {
+            if (p.target == "update" && p.operation.empty()) {
+                return onDynIpUpdate(req, p, false);
+            }
+            return onDynIpProvision(req, p);
         }
 
         if (p.what == "rr") {
@@ -1758,12 +1789,34 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
 Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed, bool legacyRoute)
 {
     const auto vars = server().vars().snapshot();
-    auto session = getSession(req);
-    if (!session) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("badauth");
+    const bool legacyResponse = legacyRoute || req.type == Request::Type::GET;
+    std::optional<Metrics::summary_scoped> latencyMetrics;
+    if (server().haveMetrics()) {
+        latencyMetrics = server().metrics().dynip_update_latency().scoped();
+    }
+
+    const auto trackResult = [&](std::string_view result) {
+        if (server().haveMetrics()) {
+            server().metrics().incDynipUpdate(result);
         }
-        return {401, "Unauthorized"};
+    };
+
+    const auto legacyReply = [&](std::string_view token) {
+        trackResult(token);
+        return legacyDynIpReply(token);
+    };
+
+    const auto legacyReplyWithIp = [&](std::string_view token, std::string_view ip) {
+        trackResult(token);
+        return legacyDynIpReply(std::format("{} {}", token, ip));
+    };
+
+    if (!vars->dynip_enabled()) {
+        if (legacyResponse) {
+            return legacyReply("!disabled");
+        }
+        trackResult("disabled");
+        return Response{403, "DynIP disabled"};
     }
 
     auto nowUtc = [] {
@@ -1779,17 +1832,17 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     };
 
     const auto makeJsonReply = [now = nowUtc()](int code,
-                                                string_view status,
-                                                bool changed,
-                                                string_view hostname,
-                                                string_view effectiveIp,
-                                                string_view recordType,
-                                                string_view message = {}) {
+                                                 string_view status,
+                                                 bool changed,
+                                                 string_view fqdn,
+                                                 string_view effectiveIp,
+                                                 string_view recordType,
+                                                 string_view message = {}) {
         boost::json::object out;
         out["status"] = status;
         out["changed"] = changed;
-        if (!hostname.empty()) {
-            out["hostname"] = hostname;
+        if (!fqdn.empty()) {
+            out["fqdn"] = fqdn;
         }
         if (!effectiveIp.empty()) {
             out["effective_ip"] = effectiveIp;
@@ -1806,290 +1859,364 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         return Response{code, "OK", boost::json::serialize(out)};
     };
 
-    vector<string> hostnames;
-    optional<string> reqIp;
-    optional<string> clientRef;
+    const auto jsonReply = [&](int code,
+                               std::string_view status,
+                               bool changed,
+                               std::string_view fqdn,
+                               std::string_view effectiveIp,
+                               std::string_view recordType,
+                               std::string_view message = {}) {
+        trackResult(status);
+        return makeJsonReply(code, status, changed, fqdn, effectiveIp, recordType, message);
+    };
 
+    optional<string> reqFqdn;
+    optional<string> reqIp;
     switch(req.type) {
     case Request::Type::GET: {
-        if (!vars->dynip_enabled() || !vars->dynip_enable_get()) {
-            return legacyDynIpReply("!disabled");
+        if (!vars->dynip_enable_get()) {
+            return legacyReply("!disabled");
         }
-
         if (auto h = getQueryArg(req, "hostname")) {
-            hostnames = splitHostnames(*h);
+            reqFqdn = string{*h};
         }
         if (auto ip = getQueryArg(req, "myip")) {
             reqIp = string{*ip};
         }
     } break;
     case Request::Type::POST: {
-        if (!vars->dynip_enabled() || !vars->dynip_enable_post_json()) {
+        if (!vars->dynip_enable_post_json()) {
+            trackResult("disabled");
             return {405, "Method Not Allowed"};
         }
-
-        boost::json::value json;
-        try {
-            json = parseJson(req.body);
-        } catch (const Response&) {
-            return {400, "Failed to parse json"};
-        }
-
+        const auto json = parseJson(req.body);
         if (!json.is_object()) {
             return {400, "Request body must be a JSON object"};
         }
-
         const auto& obj = json.as_object();
-        if (auto h = obj.if_contains("hostname")) {
-            if (h->is_string()) {
-                hostnames.emplace_back(h->as_string());
-            } else if (h->is_array()) {
-                for (const auto& v : h->as_array()) {
-                    if (!v.is_string()) {
-                        return {400, "hostname array must only contain strings"};
-                    }
-                    hostnames.emplace_back(v.as_string());
-                }
-            } else {
-                return {400, "hostname must be a string or an array of strings"};
-            }
+        if (const auto* fqdn = obj.if_contains("fqdn"); fqdn && fqdn->is_string()) {
+            reqFqdn = string{fqdn->as_string()};
+        } else if (const auto* hostname = obj.if_contains("hostname"); hostname && hostname->is_string()) {
+            reqFqdn = string{hostname->as_string()};
         }
-
-        if (auto p = obj.if_contains("client_ref"); p && p->is_string()) {
-            clientRef = string{p->as_string()};
-        }
-
-        const auto hasIp = obj.if_contains("ip") != nullptr;
-        const auto hasIpv4 = obj.if_contains("ipv4") != nullptr;
-        const auto hasIpv6 = obj.if_contains("ipv6") != nullptr;
-
-        if (hasIp && (hasIpv4 || hasIpv6)) {
-            return {400, "Use either 'ip' or 'ipv4'/'ipv6'"};
-        }
-
-        if (hasIp) {
-            const auto& v = *obj.if_contains("ip");
-            if (!v.is_string()) {
-                return {400, "'ip' must be a string"};
-            }
-            reqIp = string{v.as_string()};
-        } else {
-            if (hasIpv4 && hasIpv6) {
-                return {400, "Dual-stack update is not supported by this endpoint yet"};
-            }
-            if (hasIpv4) {
-                const auto& v = *obj.if_contains("ipv4");
-                if (!v.is_string()) {
-                    return {400, "'ipv4' must be a string"};
-                }
-                reqIp = string{v.as_string()};
-            } else if (hasIpv6) {
-                const auto& v = *obj.if_contains("ipv6");
-                if (!v.is_string()) {
-                    return {400, "'ipv6' must be a string"};
-                }
-                reqIp = string{v.as_string()};
-            }
+        if (const auto* ip = obj.if_contains("ip"); ip && ip->is_string()) {
+            reqIp = string{ip->as_string()};
         }
     } break;
     default:
+        trackResult("error");
         return {405, "Only GET and POST are supported"};
     }
 
-    if (hostnames.empty()) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("notfqdn");
-        }
-        return makeJsonReply(400, "notfqdn", false, {}, {}, {}, "Missing hostname");
+    if (!reqFqdn.has_value()) {
+        return legacyResponse ? legacyReply("notfqdn")
+                              : jsonReply(400, "notfqdn", false, {}, {}, {}, "Missing fqdn");
     }
 
-    if (hostnames.size() > vars->dynip_max_hosts_per_request()) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("numhost");
-        }
-        return makeJsonReply(400, "numhost", false, {}, {}, {}, "Too many hostnames");
+    const auto fqdn = toLower(*reqFqdn);
+    if (!validateFqdn(fqdn)) {
+        return legacyResponse ? legacyReply("notfqdn")
+                              : jsonReply(400, "notfqdn", false, fqdn, {}, {}, "Invalid fqdn");
     }
 
-    // Single-host mode for now.
-    if (hostnames.size() > 1) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("numhost");
-        }
-        return makeJsonReply(400, "numhost", false, {}, {}, {}, "Multiple hostnames are not supported yet");
+    // Capability auth is provided by AuthMgr through req.auth.extra (raw Authorization header).
+    const auto authHeader = getDynIpAuthHeader(req);
+    if (!authHeader) {
+        return legacyResponse ? legacyReply("badauth")
+                              : jsonReply(401, "badauth", false, fqdn, {}, {}, "Missing credentials");
     }
 
-    auto hostname = toLower(hostnames.front());
-    if (!validateFqdn(hostname)) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("notfqdn");
+    DynIpStore dynStore{resource_};
+    optional<pb::DynipTokenIndex> tokenIx;
+    const auto headerLower = toLower(*authHeader);
+    if (headerLower.starts_with("bearer ")) {
+        tokenIx = dynStore.lookupByToken(string_view{authHeader->data() + 7, authHeader->size() - 7});
+    } else if (headerLower.starts_with("basic ")) {
+        const auto decoded = base64Decode(string_view{authHeader->data() + 6, authHeader->size() - 6});
+        string_view cred{decoded.data(), decoded.size()};
+        const auto pos = cred.find(':');
+        if (pos == string_view::npos) {
+            return legacyResponse ? legacyReply("badauth")
+                                  : jsonReply(401, "badauth", false, fqdn, {}, {}, "Malformed basic auth");
         }
-        return makeJsonReply(400, "notfqdn", false, hostname, {}, {}, "Invalid hostname");
+        const auto basicFqdn = toLower(cred.substr(0, pos));
+        const string_view secret = cred.substr(pos + 1);
+        tokenIx = dynStore.lookupByToken(secret);
+        if (tokenIx && !compareCaseInsensitive(tokenIx->fqdn(), basicFqdn, true)) {
+            tokenIx.reset();
+        }
+    } else {
+        return legacyResponse ? legacyReply("badauth")
+                              : jsonReply(401, "badauth", false, fqdn, {}, {}, "Unsupported auth scheme");
     }
 
-    if (!reqIp.has_value() || reqIp->empty()) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("badip");
-        }
-        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Missing IP address");
+    if (!tokenIx || tokenIx->disabled()) {
+        return legacyResponse ? legacyReply("badauth")
+                              : jsonReply(401, "badauth", false, fqdn, {}, {}, "Invalid credentials");
+    }
+    if (!secureEquals(toLower(tokenIx->fqdn()), fqdn)) {
+        return legacyResponse ? legacyReply("nohost")
+                              : jsonReply(404, "nohost", false, fqdn, {}, {}, "Capability scope mismatch");
+    }
+
+    if (!reqIp.has_value() || reqIp->empty() || *reqIp == "auto") {
+        return legacyResponse ? legacyReply("badip")
+                              : jsonReply(400, "badip", false, fqdn, {}, {}, "Missing explicit IP");
     }
 
     boost::asio::ip::address effectiveIp;
     try {
         effectiveIp = boost::asio::ip::make_address(*reqIp);
     } catch(const std::exception&) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("badip");
-        }
-        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Invalid IP address");
+        return legacyResponse ? legacyReply("badip")
+                              : jsonReply(400, "badip", false, fqdn, {}, {}, "Invalid IP address");
     }
 
     if (!vars->dynip_allow_private_ips() && isPrivateIp(effectiveIp)) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("badip");
-        }
-        return makeJsonReply(400, "badip", false, hostname, {}, {}, "Private IPs are disabled");
+        return legacyResponse ? legacyReply("badip")
+                              : jsonReply(400, "badip", false, fqdn, {}, {}, "Private IPs are disabled");
     }
 
     auto trx = resource_.transaction();
-    auto existing = trx->lookupEntryAndSoa(hostname);
+    auto existing = trx->lookupEntryAndSoa(fqdn);
     if (!existing.hasSoa()) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("nohost");
-        }
-        return makeJsonReply(404, "nohost", false, hostname, {}, {}, "Hostname not found");
+        return legacyResponse ? legacyReply("nohost")
+                              : jsonReply(404, "nohost", false, fqdn, {}, {}, "Hostname not found");
     }
 
-    if (auto id = existing.soa().tenantId()) {
-        if (*id != session->tenantId()) {
-            if (req.type == Request::Type::GET) {
-                return legacyDynIpReply("badauth");
-            }
-            return makeJsonReply(403, "badauth", false, hostname, {}, {}, "Not your zone");
-        }
-    } else {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("911");
-        }
-        return makeJsonReply(500, "911", false, hostname, {}, {}, "Unable to resolve zone owner");
-    }
-
-    const auto regular_perm = existing.hasRr() ? pb::Permission::UPDATE_RR : pb::Permission::CREATE_RR;
-    const bool has_regular_permission = session->isAllowed(regular_perm, hostname);
-    const bool has_dynip_permission = session->isAllowed(pb::Permission::DYNIP, hostname);
-    if (!has_regular_permission && !has_dynip_permission) {
-        if (req.type == Request::Type::GET) {
-            return legacyDynIpReply("badauth");
-        }
-        return makeJsonReply(403, "badauth", false, hostname, {}, {}, "Access denied");
-    }
-
-    const bool dynip_only = has_dynip_permission && !has_regular_permission;
-    if (dynip_only) {
-        const bool existing_ok = !existing.hasRr() || isSingleDynIpEntry(existing.rr());
-        if (!existing_ok) {
-            if (req.type == Request::Type::GET) {
-                return legacyDynIpReply("badauth");
-            }
-            return makeJsonReply(403, "badauth", false, hostname, {}, {}, "DYNIP only allows single A/AAAA RR");
-        }
+    if (existing.hasRr() && !isSingleDynIpEntry(existing.rr())) {
+        return legacyResponse ? legacyReply("badauth")
+                              : jsonReply(403, "badauth", false, fqdn, {}, {}, "RR set is not DynIP-compatible");
     }
 
     if (existing.hasRr()) {
-        if (auto currentIp = getSingleDynIpAddress(existing.rr())) {
-            if (*currentIp == effectiveIp) {
-                if (req.type == Request::Type::GET) {
-                    return legacyDynIpReply(std::format("nochg {}", effectiveIp.to_string()));
-                }
-                auto reply = makeJsonReply(200,
-                                           "nochg",
-                                           false,
-                                           hostname,
-                                           effectiveIp.to_string(),
-                                           effectiveIp.is_v4() ? "A" : "AAAA",
-                                           "No change");
-                if (clientRef.has_value()) {
-                    auto json = parseJson(reply.body).as_object();
-                    json["client_ref"] = *clientRef;
-                    reply.body = boost::json::serialize(json);
-                }
-                return reply;
+        if (const auto currentIp = getSingleDynIpAddress(existing.rr()); currentIp && *currentIp == effectiveIp) {
+            if (legacyResponse) {
+                return legacyReplyWithIp("nochg", effectiveIp.to_string());
             }
+            return jsonReply(200, "nochg", false, fqdn, effectiveIp.to_string(),
+                             effectiveIp.is_v4() ? "A" : "AAAA", "No change");
         }
     }
 
+    auto tenantId = existing.soa().tenantId();
+    if (!tenantId.has_value()) {
+        return legacyResponse ? legacyReply("911")
+                              : jsonReply(500, "911", false, fqdn, {}, {}, "Zone has no tenant owner");
+    }
+    auto tenant = server().auth().getTenant(boost::uuids::to_string(*tenantId));
+    if (!tenant) {
+        return legacyResponse ? legacyReply("911")
+                              : jsonReply(500, "911", false, fqdn, {}, {}, "Tenant not found");
+    }
+
+    // Internal elevated session: update path must be capability-authorized, not caller-role authorized.
+    pb::Tenant dynipTenant = *tenant;
+    const string roleName = "__dynip_internal__";
+    if (!getFromList(dynipTenant.roles(), roleName)) {
+        auto* role = dynipTenant.add_roles();
+        role->set_name(roleName);
+        auto* filter = role->mutable_filter();
+        filter->set_fqdn("");
+        filter->set_recursive(true);
+        for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
+            if (pb::Permission_IsValid(i)) {
+                role->add_permissions(static_cast<pb::Permission>(i));
+                dynipTenant.add_allowedpermissions(static_cast<pb::Permission>(i));
+            }
+        }
+    }
+    vector<string_view> roleNames = {roleName};
+    auto session = make_shared<Session>(server().auth(), dynipTenant, "dynip-capability", roleNames);
+
     boost::json::object rr;
-    rr["ttl"] = static_cast<int64_t>(vars->dynip_default_ttl());
+    rr["ttl"] = static_cast<int64_t>(tokenIx->ttl() > 0 ? tokenIx->ttl() : vars->dynip_default_ttl());
     if (effectiveIp.is_v4()) {
         rr["a"] = boost::json::array{effectiveIp.to_string()};
     } else {
         rr["aaaa"] = boost::json::array{effectiveIp.to_string()};
     }
 
-    const auto fullTarget = format("/api/v1/rr/{}", hostname);
+    const auto fullTarget = format("/api/v1/rr/{}", fqdn);
     Request rrReq{fullTarget, boost::json::serialize(rr), Request::Type::PUT, req.yield, req.isHttps()};
     rrReq.route = "/api/v1";
-    rrReq.auth = req.auth;
-    rrReq.arguments = req.arguments;
+    rrReq.auth.access = true;
+    rrReq.auth.account = std::format("{}/{}", tenant->id(), "dynip-capability");
+    rrReq.auth.extra = session;
     auto rrParsed = parse(rrReq);
 
     const auto rrReply = onResourceRecord(rrReq, rrParsed);
     if (!rrReply.ok()) {
-        if (req.type == Request::Type::GET) {
-            if (rrReply.code == 403) {
-                return legacyDynIpReply("badauth");
-            }
-            if (rrReply.code == 404) {
-                return legacyDynIpReply("nohost");
-            }
-            if (rrReply.code == 400) {
-                return legacyDynIpReply("badip");
-            }
-            return legacyDynIpReply("911");
+        if (legacyResponse) {
+            if (rrReply.code == 404) return legacyReply("nohost");
+            if (rrReply.code == 400) return legacyReply("badip");
+            return legacyReply("911");
         }
-
         string_view status = "911";
-        if (rrReply.code == 403) {
-            status = "badauth";
-        } else if (rrReply.code == 404) {
-            status = "nohost";
-        } else if (rrReply.code == 400) {
-            status = "badip";
+        if (rrReply.code == 404) status = "nohost";
+        if (rrReply.code == 400) status = "badip";
+        return jsonReply(rrReply.code, status, false, fqdn, {}, {}, rrReply.reason);
+    }
+
+    if (legacyResponse) {
+        return legacyReplyWithIp("good", effectiveIp.to_string());
+    }
+    return jsonReply(200, "good", true, fqdn, effectiveIp.to_string(),
+                     effectiveIp.is_v4() ? "A" : "AAAA", "updated");
+}
+
+Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& parsed)
+{
+    const auto vars = server().vars().snapshot();
+    if (!vars->dynip_enabled()) {
+        return {403, "DynIP disabled"};
+    }
+
+    auto session = getSession(req);
+    if (!session) {
+        return {401, "Unauthorized"};
+    }
+
+    const auto allow = [&](pb::Permission p) {
+        return session->isAllowed(p) || session->isAllowed(pb::Permission::DYNIP);
+    };
+    const auto failDenied = [] {
+        return Response{403, "Access Denied"};
+    };
+    auto jsonOk = [](const boost::json::value& payload, int code = 200) {
+        return Response{code, "OK", boost::json::serialize(payload)};
+    };
+
+    DynIpStore store{resource_};
+    const auto tenantId = boost::uuids::to_string(session->tenantId());
+    const auto root = toLower(parsed.target);
+    const auto op = toLower(parsed.operation);
+
+    try {
+        // GET /dynip/
+        if (parsed.target.empty()) {
+            if (req.type != Request::Type::GET) {
+                return {405, "Method not allowed"};
+            }
+            if (!allow(pb::Permission::DYNIP_LIST)) {
+                return failDenied();
+            }
+            boost::json::array roots;
+            for (const auto& r : store.listRoots(tenantId)) {
+                boost::json::object item;
+                item["root"] = r.root();
+                item["fqdn"] = r.fqdn();
+                item["host_limit"] = static_cast<int64_t>(r.host_limit());
+                roots.emplace_back(std::move(item));
+            }
+            boost::json::object out;
+            out["items"] = std::move(roots);
+            return jsonOk(out);
         }
 
-        auto reply = makeJsonReply(rrReply.code,
-                                   status,
-                                   false,
-                                   hostname,
-                                   {},
-                                   {},
-                                   rrReply.reason);
-        if (clientRef.has_value()) {
-            auto json = parseJson(reply.body).as_object();
-            json["client_ref"] = *clientRef;
-            reply.body = boost::json::serialize(json);
+        // GET /dynip/{root}/hosts
+        if (op == "hosts") {
+            if (req.type != Request::Type::GET) {
+                return {405, "Method not allowed"};
+            }
+            if (!allow(pb::Permission::DYNIP_LIST)) {
+                return failDenied();
+            }
+            boost::json::array hosts;
+            for (const auto& h : store.listHosts(tenantId, root)) {
+                boost::json::object item;
+                item["host"] = h.host();
+                item["fqdn"] = h.fqdn();
+                item["ttl"] = static_cast<int64_t>(h.ttl());
+                item["update_count"] = static_cast<int64_t>(h.update_count());
+                item["disabled"] = h.disabled();
+                hosts.emplace_back(std::move(item));
+            }
+            boost::json::object out;
+            out["items"] = std::move(hosts);
+            return jsonOk(out);
         }
-        return reply;
-    }
 
-    if (req.type == Request::Type::GET) {
-        return legacyDynIpReply(std::format("good {}", effectiveIp.to_string()));
-    }
+        // /dynip/{root}
+        if (op.empty()) {
+            if (req.type == Request::Type::POST) {
+                if (!allow(pb::Permission::DYNIP_PROVISION)) {
+                    return failDenied();
+                }
+                uint32_t hostLimit = vars->dynip_max_hosts_per_root();
+                if (!req.body.empty()) {
+                    const auto json = parseJson(req.body);
+                    if (json.is_object()) {
+                        if (const auto* v = json.as_object().if_contains("host_limit"); v && v->is_int64()) {
+                            const auto value = v->as_int64();
+                            if (value > 0 && value <= std::numeric_limits<uint32_t>::max()) {
+                                hostLimit = static_cast<uint32_t>(value);
+                            }
+                        }
+                    }
+                }
+                const auto created = store.createRoot(tenantId, root, vars->dynip_realm(), hostLimit);
+                boost::json::object out;
+                out["root"] = created.root();
+                out["fqdn"] = created.fqdn();
+                out["host_limit"] = static_cast<int64_t>(created.host_limit());
+                return jsonOk(out, 201);
+            }
+            if (req.type == Request::Type::DELETE) {
+                if (!allow(pb::Permission::DYNIP_PROVISION)) {
+                    return failDenied();
+                }
+                if (!store.deleteRoot(tenantId, root)) {
+                    return {404, "DynIP root not found"};
+                }
+                return {200, "OK"};
+            }
+            return {405, "Method not allowed"};
+        }
 
-    auto reply = makeJsonReply(200,
-                               "good",
-                               true,
-                               hostname,
-                               effectiveIp.to_string(),
-                               effectiveIp.is_v4() ? "A" : "AAAA",
-                               "updated");
-    if (clientRef.has_value()) {
-        auto json = parseJson(reply.body).as_object();
-        json["client_ref"] = *clientRef;
-        reply.body = boost::json::serialize(json);
+        // /dynip/{root}/{host}
+        if (req.type == Request::Type::POST) {
+            if (!allow(pb::Permission::DYNIP_CREATE)) {
+                return failDenied();
+            }
+            uint32_t ttl = vars->dynip_default_ttl();
+            if (!req.body.empty()) {
+                const auto json = parseJson(req.body);
+                if (json.is_object()) {
+                    if (const auto* v = json.as_object().if_contains("ttl"); v && v->is_int64()) {
+                        const auto value = v->as_int64();
+                        if (value >= vars->dynip_min_ttl() && value <= vars->dynip_max_ttl()) {
+                            ttl = static_cast<uint32_t>(value);
+                        }
+                    }
+                }
+            }
+            const auto created = store.createHost(tenantId, root, op, vars->dynip_realm(), ttl, vars->dynip_max_hosts_per_root());
+            boost::json::object out;
+            out["host"] = created.host.host();
+            out["fqdn"] = created.host.fqdn();
+            out["token"] = created.token;
+            out["update_url"] = "/dynip/update";
+            out["ttl"] = static_cast<int64_t>(created.host.ttl());
+            return jsonOk(out, 201);
+        }
+        if (req.type == Request::Type::DELETE) {
+            if (!allow(pb::Permission::DYNIP_DELETE)) {
+                return failDenied();
+            }
+            if (!store.deleteHost(tenantId, root, op)) {
+                return {404, "DynIP host not found"};
+            }
+            return {200, "OK"};
+        }
+        return {405, "Method not allowed"};
+    } catch (const AlreadyExistException&) {
+        return {409, "Already exists"};
+    } catch (const NotFoundException& ex) {
+        return {404, ex.what()};
+    } catch (const ConstraintException& ex) {
+        return {400, ex.what()};
     }
-    (void)parsed;
-    (void)legacyRoute;
-    return reply;
 }
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)

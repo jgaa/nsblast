@@ -44,6 +44,7 @@ public:
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onResourceRecord(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onDynIpUpdate(const yahat::Request &req, const Parsed& parsed, bool legacyRoute);
+    yahat::Response onDynIpProvision(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onConfigMaster(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onBackup(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onLog(const yahat::Request &req, const Parsed& parsed);

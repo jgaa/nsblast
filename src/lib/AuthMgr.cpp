@@ -52,6 +52,12 @@ bool isUiTarget(std::string_view target) {
     return next == '/' || next == '?';
 }
 
+bool isDynipUpdateTarget(std::string_view target) {
+    return target.starts_with("/nic/update")
+           || target.starts_with("/api/v1/dynip/update")
+           || target.starts_with("/dynip/update");
+}
+
 template <typename T, ResourceIf::Category cat = ResourceIf::Category::ACCOUNT>
 void upsert(trx_t& trx, const ResourceIf::RealKey& key, const T& value, bool isNew) {
     validate(value);
@@ -113,6 +119,15 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
 
         required_perm = pb::Permission::METRICS;
     }
+
+    if (isDynipUpdateTarget(ar.req.target)) {
+        yahat::Auth auth;
+        auth.account = "dynip/capability";
+        auth.access = true;
+        auth.extra = std::string{ar.auth_header};
+        return auth;
+    }
+
     if (ar.auth_header.empty()) {
         LOG_TRACE_N << "Request " <<  ar.req.uuid << " provided no Authorization header.";
         return {};
