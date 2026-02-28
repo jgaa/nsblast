@@ -10,8 +10,7 @@ Example:
 
 ```yaml
 url: "https://dns.example.com"
-username: "dynip-user"
-password: "super-secret-password"
+token: "dynip-capability-token"
 fqdn: "office.example.com"
 repeat_minutes: 15
 # optional
@@ -20,6 +19,8 @@ repeat_minutes: 15
 # timeout_seconds: 10
 # tls_ca_file: "/etc/ssl/certs/custom-ca.pem"
 ```
+
+`token` is the DynIP capability token returned when the host is provisioned.
 
 Config file permissions must be owner-only (`0600`).
 
@@ -56,7 +57,7 @@ Request:
 
 ```json
 {
-  "hostname": "office.example.com",
+  "fqdn": "office.example.com",
   "client_ref": "router-01"
 }
 ```
@@ -68,7 +69,7 @@ Response:
   "status": "good",
   "changed": true,
   "effective_ip": "203.0.113.10",
-  "hostname": "office.example.com"
+  "fqdn": "office.example.com"
 }
 ```
 

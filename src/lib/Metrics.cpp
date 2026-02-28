@@ -70,14 +70,21 @@ Metrics::Metrics(Server& server)
     dynip_updates_error_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "error"}});
     dynip_update_latency_ = metrics_.AddSummary("nsblast_dynip_update_latency", "DynIP update response latency", "seconds", {}, {{0.5, 0.9, 0.95, 0.99}});
 
-    if (server.isCluster()) {
-        if (server.isPrimaryReplicationServer()) {
-            cluster_replication_followers_ = metrics_.AddGauge("nsblast_cluster_replication", "Number of followers connected to us", {});
-        } else if (server_.isReplicationFollower()) {
-            cluster_replication_primaries_ = metrics_.AddGauge("nsblast_cluster_replication", "Number of primaries we are connected to", {});
-            cluster_replication_in_sync_ = metrics_.AddGauge("nsblast_cluster_replication_in_sync", "Whether this follower is in sync with its primary (1=true, 0=false)", {});
-        }
-    }
+#ifdef NSBLAST_CLUSTER
+    // Metrics are constructed before runtime role is initialized from vars.
+    // Expose cluster gauges unconditionally in cluster builds so follower startup
+    // never dereferences null gauges.
+    auto *cluster_replication = metrics_.AddGauge(
+        "nsblast_cluster_replication",
+        "Number of cluster peers connected to us",
+        {});
+    cluster_replication_followers_ = cluster_replication;
+    cluster_replication_primaries_ = cluster_replication;
+    cluster_replication_in_sync_ = metrics_.AddGauge(
+        "nsblast_cluster_replication_in_sync",
+        "Whether this follower is in sync with its primary (1=true, 0=false)",
+        {});
+#endif
 
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::ERROR, errors_));
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::WARN, warnings_));

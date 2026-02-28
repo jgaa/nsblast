@@ -305,6 +305,7 @@ private:
 
     std::mutex backup_mutex_;
     std::mutex mutex_;
+    std::mutex trxlog_commit_mutex_;
 };
 
 } // ns

@@ -57,6 +57,7 @@ void PrimaryReplication::onTransaction(transaction_t && transaction)
     update->set_isinsync(true); // Only streaming client gets this
     update->mutable_trx()->Swap(transaction.get());
     transaction.reset();
+    const auto new_trxid = update->trx().id();
 
     lock_guard lock{mutex_};
     const auto prev_trxid = last_trxid_;
@@ -75,11 +76,17 @@ void PrimaryReplication::onTransaction(transaction_t && transaction)
     LOG_TRACE << "Replicating transacion #" << last_trxid_
               << " to " << follower_agents_.size()
               << " follower agents.";
+    LOG_DEBUG << "PrimaryReplication::onTransaction prev=" << prev_trxid
+              << " new=" << new_trxid
+              << " followers=" << follower_agents_.size();
 
     // Notify PrimaryReplication agents
     for(auto& [_, agent] : follower_agents_) {
         agent->onTransaction(prev_trxid, update);
     }
+
+    LOG_DEBUG << "PrimaryReplication::onTransaction delivered trxid="
+              << new_trxid;
 }
 
 void PrimaryReplication::startTimer()
@@ -249,6 +256,10 @@ void PrimaryReplication::Agent::onDone()
 void PrimaryReplication::Agent::syncLater()
 {
     assert(!mutex_.try_lock() && "The lock must me held");
+    if (is_syncing_) {
+        return;
+    }
+    is_syncing_ = true;
 
     // We must return immediately, so schedule a follow-up
     // on a worker-thread.
@@ -260,11 +271,8 @@ void PrimaryReplication::Agent::syncLater()
     boost::asio::post(db_sync_, [w=weak_from_this()]{
         if (auto self = w.lock()) {
             try {
-                if (self->state_ == State::ITERATING_DB && !self->is_syncing_) {
+                if (self->state_ == State::ITERATING_DB) {
                     self->iterateDb();
-
-                    lock_guard lock{self->mutex_};
-                    self->is_syncing_ = false;
                 }
             } catch (const exception& ex) {
                 LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
@@ -272,6 +280,9 @@ void PrimaryReplication::Agent::syncLater()
                           << self->uuid()
                           << ": " << ex.what();
             }
+
+            lock_guard lock{self->mutex_};
+            self->is_syncing_ = false;
         }
     });
 }
@@ -288,27 +299,51 @@ boost::uuids::uuid PrimaryReplication::Agent::uuid() const noexcept
 void PrimaryReplication::Agent::onTransaction(uint64_t prevTrxId,
                                                const GrpcPrimary::update_t& update)
 {
-    lock_guard lock{mutex_};
+    std::shared_ptr<GrpcPrimary::SyncClientInterface> client;
+    {
+        lock_guard lock{mutex_};
 
-    // Check inside the lock so we don't risk a state-change while we are here.
+        // Check inside the lock so we don't risk a state-change while we are here.
+        if (!isStreaming()) {
+            return;
+        }
+
+        if (prevTrxId != last_enqueued_trxid_) {
+            LOG_TRACE << *this << " Out of sync in streaming.";
+            setState(State::ITERATING_DB, false);
+            syncLater();
+            return;
+        }
+
+        client = client_.lock();
+    }
+
+    if (!client) {
+        assert(false && "Client object removed while the agent is still in streaming mode!");
+        return;
+    }
+
+    const auto enqueued = client->enqueue(update);
+
+    lock_guard lock{mutex_};
     if (!isStreaming()) {
         return;
     }
 
-    if (prevTrxId == last_enqueued_trxid_) {
-        if (auto client = client_.lock()) {
-            if (!client->enqueue(update)) {
-                setState(State::ITERATING_DB, false);
-            }
-            last_enqueued_trxid_ = update->trx().id();
-        } else {
-            assert(false && "Client object removed while the agent is still in streaming mode!");
-        }
-    } else {
-        LOG_TRACE << *this << " Out of sync in streaming.";
+    if (prevTrxId != last_enqueued_trxid_) {
+        LOG_TRACE << *this << " Out of sync after enqueue while streaming.";
         setState(State::ITERATING_DB, false);
         syncLater();
+        return;
     }
+
+    if (!enqueued) {
+        LOG_DEBUG << *this << " enqueue reported backpressure at trxid="
+                  << update->trx().id();
+        setState(State::ITERATING_DB, false);
+    }
+
+    last_enqueued_trxid_ = update->trx().id();
 }
 
 } // ns

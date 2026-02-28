@@ -416,7 +416,21 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
 void RocksDbResource::Transaction::commit()
 {
     call_once(once_, [&] {
+        const auto commit_started = std::chrono::steady_clock::now();
+        std::optional<std::lock_guard<std::mutex>> trxlog_commit_lock;
+        if (trxlog_ && trxlog_->parts_size()) {
+            // Keep trx-log id allocation, commit and replication callback ordered.
+            // Replication consumers reject old trx ids, so the callback cannot run
+            // out of sequence even if the underlying commits completed in order.
+            trxlog_commit_lock.emplace(owner_.trxlog_commit_mutex_);
+        }
+
         handleTrxLog();
+        if (trxlog_) {
+            LOG_DEBUG << "Transaction " << uuid()
+                      << " prepared trxlog id=" << trxlog_->id()
+                      << " parts=" << trxlog_->parts_size();
+        }
         LOG_TRACE << "Committing transaction " << uuid();
         auto status = trx_->Commit();
         if (!status.ok()) {
@@ -424,16 +438,37 @@ void RocksDbResource::Transaction::commit()
             throw runtime_error{"Failed to commit transaction"};
         }
 
-        if (trxlog_ && owner_.on_trx_cb_) {
+        const bool emit_trx_callback = trxlog_ && owner_.on_trx_cb_;
+        if (trxlog_) {
+            LOG_DEBUG << "Transaction " << uuid()
+                      << " committed trxlog id=" << trxlog_->id()
+                      << " callback=" << emit_trx_callback;
+        }
+
+        if (emit_trx_callback) {
             try {
+                LOG_DEBUG << "Transaction " << uuid()
+                          << " invoking replication callback for trxlog id=" << trxlog_->id();
                 owner_.on_trx_cb_(std::move(trxlog_));
+                LOG_DEBUG << "Transaction " << uuid()
+                          << " replication callback completed in "
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - commit_started).count()
+                          << " ms";
             } catch(const exception& ex) {
                 LOG_ERROR
                     << "RocksDbResource::Transaction::commit: "
                     << "Caught exception from transaction callback: "
                     << ex.what();
             }
+            return;
         }
+
+        LOG_DEBUG << "Transaction " << uuid()
+                  << " commit completed in "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - commit_started).count()
+                  << " ms";
     });
 }
 

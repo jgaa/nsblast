@@ -5,7 +5,7 @@
 This document defines the required behavior for the `nsblast-dynip` client.
 
 Primary goals:
-- Update DynIP records against the nsblast `/nic/update` endpoint.
+- Update DynIP records against the nsblast `/api/v1/dynip/update` endpoint.
 - Use JSON payloads for both request and response.
 - Support one-shot operation and daemon mode.
 - Provide deterministic exit codes in one-shot mode.
@@ -16,8 +16,8 @@ Primary goals:
 - Implementation language: Rust.
 - Binary name: `nsblast-dynip`.
 - Transport: HTTPS by default.
-- Authentication: HTTP Basic Auth.
-- Protocol mode: JSON POST only (`POST /nic/update`).
+- Authentication: HTTP Bearer token auth.
+- Protocol mode: JSON POST only (`POST /api/v1/dynip/update`).
 
 ## 3. Configuration
 
@@ -29,8 +29,7 @@ Primary goals:
 ### 3.2 Required config keys
 
 - `url`: Base nsblast URL (for example `https://dns.example.com`).
-- `username`: Basic auth username.
-- `password`: Basic auth password.
+- `token`: DynIP capability token for the configured FQDN.
 - `fqdn`: Hostname to update.
 
 `fqdn` is required. The client must fail startup if it is missing.
@@ -67,10 +66,10 @@ Primary goals:
 
 ### 5.1 Request format
 
-- Endpoint path: `/nic/update`
+- Endpoint path: `/api/v1/dynip/update`
 - Method: `POST`
 - Headers:
-  - `Authorization: Basic ...`
+  - `Authorization: Bearer ...`
   - `Content-Type: application/json`
   - `Accept: application/json`
 
@@ -78,7 +77,7 @@ Request body (default behavior):
 
 ```json
 {
-  "hostname": "office.example.com"
+  "fqdn": "office.example.com"
 }
 ```
 
@@ -88,12 +87,12 @@ Optional request fields:
 - `ipv4`
 - `ipv6`
 
-For v1 client behavior, send only `hostname` (and `client_ref` if configured) unless an explicit future option enables client-supplied IP values.
+For v1 client behavior, send only `fqdn` (and `client_ref` if configured) unless an explicit future option enables client-supplied IP values.
 
 ### 5.2 Success response handling
 
 Expected success HTTP status: `200`.
-Expected JSON fields include: `status`, `changed`, `effective_ip`, `hostname`.
+Expected JSON fields include: `status`, `changed`, `effective_ip`, `fqdn`.
 
 Success mapping:
 - `changed=true` or `status="good"` => one-shot exit code `2`
@@ -159,7 +158,7 @@ When update result is changed (`changed=true` or `status="good"`):
 
 - TLS certificate verification is enabled by default.
 - `--insecure` mode is not allowed in v1.
-- Never log `password` or `Authorization` header.
+- Never log `token` or `Authorization` header.
 - Logs may include URL host, FQDN, HTTP status, and response `status` value.
 
 ## 10. Exit Codes

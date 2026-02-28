@@ -40,7 +40,10 @@ struct Cli {
 #[derive(Debug, Deserialize)]
 struct FileConfig {
     url: Option<String>,
-    username: Option<String>,
+    token: Option<String>,
+    #[serde(alias = "username")]
+    auth_name: Option<String>,
+    #[serde(alias = "password")]
     password: Option<String>,
     fqdn: Option<String>,
     repeat_minutes: Option<u64>,
@@ -53,8 +56,7 @@ struct FileConfig {
 #[derive(Debug, Clone)]
 struct AppConfig {
     url: String,
-    username: String,
-    password: String,
+    token: String,
     fqdn: String,
     repeat_minutes: u64,
     lock_file: PathBuf,
@@ -83,7 +85,7 @@ struct LockGuard {
 
 #[derive(Debug, Serialize)]
 struct UpdateRequest<'a> {
-    hostname: &'a str,
+    fqdn: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_ref: Option<&'a str>,
 }
@@ -93,7 +95,9 @@ struct UpdateResponse {
     status: Option<String>,
     changed: Option<bool>,
     effective_ip: Option<String>,
-    hostname: Option<String>,
+    fqdn: Option<String>,
+    #[serde(alias = "hostname")]
+    response_fqdn: Option<String>,
 }
 
 #[derive(Debug)]
@@ -213,15 +217,19 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         ExitCode::OtherError
     })?;
 
-    let username = file_cfg.username.ok_or_else(|| {
-        error!("missing required config key: username");
-        ExitCode::OtherError
-    })?;
+    if file_cfg.auth_name.is_some() {
+        warn!("config key 'username' is deprecated and ignored for Bearer token auth");
+    }
 
-    let password = file_cfg.password.ok_or_else(|| {
-        error!("missing required config key: password");
-        ExitCode::OtherError
-    })?;
+    let token = if let Some(token) = file_cfg.token {
+        token
+    } else if let Some(password) = file_cfg.password {
+        warn!("config key 'password' is deprecated; use 'token' instead");
+        password
+    } else {
+        error!("missing required config key: token");
+        return Err(ExitCode::OtherError);
+    };
 
     let repeat_minutes = cli
         .repeat_minutes
@@ -235,8 +243,7 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
 
     Ok(AppConfig {
         url,
-        username,
-        password,
+        token,
         fqdn,
         repeat_minutes,
         lock_file,
@@ -411,15 +418,15 @@ async fn update_once(
     })?;
 
     let payload = UpdateRequest {
-        hostname: &cfg.fqdn,
+        fqdn: &cfg.fqdn,
         client_ref: cfg.client_ref.as_deref(),
     };
 
-    debug!(endpoint = %endpoint, hostname = %cfg.fqdn, "sending dynip update request");
+    debug!(endpoint = %endpoint, fqdn = %cfg.fqdn, "sending dynip update request");
 
     let response = client
         .post(endpoint)
-        .basic_auth(&cfg.username, Some(&cfg.password))
+        .bearer_auth(&cfg.token)
         .header(reqwest::header::ACCEPT, "application/json")
         .json(&payload)
         .send()
@@ -444,7 +451,7 @@ async fn update_once(
 
 fn build_endpoint_url(base: &str) -> Result<Url> {
     let mut url = Url::parse(base).context("failed to parse base URL")?;
-    url.set_path("/nic/update");
+    url.set_path("/api/v1/dynip/update");
     url.set_query(None);
     Ok(url)
 }
@@ -478,14 +485,17 @@ fn interpret_success(
         ExitCode::OtherError
     })?;
 
-    let response_hostname = response.hostname.ok_or_else(|| {
-        error!("missing response field: hostname");
+    let response_fqdn = response
+        .fqdn
+        .or(response.response_fqdn)
+        .ok_or_else(|| {
+        error!("missing response field: fqdn");
         ExitCode::OtherError
     })?;
 
-    if response_hostname != expected_fqdn {
+    if response_fqdn != expected_fqdn {
         warn!(
-            response_hostname,
+            response_fqdn,
             expected_fqdn, "response hostname differs from request"
         );
     }
@@ -595,7 +605,8 @@ mod tests {
             status: Some("good".to_string()),
             changed: Some(true),
             effective_ip: Some("203.0.113.10".to_string()),
-            hostname: Some("host.example.com".to_string()),
+            fqdn: Some("host.example.com".to_string()),
+            response_fqdn: None,
         };
 
         let outcome = interpret_success(response, "host.example.com").expect("valid response");
@@ -609,11 +620,33 @@ mod tests {
             status: Some("nochg".to_string()),
             changed: None,
             effective_ip: Some("203.0.113.10".to_string()),
-            hostname: Some("host.example.com".to_string()),
+            fqdn: Some("host.example.com".to_string()),
+            response_fqdn: None,
         };
 
         let err = interpret_success(response, "host.example.com").expect_err("must fail");
         assert_eq!(err, ExitCode::OtherError);
+    }
+
+    #[test]
+    fn test_interpret_success_accepts_legacy_hostname_alias() {
+        let response = UpdateResponse {
+            status: Some("good".to_string()),
+            changed: Some(true),
+            effective_ip: Some("203.0.113.10".to_string()),
+            fqdn: None,
+            response_fqdn: Some("host.example.com".to_string()),
+        };
+
+        let outcome = interpret_success(response, "host.example.com").expect("valid response");
+        assert!(outcome.changed);
+        assert_eq!(outcome.effective_ip, "203.0.113.10");
+    }
+
+    #[test]
+    fn test_build_endpoint_url_uses_primary_dynip_path() {
+        let url = build_endpoint_url("https://dns.example.com/base").expect("url");
+        assert_eq!(url.as_str(), "https://dns.example.com/api/v1/dynip/update");
     }
 
     #[test]

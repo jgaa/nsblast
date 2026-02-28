@@ -1,6 +1,9 @@
 #pragma once
 
 #include <boost/json.hpp>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/ResourceIf.h"
@@ -82,10 +85,13 @@ private:
     yahat::Response deleteBackups(const yahat::Request &req, const Parsed& parsed);
 
     void refactorZone(boost::json::object& zone);
+    std::shared_ptr<std::mutex> getRrUpdateMutex(std::string_view zoneFqdn);
 
     const Config& config_;
     ResourceIf& resource_;
     Server *server_ = {};
+    std::mutex rr_update_mutexes_mutex_;
+    std::unordered_map<std::string, std::shared_ptr<std::mutex>> rr_update_mutexes_;
 };
 
 } // ns

@@ -2221,6 +2221,20 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
 
 Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &parsed)
 {
+    const auto lowercaseFqdn = toLower(parsed.target);
+    std::unique_lock<std::mutex> rr_update_lock;
+
+    if (req.type != Request::Type::GET) {
+        auto trx = resource_.transaction();
+        auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
+        if (!existing.hasSoa()) {
+            return {404, "Not authorative for zone"};
+        }
+
+        const auto zoneFqdn = toLower(existing.soa().begin()->labels().string());
+        rr_update_lock = std::unique_lock<std::mutex>(*getRrUpdateMutex(zoneFqdn));
+    }
+
     auto [res, session, tenant, all] = getSessionAndTenant(req, server());
     if (res) {
         return *res;
@@ -2228,8 +2242,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     StorageBuilder sb;
     auto trx = resource_.transaction();
-    const auto lowercaseFqdn = toLower(parsed.target);
-    // Get the zone
+    // Re-read inside the per-zone lock so same-zone mutations serialize on fresh state.
     auto existing = trx->lookupEntryAndSoa(lowercaseFqdn);
 
     if (!existing.hasSoa()) {
@@ -2411,6 +2424,7 @@ put:
 
         if (existing.isSame()) {
             merged->incrementSoaVersion(existing.soa());
+            newSoa = merged->soa();
         } else {
             need_version_increment = true;
             assert(existing.soa().begin()->type() == TYPE_SOA);
@@ -2448,6 +2462,7 @@ put:
 
             if (existing.isSame()) {
                 merged->incrementSoaVersion(existing.soa());
+                newSoa = merged->soa();
             } else {
                 need_version_increment = true;
                 assert(existing.soa().begin()->type() == TYPE_SOA);
@@ -2543,6 +2558,17 @@ put:
     }
 
     return {rcode, "OK"};
+}
+
+std::shared_ptr<std::mutex> RestApi::getRrUpdateMutex(std::string_view zoneFqdn)
+{
+    std::lock_guard<std::mutex> lock{rr_update_mutexes_mutex_};
+    auto& mutex = rr_update_mutexes_[std::string{zoneFqdn}];
+    if (!mutex) {
+        mutex = std::make_shared<std::mutex>();
+    }
+
+    return mutex;
 }
 
 Response RestApi::onConfigMaster(const Request &req, const RestApi::Parsed &parsed)

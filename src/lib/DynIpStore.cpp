@@ -33,6 +33,12 @@ string makeHostKey(string_view root, string_view host) {
     return std::format("{}/{}", root, host);
 }
 
+string makeDynIpToken() {
+    auto token = newUuidStr() + newUuidStr();
+    std::erase(token, '-');
+    return token;
+}
+
 bool startsWith(string_view value, string_view prefix) {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
@@ -254,7 +260,9 @@ DynIpStore::CreatedHost DynIpStore::createHost(string_view tenantId,
     }
 
     CreatedHost created;
-    created.token = getRandomStr(48);
+    // DynIP capability tokens are transported in Authorization headers,
+    // so keep them to a conservative header-safe alphabet.
+    created.token = makeDynIpToken();
     const auto tokenHash = sha256(created.token);
 
     created.host.set_tenant_id(string{tenantId});
