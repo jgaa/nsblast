@@ -46,7 +46,7 @@ LABEL maintainer="jgaa@jgaa.com"
 ARG BUILD_TYPE=RelWithDebInfo
 ARG NSBLAST_RUN_TESTS=ON
 ARG NSBLAST_WITH_SWAGGER=ON
-ARG NSBLAST_WITH_UI=OFF
+ARG NSBLAST_WITH_UI=ON
 ARG DO_STRIP=false
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -73,6 +73,10 @@ ENV LC_ALL en_US.UTF-8
 
 WORKDIR /src
 COPY . /src
+
+RUN if [ "${NSBLAST_WITH_UI}" = "ON" ]; then \
+        npm --prefix /src/ui/nsblast-ui ci; \
+    fi
 
 RUN cmake -S /src -B /build -G Ninja \
         -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
