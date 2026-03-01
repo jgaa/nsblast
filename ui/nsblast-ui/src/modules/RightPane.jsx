@@ -10,6 +10,7 @@ import Users from '../pages/Users';
 import NotImplementedPage from '../pages/NotImplementedPage';
 import About from '../pages/About';
 import LogView from '../pages/LogView';
+import DynIp from '../pages/DynIp';
 
 function LoggedIn() {
     return (
@@ -21,6 +22,7 @@ function LoggedIn() {
                 <Route path="/tenants" element={<Tenants/>} />
                 <Route path="/roles" element={<Roles/>} />
                 <Route path="/users" element={<Users/>} />
+                <Route path="/dynip" element={<DynIp/>} />
                 <Route path="/admin" element={<NotImplementedPage title="Admin Console" />} />
                 <Route path="/apikeys" element={<NotImplementedPage title="API Keys" />} />
                 <Route path="/events" element={<NotImplementedPage title="Events" />} />

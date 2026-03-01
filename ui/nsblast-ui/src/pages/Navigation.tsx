@@ -9,10 +9,12 @@ import {
     FaKey,
     FaRectangleList,
     FaFileLines,
-    FaFileCircleQuestion
+    FaFileCircleQuestion,
+    FaNetworkWired
 
 } from "react-icons/fa6"
 import { useAppState } from '../modules/AppState';
+import { detectDynIpAccess } from '../modules/dynip';
 
 export interface INavigationProps {
 }
@@ -21,36 +23,51 @@ export function Navigation(props: INavigationProps) {
   const { state, api } = useAppState();
   const loggedIn = state.loginToken.length > 0;
   const [canShowLog, setCanShowLog] = React.useState(false);
+  const [canShowDynIp, setCanShowDynIp] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
 
     if (!loggedIn) {
       setCanShowLog(false);
+      setCanShowDynIp(false);
       return () => {
         active = false;
       };
     }
 
-    const probeLogAccess = async () => {
+    const probeNavigationAccess = async () => {
       try {
-        await api.request('/log/show', {
-          method: 'GET',
-          parse: 'none',
-          retry: false,
-          retries: 0
-        });
-        if (active) {
-          setCanShowLog(true);
+        const [logAccess, dynIpAccess] = await Promise.allSettled([
+          api.request('/log/show', {
+            method: 'GET',
+            parse: 'none',
+            retry: false,
+            retries: 0
+          }),
+          detectDynIpAccess(api)
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        setCanShowLog(logAccess.status === 'fulfilled');
+        if (dynIpAccess.status === 'fulfilled') {
+          setCanShowDynIp(dynIpAccess.value.canList && dynIpAccess.value.canProvision);
+        } else {
+          setCanShowDynIp(false);
         }
       } catch {
-        if (active) {
-          setCanShowLog(false);
+        if (!active) {
+          return;
         }
+        setCanShowLog(false);
+        setCanShowDynIp(false);
       }
     };
 
-    void probeLogAccess();
+    void probeNavigationAccess();
 
     return () => {
       active = false;
@@ -70,6 +87,7 @@ export function Navigation(props: INavigationProps) {
           <Link className='w3-bar-item w3-button' to="tenants"><FaHouseUser/> Tenants</Link>
           <Link className='w3-bar-item w3-button' to="roles"><FaHouseLock/> Roles</Link>
           <Link className='w3-bar-item w3-button' to="users"><FaUsers/> Users</Link>
+          {canShowDynIp && <Link className='w3-bar-item w3-button' to="dynip"><FaNetworkWired/> DynIP</Link>}
           <Link className='w3-bar-item w3-button' to="apikeys"><FaKey/> API Keys</Link>
           <Link className='w3-bar-item w3-button' to="events"><FaRectangleList/> Events</Link>
           {canShowLog && <Link className='w3-bar-item w3-button' to="log"><FaFileLines/> Log</Link>}
