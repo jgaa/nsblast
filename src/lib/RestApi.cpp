@@ -170,6 +170,48 @@ optional<string> getDynIpAuthHeader(const yahat::Request& req) {
     return {};
 }
 
+optional<string> resolveUserUuid(Server& server, const Session& session) {
+    const auto tenant = server.auth().getTenant(string{session.tenant()});
+    if (!tenant) {
+        return {};
+    }
+
+    for (const auto& user : tenant->users()) {
+        if (compareCaseInsensitive(user.name(), session.who())) {
+            if (user.has_id()) {
+                return user.id();
+            }
+            return {};
+        }
+    }
+
+    return {};
+}
+
+Response varsErrorReply(int httpStatus, int errorCode, string_view message) {
+    boost::json::object out;
+    out["error"] = true;
+    out["status"] = httpStatus;
+    out["code"] = errorCode;
+    out["message"] = message;
+    return {httpStatus, "Error", boost::json::serialize(out)};
+}
+
+void logVarsMutation(const yahat::Request& req,
+                     const Session& session,
+                     string_view action,
+                     string_view varName,
+                     string_view result,
+                     string_view detail,
+                     optional<string_view> userUuid = {}) {
+    LOG_INFO << "Vars " << action << ' ' << varName << ' ' << result
+             << " {request=" << req.uuid
+             << ", tenant_uuid=" << boost::uuids::to_string(session.tenantId())
+             << ", user_uuid=" << (userUuid ? *userUuid : string_view{"unknown"})
+             << ", user=" << session.who()
+             << "} detail=" << detail;
+}
+
 bool secureEquals(std::string_view left, std::string_view right) {
     if (left.size() != right.size()) {
         return false;
@@ -1471,10 +1513,18 @@ Response RestApi::onPermissions(const yahat::Request &req, const Parsed &parsed)
             const auto permnames = std::ranges::transform_view(
                 tenant->allowedpermissions(),
                 [](auto id) {
+                    if (!nsblast::pb::Permission_IsValid(id)) {
+                        return std::string{};
+                    }
                     return nsblast::pb::Permission_Name(id);
                 });
-
-            return makeReply(permnames);
+            std::vector<std::string> out;
+            for (const auto& permname : permnames) {
+                if (!permname.empty()) {
+                    out.emplace_back(permname);
+                }
+            }
+            return makeReply(out);
         }
     default:
         return {400, "Invalid method"};
@@ -1487,6 +1537,7 @@ Response RestApi::onVars(const yahat::Request &req, const Parsed &parsed)
     if (!session) {
         return {401, "Unauthorized"};
     }
+    const auto user_uuid = resolveUserUuid(server(), *session);
 
     auto itemToJson = [](const Vars::Item& item) {
         boost::json::object obj;
@@ -1545,11 +1596,13 @@ Response RestApi::onVars(const yahat::Request &req, const Parsed &parsed)
         try {
             server().vars().set(name, *val, false, false);
         } catch (const Vars::Error& ex) {
+            logVarsMutation(req, *session, "set", name, "rejected", ex.what(), user_uuid);
             if (ex.code() == 3) {
-                return {404, ex.what()};
+                return varsErrorReply(404, ex.code(), ex.what());
             }
-            return {400, ex.what()};
+            return varsErrorReply(400, ex.code(), ex.what());
         }
+        logVarsMutation(req, *session, "set", name, "applied", "OK", user_uuid);
         if (auto item = server().vars().get(name)) {
             return {200, "OK", boost::json::serialize(itemToJson(*item))};
         }
@@ -1566,11 +1619,13 @@ Response RestApi::onVars(const yahat::Request &req, const Parsed &parsed)
         try {
             server().vars().unset(name, false, false);
         } catch (const Vars::Error& ex) {
+            logVarsMutation(req, *session, "unset", name, "rejected", ex.what(), user_uuid);
             if (ex.code() == 3) {
-                return {404, ex.what()};
+                return varsErrorReply(404, ex.code(), ex.what());
             }
-            return {400, ex.what()};
+            return varsErrorReply(400, ex.code(), ex.what());
         }
+        logVarsMutation(req, *session, "unset", name, "applied", "OK", user_uuid);
         if (auto item = server().vars().get(name)) {
             return {200, "OK", boost::json::serialize(itemToJson(*item))};
         }
@@ -2176,7 +2231,7 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
 
         // /dynip/{root}/{host}
         if (req.type == Request::Type::POST) {
-            if (!allow(pb::Permission::DYNIP_CREATE)) {
+            if (!(allow(pb::Permission::DYNIP_CREATE) || session->isAllowed(pb::Permission::DYNIP_PROVISION))) {
                 return failDenied();
             }
             uint32_t ttl = vars->dynip_default_ttl();
@@ -2200,8 +2255,21 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
             out["ttl"] = static_cast<int64_t>(created.host.ttl());
             return jsonOk(out, 201);
         }
+        if (req.type == Request::Type::PUT) {
+            if (!(allow(pb::Permission::DYNIP_CREATE) || session->isAllowed(pb::Permission::DYNIP_PROVISION))) {
+                return failDenied();
+            }
+            const auto rotated = store.rotateHostToken(tenantId, root, op);
+            boost::json::object out;
+            out["host"] = rotated.host.host();
+            out["fqdn"] = rotated.host.fqdn();
+            out["token"] = rotated.token;
+            out["update_url"] = "/dynip/update";
+            out["ttl"] = static_cast<int64_t>(rotated.host.ttl());
+            return jsonOk(out);
+        }
         if (req.type == Request::Type::DELETE) {
-            if (!allow(pb::Permission::DYNIP_DELETE)) {
+            if (!(allow(pb::Permission::DYNIP_DELETE) || session->isAllowed(pb::Permission::DYNIP_PROVISION))) {
                 return failDenied();
             }
             if (!store.deleteHost(tenantId, root, op)) {
@@ -2793,7 +2861,9 @@ Response RestApi::listTenants(const yahat::Request &req, const Parsed& /*parsed*
 
                 auto& perms = item["allowedPermissions"] = boost::json::array{};
                 for(auto perm : tenant.allowedpermissions()) {
-                    perms.as_array().emplace_back(pb::Permission_Name(perm));
+                    if (pb::Permission_IsValid(perm)) {
+                        perms.as_array().emplace_back(pb::Permission_Name(perm));
+                    }
                 }
             }
 

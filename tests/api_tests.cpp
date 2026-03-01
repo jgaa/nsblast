@@ -411,6 +411,26 @@ TEST(ApiValidate, zoneNsIsNotArray) {
     }
 }
 
+TEST(ApiVars, rejectsDynIpEnableWithoutRealmWithStructuredError) {
+    MockServer svr;
+    RestApi api{svr};
+
+    auto req = makeRequest(svr,
+                           "admin/vars",
+                           "dynip_enabled",
+                           R"({"value":true})",
+                           yahat::Request::Type::PUT);
+    const auto reply = api.onReqest(req);
+
+    EXPECT_EQ(reply.code, 400);
+
+    const auto body = boost::json::parse(reply.body).as_object();
+    EXPECT_TRUE(body.at("error").as_bool());
+    EXPECT_EQ(body.at("status").as_int64(), 400);
+    EXPECT_EQ(body.at("code").as_int64(), 2);
+    EXPECT_EQ(body.at("message").as_string(), "dynip_realm must be set when dynip_enabled=true");
+}
+
 TEST(ApiValidate, zoneOnlyOneNs) {
 
     auto json = getZoneJson();
@@ -1721,6 +1741,57 @@ TEST(ApiRequest, listRoles) {
     EXPECT_EQ(ra.at(0).as_object().at("name").as_string(), "Administrator");
 }
 
+TEST(ApiRequest, permissionsFiltersRemovedPermissionSlotsAfterAdminRepair) {
+    MockServer svr;
+
+    const auto system_tenant_id = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
+    auto tenant = svr.auth().getTenant(system_tenant_id);
+    ASSERT_TRUE(tenant);
+
+    tenant->add_allowedpermissions(static_cast<pb::Permission>(44));
+    auto* administrator_role = [&]() -> pb::Role* {
+        for (auto& role : *tenant->mutable_roles()) {
+            if (compareCaseInsensitive(role.name(), std::string_view{"Administrator"})) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(administrator_role);
+    administrator_role->add_permissions(static_cast<pb::Permission>(44));
+
+    svr.auth().upsertTenant(tenant->id(), *tenant, false);
+    EXPECT_TRUE(svr.auth().ensureAdminTenantRoleConsistency(true));
+
+    auto repaired = svr.auth().getTenant(system_tenant_id);
+    ASSERT_TRUE(repaired);
+    EXPECT_TRUE(std::ranges::find(repaired->allowedpermissions(), static_cast<pb::Permission>(44))
+                == repaired->allowedpermissions().end());
+    const auto* repaired_administrator_role = [&]() -> const pb::Role* {
+        for (const auto& role : repaired->roles()) {
+            if (compareCaseInsensitive(role.name(), std::string_view{"Administrator"})) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(repaired_administrator_role);
+    EXPECT_TRUE(std::ranges::find(repaired_administrator_role->permissions(), static_cast<pb::Permission>(44))
+                == repaired_administrator_role->permissions().end());
+
+    auto req = makeRequest(svr, "permissions", "", {}, yahat::Request::Type::GET);
+    RestApi api{svr};
+    auto parsed = api.parse(req);
+    auto res = api.onPermissions(req, parsed);
+    EXPECT_EQ(res.code, 200);
+
+    const auto body = boost::json::parse(res.body);
+    const auto& perms = body.as_object().at("value").as_array();
+    EXPECT_TRUE(std::ranges::find_if(perms, [](const auto& value) {
+                    return value.as_string().empty();
+                }) == perms.end());
+}
+
 TEST(ApiRequest, deleteRole) {
     MockServer svr;
 
@@ -2395,6 +2466,56 @@ TEST(ApiRequest, dynIpPostJson) {
     EXPECT_EQ(json.at("effective_ip").as_string(), "203.0.113.12");
     EXPECT_EQ(json.at("record_type").as_string(), "A");
     EXPECT_EQ(json.at("fqdn").as_string(), "router.home.dynip.example.com");
+}
+
+TEST(ApiRequest, dynIpRotateHostTokenWithPut) {
+    MockServer svr;
+    svr.vars().set("dynip_realm", boost::json::value{"dynip.example.com"});
+    svr.vars().set("dynip_enabled", true);
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "DYNIP_PROVISION", "DYNIP_LIST"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto zoneReq = makeRequest(svr, "zone", "dynip.example.com", boost::json::serialize(getZoneJson("dynip.example.com")), yahat::Request::Type::POST);
+    ASSERT_EQ(api.onZone(zoneReq, api.parse(zoneReq)).code, 201);
+
+    ASSERT_EQ(api.onReqest(makeDynIpRequest("/api/v1/dynip/home", "{}", yahat::Request::Type::POST, auth)).code, 201);
+
+    const auto createRes = api.onReqest(makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::POST, auth));
+    ASSERT_EQ(createRes.code, 201);
+    const auto createJson = boost::json::parse(createRes.body).as_object();
+    const auto originalToken = string{createJson.at("token").as_string()};
+
+    const auto rotateRes = api.onReqest(makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::PUT, auth));
+    ASSERT_EQ(rotateRes.code, 200);
+    const auto rotateJson = boost::json::parse(rotateRes.body).as_object();
+    const auto rotatedToken = string{rotateJson.at("token").as_string()};
+    EXPECT_NE(rotatedToken, originalToken);
+
+    yahat::Auth oldCapabilityAuth;
+    oldCapabilityAuth.access = true;
+    oldCapabilityAuth.extra = std::format("Bearer {}", originalToken);
+    auto oldReq = makeDynIpRequest("/nic/update?hostname=router.home.dynip.example.com&myip=203.0.113.10",
+                                   {},
+                                   yahat::Request::Type::GET,
+                                   oldCapabilityAuth);
+    auto oldRes = api.onReqest(oldReq);
+    EXPECT_EQ(oldRes.code, 200);
+    EXPECT_EQ(oldRes.body, "badauth");
+
+    yahat::Auth newCapabilityAuth;
+    newCapabilityAuth.access = true;
+    newCapabilityAuth.extra = std::format("Bearer {}", rotatedToken);
+    auto newReq = makeDynIpRequest("/nic/update?hostname=router.home.dynip.example.com&myip=203.0.113.10",
+                                   {},
+                                   yahat::Request::Type::GET,
+                                   newCapabilityAuth);
+    auto newRes = api.onReqest(newReq);
+    EXPECT_EQ(newRes.code, 200);
+    EXPECT_EQ(newRes.body, "good 203.0.113.10");
 }
 
 TEST(ApiRequest, backupRestoreRouteIsNotExposed) {

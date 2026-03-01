@@ -11,12 +11,14 @@ import {
     FaRectangleList,
     FaFileLines,
     FaFileCircleQuestion,
-    FaNetworkWired
+    FaNetworkWired,
+    FaSliders
 
 } from "react-icons/fa6"
 import { useAppState } from '../modules/AppState';
 import { detectDynIpAccess } from '../modules/dynip';
 import { detectBackupAccess } from '../modules/backup';
+import { detectVarsAccess } from '../modules/vars';
 
 export interface INavigationProps {
 }
@@ -27,6 +29,7 @@ export function Navigation(props: INavigationProps) {
   const [canShowLog, setCanShowLog] = React.useState(false);
   const [canShowDynIp, setCanShowDynIp] = React.useState(false);
   const [canShowBackups, setCanShowBackups] = React.useState(false);
+  const [canShowVars, setCanShowVars] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
@@ -35,6 +38,7 @@ export function Navigation(props: INavigationProps) {
       setCanShowLog(false);
       setCanShowDynIp(false);
       setCanShowBackups(false);
+      setCanShowVars(false);
       return () => {
         active = false;
       };
@@ -42,7 +46,7 @@ export function Navigation(props: INavigationProps) {
 
     const probeNavigationAccess = async () => {
       try {
-        const [logAccess, dynIpAccess, backupAccess] = await Promise.allSettled([
+        const [logAccess, dynIpAccess, backupAccess, varsAccess] = await Promise.allSettled([
           api.request('/log/show', {
             method: 'GET',
             parse: 'none',
@@ -50,7 +54,8 @@ export function Navigation(props: INavigationProps) {
             retries: 0
           }),
           detectDynIpAccess(api),
-          detectBackupAccess(api)
+          detectBackupAccess(api),
+          detectVarsAccess(api)
         ]);
 
         if (!active) {
@@ -68,6 +73,16 @@ export function Navigation(props: INavigationProps) {
         } else {
           setCanShowBackups(false);
         }
+        if (varsAccess.status === 'fulfilled') {
+          setCanShowVars(
+            varsAccess.value.canList ||
+            varsAccess.value.canRead ||
+            varsAccess.value.canSet ||
+            varsAccess.value.canUnset
+          );
+        } else {
+          setCanShowVars(false);
+        }
       } catch {
         if (!active) {
           return;
@@ -75,6 +90,7 @@ export function Navigation(props: INavigationProps) {
         setCanShowLog(false);
         setCanShowDynIp(false);
         setCanShowBackups(false);
+        setCanShowVars(false);
       }
     };
 
@@ -94,7 +110,7 @@ export function Navigation(props: INavigationProps) {
         </div>
         <nav>
           <Link className='w3-bar-item w3-button' to="dashboard"><FaChartSimple/> Dashboard</Link>
-          <Link className='w3-bar-item w3-button' to="admin"><FaCrown/> Admin Console</Link>
+          {canShowVars && <Link className='w3-bar-item w3-button' to="vars"><FaSliders/> Vars</Link>}
           <Link className='w3-bar-item w3-button' to="tenants"><FaHouseUser/> Tenants</Link>
           <Link className='w3-bar-item w3-button' to="roles"><FaHouseLock/> Roles</Link>
           <Link className='w3-bar-item w3-button' to="users"><FaUsers/> Users</Link>

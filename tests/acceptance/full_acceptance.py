@@ -45,6 +45,11 @@ class AcceptanceError(RuntimeError):
     pass
 
 
+METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+LABEL_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+SAMPLE_LINE_RE = re.compile(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+(.+)$")
+
+
 @dataclass
 class TenantInfo:
     tenant_id: str
@@ -132,6 +137,7 @@ class Runner:
             "waves": 0,
             "dynip_updates": 0,
             "follower_metrics_available": {},
+            "metrics_lint": {},
         }
 
     def _random_secret(self, n: int) -> str:
@@ -923,6 +929,109 @@ class Runner:
                 total += float(m.group(1))
         return total
 
+    def lint_metrics_text(self, node: str, text: str) -> List[str]:
+        errors: List[str] = []
+        help_names = set()
+        type_names = {}
+        unit_names = {}
+
+        for lineno, raw_line in enumerate(text.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            if line.startswith("# HELP "):
+                parts = line.split(" ", 3)
+                if len(parts) != 4:
+                    errors.append(f"{node}:{lineno}: malformed HELP line")
+                    continue
+                name = parts[2]
+                if not METRIC_NAME_RE.match(name):
+                    errors.append(f"{node}:{lineno}: invalid HELP metric name {name}")
+                if name in help_names:
+                    errors.append(f"{node}:{lineno}: duplicate HELP for {name}")
+                help_names.add(name)
+                continue
+
+            if line.startswith("# TYPE "):
+                parts = line.split(" ", 3)
+                if len(parts) != 4:
+                    errors.append(f"{node}:{lineno}: malformed TYPE line")
+                    continue
+                name = parts[2]
+                mtype = parts[3]
+                if not METRIC_NAME_RE.match(name):
+                    errors.append(f"{node}:{lineno}: invalid TYPE metric name {name}")
+                if name in type_names:
+                    errors.append(f"{node}:{lineno}: duplicate TYPE for {name}")
+                type_names[name] = mtype
+                if mtype == "counter" and not name.endswith("_total"):
+                    errors.append(f"{node}:{lineno}: counter metric {name} must end with _total")
+                continue
+
+            if line.startswith("# UNIT "):
+                parts = line.split(" ", 3)
+                if len(parts) != 4:
+                    errors.append(f"{node}:{lineno}: malformed UNIT line")
+                    continue
+                name = parts[2]
+                unit = parts[3]
+                if not METRIC_NAME_RE.match(name):
+                    errors.append(f"{node}:{lineno}: invalid UNIT metric name {name}")
+                if name in unit_names:
+                    errors.append(f"{node}:{lineno}: duplicate UNIT for {name}")
+                unit_names[name] = unit
+                if not name.endswith(f"_{unit}"):
+                    errors.append(f"{node}:{lineno}: unit {unit} not a suffix of metric {name}")
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            match = SAMPLE_LINE_RE.match(line)
+            if not match:
+                errors.append(f"{node}:{lineno}: malformed sample line")
+                continue
+
+            sample_name = match.group(1)
+            label_blob = match.group(2) or ""
+            if not METRIC_NAME_RE.match(sample_name):
+                errors.append(f"{node}:{lineno}: invalid sample metric name {sample_name}")
+
+            for label_match in re.finditer(r'([a-zA-Z_][a-zA-Z0-9_]*)="(?:[^"\\]|\\.)*"', label_blob):
+                label_name = label_match.group(1)
+                if not LABEL_NAME_RE.match(label_name):
+                    errors.append(f"{node}:{lineno}: invalid label name {label_name}")
+
+            family_name = sample_name
+            if sample_name.endswith("_count") or sample_name.endswith("_sum") or sample_name.endswith("_bucket"):
+                family_name = sample_name.rsplit("_", 1)[0]
+            elif sample_name.endswith("_stateset"):
+                family_name = sample_name[: -len("_stateset")]
+
+            family_type = type_names.get(family_name)
+            if family_type is None and sample_name not in type_names:
+                errors.append(f"{node}:{lineno}: sample {sample_name} has no matching TYPE declaration")
+                continue
+
+            expected_type = family_type or type_names.get(sample_name)
+            if expected_type == "summary":
+                valid = sample_name == family_name or sample_name in {f"{family_name}_count", f"{family_name}_sum"}
+                if not valid:
+                    errors.append(f"{node}:{lineno}: invalid summary sample name {sample_name}")
+            elif expected_type == "histogram":
+                valid = sample_name in {f"{family_name}_bucket", f"{family_name}_count", f"{family_name}_sum"}
+                if not valid:
+                    errors.append(f"{node}:{lineno}: invalid histogram sample name {sample_name}")
+            elif expected_type == "stateset":
+                if sample_name != f"{family_name}_stateset":
+                    errors.append(f"{node}:{lineno}: invalid stateset sample name {sample_name}")
+            else:
+                if sample_name != family_name:
+                    errors.append(f"{node}:{lineno}: invalid {expected_type} sample name {sample_name}")
+
+        return errors
+
     def collect_diagnostics(self) -> None:
         self.artifact_root.mkdir(parents=True, exist_ok=True)
 
@@ -934,6 +1043,11 @@ class Runner:
             FOLLOWER2_NAME: self._safe_fetch_text(self.follower_metrics[1]),
         }
         (self.artifact_root / "metrics.txt.json").write_text(json.dumps(metrics_dump, indent=2), encoding="utf-8")
+        lint_errors = {node: self.lint_metrics_text(node, text) for node, text in metrics_dump.items()}
+        self.summary["metrics_lint"] = {
+            node: {"ok": not errs, "errors": errs}
+            for node, errs in lint_errors.items()
+        }
         self.summary["node_metrics"] = {
             PRIMARY_NAME: {
                 "errors": self.get_metric(self.primary_metrics, "nsblast_logged_errors"),
@@ -964,6 +1078,14 @@ class Runner:
             "failures": self.failures,
         }
         (self.artifact_root / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+        metric_lint_failures = [
+            f"{node}: {err}"
+            for node, errs in lint_errors.items()
+            for err in errs
+        ]
+        if metric_lint_failures:
+            raise AcceptanceError("Metrics lint failures:\n" + "\n".join(metric_lint_failures))
 
     def _safe_fetch_text(self, url: str) -> str:
         try:

@@ -37,6 +37,9 @@ public:
                            std::string_view realm,
                            uint32_t ttl,
                            uint32_t maxHostsPerRoot);
+    CreatedHost rotateHostToken(std::string_view tenantId,
+                                std::string_view root,
+                                std::string_view host);
     std::vector<pb::DynipHost> listHosts(std::string_view tenantId, std::string_view root);
     bool deleteHost(std::string_view tenantId, std::string_view root, std::string_view host);
 

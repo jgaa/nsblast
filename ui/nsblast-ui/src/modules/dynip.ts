@@ -58,5 +58,5 @@ export async function detectDynIpAccess(api: ApiClientLike): Promise<DynIpAccess
     probeDeletePath(api, `/dynip/${INVALID_PROBE_LABEL}/${INVALID_PROBE_LABEL}`)
   ]);
 
-  return { canList, canProvision, canDeleteHosts };
+  return { canList, canProvision, canDeleteHosts: canProvision || canDeleteHosts };
 }

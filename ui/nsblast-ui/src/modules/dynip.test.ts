@@ -24,6 +24,29 @@ describe('detectDynIpAccess', () => {
     });
   });
 
+  it('treats DynIP provision access as sufficient for host deletion', async () => {
+    const request = vi.fn(async (target: string) => {
+      if (target === '/dynip') {
+        return null;
+      }
+      if (target === '/dynip/nsblast_ui_probe') {
+        throw makeError(400);
+      }
+      if (target === '/dynip/nsblast_ui_probe/nsblast_ui_probe') {
+        throw makeError(403);
+      }
+      throw makeError(500, 'unexpected');
+    });
+
+    const access = await detectDynIpAccess({ request: request as never });
+
+    expect(access).toEqual({
+      canList: true,
+      canProvision: true,
+      canDeleteHosts: true
+    });
+  });
+
   it('returns false when DynIP permissions are denied', async () => {
     const request = vi.fn(async (target: string) => {
       throw makeError(target === '/dynip' ? 403 : 403);

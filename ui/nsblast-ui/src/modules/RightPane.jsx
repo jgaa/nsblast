@@ -12,10 +12,11 @@ import About from '../pages/About';
 import LogView from '../pages/LogView';
 import DynIp from '../pages/DynIp';
 import Backups from '../pages/Backups';
+import Vars from '../pages/Vars';
 
 function LoggedIn() {
     return (
-        <div className="w3-row" style={{ marginLeft: "25%" }}>
+        <div className="w3-row ns-shell-content">
             <Routes>
                 <Route path="/" element={<Navigate to="dashboard" />} />
                 <Route path="/dashboard" exact element={<Dashboard />} />
@@ -25,7 +26,7 @@ function LoggedIn() {
                 <Route path="/users" element={<Users/>} />
                 <Route path="/dynip" element={<DynIp/>} />
                 <Route path="/backups" element={<Backups/>} />
-                <Route path="/admin" element={<NotImplementedPage title="Admin Console" />} />
+                <Route path="/vars" element={<Vars />} />
                 <Route path="/apikeys" element={<NotImplementedPage title="API Keys" />} />
                 <Route path="/events" element={<NotImplementedPage title="Events" />} />
                 <Route path="/log" element={<LogView />} />

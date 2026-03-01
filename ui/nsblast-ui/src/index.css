@@ -31,7 +31,7 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
 
-  --sidebar-width: 20%;
+  --sidebar-width: clamp(220px, 18vw, 300px);
   --brand-logo-url: url("/brand-logo.svg");
   --brand-logo-height: 48px;
 }
@@ -218,6 +218,19 @@ code {
   border-color: var(--color-border) !important;
 }
 
+.ns-shell-content {
+  margin-left: var(--sidebar-width);
+  width: calc(100vw - var(--sidebar-width));
+  max-width: calc(100vw - var(--sidebar-width));
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.ns-login-panel {
+  width: min(30rem, calc(100vw - var(--sidebar-width) - 3rem));
+  margin: 5vh auto 0;
+}
+
 .w3-sidebar a {
   color: inherit;
   text-decoration: none;
@@ -358,4 +371,28 @@ code {
   color: var(--color-on-secondary);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-2);
+}
+
+@media (max-width: 900px) {
+  :root {
+    --sidebar-width: 100vw;
+  }
+
+  .w3-sidebar {
+    position: static;
+    height: auto;
+    width: 100% !important;
+  }
+
+  .ns-shell-content {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+    min-height: auto;
+  }
+
+  .ns-login-panel {
+    width: min(30rem, calc(100vw - 2rem));
+    margin: var(--space-4) auto 0;
+  }
 }

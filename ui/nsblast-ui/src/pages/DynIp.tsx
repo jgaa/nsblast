@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FaArrowsRotate, FaNetworkWired, FaTrashCan } from 'react-icons/fa6';
+import { FaArrowsRotate, FaCopy, FaKey, FaNetworkWired, FaTrashCan } from 'react-icons/fa6';
 import { useAppState } from '../modules/AppState';
 import { ApiClientError } from '../modules/apiClient';
 import { detectDynIpAccess, type DynIpAccess } from '../modules/dynip';
+import PopupDialog from '../modules/PopupDialog';
 import { encodePathSegment } from '../modules/url';
 
 type DynIpRoot = {
@@ -26,6 +27,18 @@ type DynIpHostView = DynIpHost & {
 
 type DynIpRootView = DynIpRoot & {
   hosts: DynIpHostView[];
+};
+
+type NewHostForm = {
+  host: string;
+  ttl: string;
+};
+
+type DynIpTokenPayload = {
+  fqdn?: string;
+  token?: string;
+  update_url?: string;
+  ttl?: number;
 };
 
 type AvailabilityState =
@@ -68,6 +81,10 @@ function isValidDnsLabel(value: string): boolean {
   return /^[a-z0-9-]+$/.test(value);
 }
 
+function formatDynIpError(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 function extractIps(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return [];
@@ -103,10 +120,14 @@ export default function DynIp() {
   const [rootName, setRootName] = useState('');
   const [hostLimit, setHostLimit] = useState('');
   const [creating, setCreating] = useState(false);
+  const [creatingHostFor, setCreatingHostFor] = useState('');
+  const [hostForms, setHostForms] = useState<Record<string, NewHostForm>>({});
+  const [tokenPopup, setTokenPopup] = useState<DynIpTokenPayload | null>(null);
+  const [copyNotice, setCopyNotice] = useState('');
   const [availability, setAvailability] = useState<AvailabilityState>(initialAvailability);
 
   const canUseDynIp = access.canList && access.canProvision;
-  const canDeleteHosts = access.canDeleteHosts || access.canProvision;
+  const canManageHosts = access.canProvision || access.canDeleteHosts;
 
   const loadData = async () => {
     setLoading(true);
@@ -169,7 +190,7 @@ export default function DynIp() {
 
       setRoots(rootViews);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load DynIP data');
+      setError(formatDynIpError(err, 'Failed to load DynIP data'));
     } finally {
       setLoading(false);
     }
@@ -313,9 +334,99 @@ export default function DynIp() {
       setNotice(`Provisioned DynIP root ${normalized}.`);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to provision DynIP root');
+      setError(formatDynIpError(err, 'Failed to provision DynIP root'));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const getHostForm = (root: string): NewHostForm => hostForms[root] ?? { host: '', ttl: '' };
+
+  const setHostForm = (root: string, next: NewHostForm) => {
+    setHostForms((current) => ({ ...current, [root]: next }));
+  };
+
+  const onCreateHost = async (root: DynIpRootView) => {
+    const form = getHostForm(root.root);
+    const host = normalizeRootLabel(form.host);
+    if (!isValidDnsLabel(host)) {
+      setError('A valid DynIP host label is required.');
+      return;
+    }
+    if (!canManageHosts) {
+      setError('Your account cannot provision DynIP hosts.');
+      return;
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (form.ttl.trim().length) {
+      const parsed = Number.parseInt(form.ttl, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Host TTL must be a positive integer.');
+        return;
+      }
+      payload.ttl = parsed;
+    }
+
+    setCreatingHostFor(root.root);
+    setError('');
+    setNotice('');
+    try {
+      const created = (await api.request(`/dynip/${encodePathSegment(root.root)}/${encodePathSegment(host)}`, {
+        method: 'POST',
+        body: payload
+      })) as DynIpTokenPayload;
+      setHostForm(root.root, { host: '', ttl: '' });
+      setTokenPopup(created);
+      setCopyNotice('');
+      setNotice(`Created DynIP host ${created.fqdn ?? host}.`);
+      await loadData();
+    } catch (err) {
+      setError(formatDynIpError(err, 'Failed to create DynIP host'));
+    } finally {
+      setCreatingHostFor('');
+    }
+  };
+
+  const onRotateHostToken = async (root: DynIpRootView, host: DynIpHostView) => {
+    if (!canManageHosts) {
+      setError('Your account cannot create a new password for DynIP hosts.');
+      return;
+    }
+
+    if (!window.confirm(`Create a new password for "${host.fqdn}"? The current token will stop working.`)) {
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    try {
+      const rotated = (await api.request(
+        `/dynip/${encodePathSegment(root.root)}/${encodePathSegment(host.host)}`,
+        {
+          method: 'PUT',
+          body: {}
+        }
+      )) as DynIpTokenPayload;
+      setTokenPopup(rotated);
+      setCopyNotice('');
+      setNotice(`Created a new password for ${host.fqdn}.`);
+      await loadData();
+    } catch (err) {
+      setError(formatDynIpError(err, 'Failed to create a new password for the DynIP host'));
+    }
+  };
+
+  const onCopyToken = async () => {
+    if (!tokenPopup?.token) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(tokenPopup.token);
+      setCopyNotice('Copied token to clipboard.');
+    } catch {
+      setCopyNotice('Clipboard copy failed. Copy the token manually.');
     }
   };
 
@@ -343,7 +454,7 @@ export default function DynIp() {
   };
 
   const onDeleteHost = async (root: DynIpRootView, host: DynIpHostView) => {
-    if (!canDeleteHosts) {
+    if (!canManageHosts) {
       setError('Your account cannot delete DynIP hosts.');
       return;
     }
@@ -361,7 +472,7 @@ export default function DynIp() {
       setNotice(`Deleted DynIP host ${host.fqdn}.`);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete DynIP host');
+      setError(formatDynIpError(err, 'Failed to delete DynIP host'));
     }
   };
 
@@ -409,6 +520,12 @@ export default function DynIp() {
 
       <div className="w3-card w3-white" style={{ padding: '1rem', marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Provision DynIP Root</h3>
+        <p style={{ marginTop: 0 }}>
+          A <strong>root</strong> is the shared ending for a group of updatable hostnames.
+          If your DynIP realm is <code>dyn.example.com</code> and the root is <code>home</code>,
+          you can then create names like <code>camera.home.dyn.example.com</code> and
+          <code>router.home.dyn.example.com</code>.
+        </p>
         <label>Root label</label>
         <input
           className="w3-input w3-border"
@@ -468,6 +585,52 @@ export default function DynIp() {
               <strong>Host limit:</strong> {root.host_limit}
             </p>
 
+            <div className="w3-card w3-theme-l4" style={{ padding: '1rem', marginBottom: '1rem' }}>
+              <h4 style={{ marginTop: 0 }}>Add Host</h4>
+              <p style={{ marginTop: 0 }}>
+                Create a hostname under <code>{root.fqdn}</code>. For example, host label
+                <code> camera</code> becomes <code>camera.{root.fqdn}</code>.
+              </p>
+              <div className="w3-row-padding">
+                <div className="w3-half">
+                  <label>Host label</label>
+                  <input
+                    className="w3-input w3-border"
+                    value={getHostForm(root.root).host}
+                    onChange={(event) =>
+                      setHostForm(root.root, {
+                        ...getHostForm(root.root),
+                        host: event.target.value
+                      })
+                    }
+                    placeholder="camera"
+                  />
+                </div>
+                <div className="w3-half">
+                  <label>TTL (optional)</label>
+                  <input
+                    className="w3-input w3-border"
+                    value={getHostForm(root.root).ttl}
+                    onChange={(event) =>
+                      setHostForm(root.root, {
+                        ...getHostForm(root.root),
+                        ttl: event.target.value
+                      })
+                    }
+                    placeholder="Use server default"
+                  />
+                </div>
+              </div>
+              <button
+                className="w3-button w3-green"
+                style={{ marginTop: '0.75rem' }}
+                onClick={() => void onCreateHost(root)}
+                disabled={creatingHostFor === root.root || !canManageHosts}
+              >
+                {creatingHostFor === root.root ? 'Creating host...' : 'Create Host'}
+              </button>
+            </div>
+
             <div className="w3-responsive">
               <table className="w3-table-all w3-small">
                 <thead>
@@ -499,6 +662,13 @@ export default function DynIp() {
                       <td>{host.disabled ? 'yes' : 'no'}</td>
                       <td>
                         <button
+                          className="w3-button w3-blue w3-small"
+                          style={{ marginRight: '0.5rem' }}
+                          onClick={() => void onRotateHostToken(root, host)}
+                        >
+                          <FaKey /> New Password
+                        </button>
+                        <button
                           className="w3-button w3-red w3-small"
                           onClick={() => void onDeleteHost(root, host)}
                         >
@@ -513,6 +683,40 @@ export default function DynIp() {
           </div>
         </div>
       ))}
+
+      <PopupDialog isOpen={Boolean(tokenPopup)} onClosed={() => setTokenPopup(null)}>
+        <h3>DynIP Token</h3>
+        <p>
+          Save this token now. When you close this popup, the bearer token will not be shown again.
+        </p>
+        <p>
+          You can use it as a <strong>Bearer token</strong> in the <code>Authorization</code> header,
+          or as HTTP login credentials with the full hostname as the username and the token as the password.
+        </p>
+        <p>
+          Full hostname username:
+          <br />
+          <code>{tokenPopup?.fqdn ?? '-'}</code>
+        </p>
+        <p>
+          Token / password:
+          <br />
+          <code style={{ wordBreak: 'break-all' }}>{tokenPopup?.token ?? '-'}</code>
+        </p>
+        {copyNotice ? <div className="w3-panel w3-pale-green">{copyNotice}</div> : null}
+        <div className="w3-bar">
+          <button className="w3-button w3-blue" onClick={() => void onCopyToken()}>
+            <FaCopy /> Copy Token
+          </button>
+          <button
+            className="w3-button w3-gray"
+            style={{ marginLeft: '0.5rem' }}
+            onClick={() => setTokenPopup(null)}
+          >
+            Close
+          </button>
+        </div>
+      </PopupDialog>
     </div>
   );
 }

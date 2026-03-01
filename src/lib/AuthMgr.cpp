@@ -466,6 +466,19 @@ bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
     auto& t = *tenant;
 
     if (applyFixes) {
+        const auto invalid_removed = std::remove_if(
+            t.mutable_allowedpermissions()->begin(),
+            t.mutable_allowedpermissions()->end(),
+            [](int perm) {
+                return !pb::Permission_IsValid(perm);
+            });
+        if (invalid_removed != t.mutable_allowedpermissions()->end()) {
+            t.mutable_allowedpermissions()->erase(invalid_removed, t.mutable_allowedpermissions()->end());
+            changed = true;
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed invalid tenant "
+                     << "permissions from " << t.id();
+        }
+
         if (eraseDuplicates(t.mutable_allowedpermissions(), [](int lhs, int rhs) {
                 return lhs == rhs;
             })) {
@@ -513,15 +526,32 @@ bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
                  << admin_role_name << " to " << t.id();
     }
 
-    if (admin_role) {
-        if (applyFixes && eraseDuplicates(admin_role->mutable_permissions(), [](int lhs, int rhs) {
-                return lhs == rhs;
-            })) {
-            changed = true;
-            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed duplicate permissions "
-                     << "from role " << admin_role->name();
-        }
+    if (applyFixes) {
+        for (auto& role : *t.mutable_roles()) {
+            const auto invalid_removed = std::remove_if(
+                role.mutable_permissions()->begin(),
+                role.mutable_permissions()->end(),
+                [](int perm) {
+                    return !pb::Permission_IsValid(perm);
+                });
+            if (invalid_removed != role.mutable_permissions()->end()) {
+                role.mutable_permissions()->erase(invalid_removed, role.mutable_permissions()->end());
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed invalid permissions "
+                         << "from role " << role.name();
+            }
 
+            if (eraseDuplicates(role.mutable_permissions(), [](int lhs, int rhs) {
+                    return lhs == rhs;
+                })) {
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed duplicate permissions "
+                         << "from role " << role.name();
+            }
+        }
+    }
+
+    if (admin_role) {
         for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
             if (!pb::Permission_IsValid(i)) {
                 continue;

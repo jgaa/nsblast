@@ -290,6 +290,54 @@ DynIpStore::CreatedHost DynIpStore::createHost(string_view tenantId,
     return created;
 }
 
+DynIpStore::CreatedHost DynIpStore::rotateHostToken(string_view tenantId,
+                                                    string_view root,
+                                                    string_view host) {
+    const auto rootLower = normalizeLabel(root);
+    const auto hostLower = normalizeLabel(host);
+    auto trx = resource_.transaction();
+
+    auto dynRoot = readProto<pb::DynipRoot>(*trx, ResourceIf::RealKey{rootLower, ResourceIf::RealKey::Class::DYNIP_ROOT});
+    if (!dynRoot) {
+        throw NotFoundException{"DynIP root not found"};
+    }
+    if (!compareCaseInsensitive(dynRoot->tenant_id(), tenantId, true)) {
+        throw ConstraintException{"DynIP root belongs to another tenant"};
+    }
+
+    const auto hostKeyData = makeHostKey(rootLower, hostLower);
+    const ResourceIf::RealKey hostKey{hostKeyData, ResourceIf::RealKey::Class::DYNIP_HOST};
+    auto dynHost = readProto<pb::DynipHost>(*trx, hostKey);
+    if (!dynHost) {
+        throw NotFoundException{"DynIP host not found"};
+    }
+
+    const auto oldTokenHash = dynHost->token_hash();
+    CreatedHost rotated;
+    rotated.token = makeDynIpToken();
+    const auto tokenHash = sha256(rotated.token);
+
+    dynHost->set_token_hash(tokenHash);
+    rotated.host = *dynHost;
+
+    pb::DynipTokenIndex tokenIx;
+    tokenIx.set_token_hash(tokenHash);
+    tokenIx.set_tenant_id(dynHost->tenant_id());
+    tokenIx.set_root(dynHost->root());
+    tokenIx.set_host(dynHost->host());
+    tokenIx.set_fqdn(dynHost->fqdn());
+    tokenIx.set_ttl(dynHost->ttl());
+    tokenIx.set_disabled(dynHost->disabled());
+
+    trx->remove(ResourceIf::RealKey{oldTokenHash, ResourceIf::RealKey::Class::DYNIP_TOKEN},
+                false, ResourceIf::Category::ACCOUNT);
+    writeProto(*trx, hostKey, *dynHost, false);
+    writeProto(*trx, ResourceIf::RealKey{tokenHash, ResourceIf::RealKey::Class::DYNIP_TOKEN}, tokenIx, true);
+    trx->commit();
+
+    return rotated;
+}
+
 vector<pb::DynipHost> DynIpStore::listHosts(string_view tenantId, string_view root) {
     const auto rootLower = normalizeLabel(root);
     auto trx = resource_.transaction();

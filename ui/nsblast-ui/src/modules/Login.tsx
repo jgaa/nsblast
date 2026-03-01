@@ -74,9 +74,9 @@ export default function Login() {
     }
 
     return (
-        <div className="w3-row" style={{ marginLeft: "22%", width:"30%" }}>
+        <div className="w3-row ns-shell-content">
 
-            <div className='w3-card' style={{marginTop: "5%"}}>
+            <div className='w3-card ns-login-panel'>
                 <header className="w3-container w3-blue">
                     <h1>Login</h1>
                 </header>
