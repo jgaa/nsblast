@@ -57,6 +57,9 @@ Public beta expected soon.
 - HTTP REST API
   - Optional swagger endpoint to document/experiment with the API
   - RBAC (Role Based Access Control)
+- Rust operator CLIs
+  - `nsblast-dynip` for DynIP capability-token updates
+  - `nsblastctl` for tenant, zone, RR, import/export, and basic admin workflows
 - Support SaaS use cases with individual users grouped under organizations/tenants. 
 - Simple Cluster mode
   - Allows a cluster of Nsblast server to work as a typical database cluster with one primary server for all writes, and any number of follower servers for reads.
@@ -75,6 +78,16 @@ The project use CMake.
 It uses C++ 20 features and require g++-13 / clang-15 or newer.
 
 It requires boost version 1.85 or newer by default.
+
+Operator CLIs are built from the Rust workspace in [`cli/`](./cli):
+
+```sh
+cd cli
+cargo build -p nsblastctl
+cargo build -p dynip-client
+```
+
+Book documentation for the operator CLI is in [`nsblast-book/src/devops_cli.md`](./nsblast-book/src/devops_cli.md).
 
 Other dependencies that are handled automatically by CMake:
 

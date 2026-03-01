@@ -1,3 +1,3 @@
 [workspace]
-members = ["dynip-client"]
+members = ["dynip-client", "nsblastctl"]
 resolver = "2"
