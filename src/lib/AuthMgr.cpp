@@ -56,25 +56,6 @@ bool eraseDuplicates(T* list, Pred&& pred) {
     return changed;
 }
 
-std::string toUpperAscii(std::string_view val) {
-    std::string out;
-    out.resize(val.size());
-    auto p = out.begin();
-
-    for (const char ch : val) {
-        assert(p != out.end());
-        static constexpr char diff = 'a' - 'A';
-        if (ch >= 'a' && ch <= 'z') {
-            *p = static_cast<char>(ch - diff);
-        } else {
-            *p = ch;
-        }
-        ++p;
-    }
-
-    return out;
-}
-
 bool isDeprecatedAdministratorRole(std::string_view name) {
     return compareCaseInsensitive(name, std::string_view{"Administrator"});
 }
@@ -470,6 +451,7 @@ void AuthMgr::migrateStorage()
 bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
 {
     static constexpr std::string_view admin_user_name = "admin";
+    static constexpr std::string_view admin_role_name = "Administrator";
     const auto tenant_id = boost::uuids::to_string(nsblastTenantUuid);
     ResourceIf::RealKey key{tenant_id, ResourceIf::RealKey::Class::TENANT};
     auto trx = server_.resource().transaction();
@@ -482,10 +464,6 @@ bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
 
     bool changed = false;
     auto& t = *tenant;
-
-    const auto has_non_legacy_roles = std::ranges::any_of(t.roles(), [](const auto& role) {
-        return !isDeprecatedAdministratorRole(role.name());
-    });
 
     if (applyFixes) {
         if (eraseDuplicates(t.mutable_allowedpermissions(), [](int lhs, int rhs) {
@@ -519,16 +497,67 @@ bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
         }
     }
 
-    if (applyFixes && has_non_legacy_roles) {
-        auto* roles = t.mutable_roles();
-        const auto removed = std::remove_if(roles->begin(), roles->end(), [](const auto& role) {
-            return isDeprecatedAdministratorRole(role.name());
-        });
-        if (removed != roles->end()) {
-            roles->erase(removed, roles->end());
+    pb::Role* admin_role = nullptr;
+    for (auto& role : *t.mutable_roles()) {
+        if (compareCaseInsensitive(role.name(), admin_role_name)) {
+            admin_role = &role;
+            break;
+        }
+    }
+
+    if (!admin_role && applyFixes) {
+        admin_role = t.add_roles();
+        admin_role->set_name(string{admin_role_name});
+        changed = true;
+        LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Added missing role "
+                 << admin_role_name << " to " << t.id();
+    }
+
+    if (admin_role) {
+        if (applyFixes && eraseDuplicates(admin_role->mutable_permissions(), [](int lhs, int rhs) {
+                return lhs == rhs;
+            })) {
             changed = true;
-            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed deprecated role "
-                     << "Administrator from " << t.id();
+            LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removed duplicate permissions "
+                     << "from role " << admin_role->name();
+        }
+
+        for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
+            if (!pb::Permission_IsValid(i)) {
+                continue;
+            }
+
+            const auto perm = static_cast<pb::Permission>(i);
+            if (hasPermission(*admin_role, perm)) {
+                continue;
+            }
+
+            const auto pname = pb::Permission_Name(perm);
+            if (applyFixes) {
+                admin_role->add_permissions(perm);
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Adding missing permission "
+                         << pname << " to role " << admin_role->name();
+            } else {
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Missing permission "
+                         << pname << " in role " << admin_role->name()
+                         << " (not applying on follower)";
+            }
+        }
+
+        if (applyFixes) {
+            auto* filter = admin_role->mutable_filter();
+            const auto current_fqdn = filter->has_fqdn() ? filter->fqdn() : std::string{};
+            const auto current_recursive = filter->has_recursive() ? filter->recursive() : true;
+            const auto current_regex = filter->has_regex() ? filter->regex() : std::string{};
+            if (current_fqdn != "" || !current_recursive || current_regex != "") {
+                filter->set_fqdn("");
+                filter->set_recursive(true);
+                filter->set_regex("");
+                changed = true;
+                LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Reset filter for role "
+                         << admin_role->name() << " to full administrative scope";
+            }
         }
     }
 
@@ -546,37 +575,20 @@ bool AuthMgr::ensureAdminTenantRoleConsistency(bool applyFixes)
                  << t.id();
     } else {
         std::vector<std::string> expected_roles;
-        expected_roles.reserve(t.roles().size());
-        for (const auto& role : t.roles()) {
-            if (has_non_legacy_roles && isDeprecatedAdministratorRole(role.name())) {
-                continue;
-            }
-            const auto canonical_role_name = toUpperAscii(role.name());
-            if (std::ranges::find_if(expected_roles, [&](const auto& existing) {
-                    return compareCaseInsensitive(existing, canonical_role_name);
-                }) == expected_roles.end()) {
-                expected_roles.emplace_back(canonical_role_name);
-            }
+        if (admin_role) {
+            expected_roles.emplace_back(admin_role->name());
         }
 
         if (applyFixes) {
             auto* roles = admin_user->mutable_roles();
 
             for (auto& user_role : *roles) {
-                if (has_non_legacy_roles && isDeprecatedAdministratorRole(user_role)) {
-                    LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Removing deprecated "
-                             << "admin user role " << user_role;
-                    user_role.clear();
-                    changed = true;
-                    continue;
-                }
-
-                const auto canonical_role_name = toUpperAscii(user_role);
-                if (user_role != canonical_role_name) {
+                if (admin_role && compareCaseInsensitive(user_role, admin_role->name())
+                    && user_role != admin_role->name()) {
                     LOG_INFO << "AuthMgr::ensureAdminTenantRoleConsistency - Normalizing "
                              << "admin user role " << user_role << " to "
-                             << canonical_role_name;
-                    user_role = canonical_role_name;
+                             << admin_role->name();
+                    user_role = admin_role->name();
                     changed = true;
                 }
             }

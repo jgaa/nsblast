@@ -19,13 +19,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install user manual tooling
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc wkhtmltopdf
-          cargo install mdbook --locked
-
       - name: Validate CLI artifacts
         shell: bash
         run: |
@@ -50,29 +43,6 @@ jobs:
           cp cli/target/release/nsblastctl "dist/${CTL_ASSET}"
           chmod +x "dist/${CTL_ASSET}"
           sha256sum "dist/${CTL_ASSET}" > "dist/${CTL_ASSET}.sha256"
-
-      - name: Build user manual assets
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          mdbook build nsblast-book
-
-          MANUAL_BASENAME="nsblast-user-manual-${RELEASE_TAG}"
-          pandoc \
-            nsblast-book/book/print.html \
-            --from html \
-            --to epub \
-            --metadata title="The nsBLAST Domain Name Server" \
-            --output "dist/${MANUAL_BASENAME}.epub"
-
-          wkhtmltopdf \
-            --enable-local-file-access \
-            nsblast-book/book/print.html \
-            "dist/${MANUAL_BASENAME}.pdf"
-
-          sha256sum "dist/${MANUAL_BASENAME}.epub" > "dist/${MANUAL_BASENAME}.epub.sha256"
-          sha256sum "dist/${MANUAL_BASENAME}.pdf" > "dist/${MANUAL_BASENAME}.pdf.sha256"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -102,7 +72,3 @@ jobs:
             dist/nsblast-dynip-${{ github.ref_name }}-linux-x86_64.sha256
             dist/nsblastctl-${{ github.ref_name }}-linux-x86_64
             dist/nsblastctl-${{ github.ref_name }}-linux-x86_64.sha256
-            dist/nsblast-user-manual-${{ github.ref_name }}.epub
-            dist/nsblast-user-manual-${{ github.ref_name }}.epub.sha256
-            dist/nsblast-user-manual-${{ github.ref_name }}.pdf
-            dist/nsblast-user-manual-${{ github.ref_name }}.pdf.sha256

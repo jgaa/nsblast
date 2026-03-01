@@ -1,4 +1,6 @@
 
+#include <any>
+#include <fstream>
 #include <filesystem>
 #include <format>
 #include <ranges>
@@ -263,20 +265,14 @@ TEST(AuthMgr, migrateStorageBackfillsDynipPermission) {
     EXPECT_EQ(ms.auth().dataSchemaVersion(), CURRENT_DATA_SCHEMA_VERSION);
 }
 
-TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) {
+TEST(AuthMgr, ensureAdminTenantRoleConsistencyPreservesAdministratorRoleAndAdminAssignment) {
     MockServer ms;
     static constexpr std::string_view admin_user_name = "admin";
-    static constexpr std::string_view extra_role_name = "metrics";
-    static constexpr std::string_view legacy_role_name = "Administrator";
+    static constexpr std::string_view admin_role_name = "Administrator";
 
     const auto system_tenant_id = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
     auto tenant = ms.auth().getTenant(system_tenant_id);
     ASSERT_TRUE(tenant);
-
-    // Add a real built-in role beside the legacy Administrator role and remove DYNIP.
-    auto* extra_role = tenant->add_roles();
-    extra_role->set_name(string{extra_role_name});
-    extra_role->add_permissions(pb::Permission::USE_API);
 
     for (auto it = tenant->mutable_allowedpermissions()->begin();
          it != tenant->mutable_allowedpermissions()->end();) {
@@ -286,6 +282,20 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) 
             ++it;
         }
     }
+
+    auto* administrator_role = [&]() -> pb::Role* {
+        for (auto& role : *tenant->mutable_roles()) {
+            if (compareCaseInsensitive(role.name(), admin_role_name)) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(administrator_role);
+    administrator_role->clear_permissions();
+    administrator_role->add_permissions(pb::Permission::USE_API);
+    administrator_role->mutable_filter()->set_fqdn("example.com");
+    administrator_role->mutable_filter()->set_recursive(false);
 
     auto* admin_user = [&]() -> pb::User* {
         for (auto& user : *tenant->mutable_users()) {
@@ -299,8 +309,7 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) 
     ASSERT_TRUE(admin_user);
     admin_user->clear_roles();
     admin_user->add_roles("administrator");
-    admin_user->add_roles("METRICS");
-    admin_user->add_roles("metrics");
+    admin_user->add_roles("ADMINISTRATOR");
 
     ms.auth().upsertTenant(tenant->id(), *tenant, false);
     EXPECT_TRUE(ms.auth().ensureAdminTenantRoleConsistency(true));
@@ -311,6 +320,28 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) 
     EXPECT_TRUE(std::ranges::find(repaired->allowedpermissions(), pb::Permission::DYNIP)
                 != repaired->allowedpermissions().end());
 
+    const auto* repaired_admin_role = [&]() -> const pb::Role* {
+        for (const auto& role : repaired->roles()) {
+            if (compareCaseInsensitive(role.name(), admin_role_name)) {
+                return &role;
+            }
+        }
+        return nullptr;
+    }();
+    ASSERT_TRUE(repaired_admin_role);
+    EXPECT_EQ(repaired_admin_role->name(), admin_role_name);
+    for (int i = pb::Permission_MIN; i <= pb::Permission_MAX; ++i) {
+        if (!pb::Permission_IsValid(i)) {
+            continue;
+        }
+        EXPECT_TRUE(std::ranges::find(repaired_admin_role->permissions(),
+                                      static_cast<pb::Permission>(i))
+                    != repaired_admin_role->permissions().end());
+    }
+    EXPECT_EQ(PB_GET(repaired_admin_role->filter(), fqdn, ""), "");
+    EXPECT_TRUE(PB_GET(repaired_admin_role->filter(), recursive, true));
+    EXPECT_EQ(PB_GET(repaired_admin_role->filter(), regex, ""), "");
+
     const auto* repaired_admin_user = [&]() -> const pb::User* {
         for (const auto& user : repaired->users()) {
             if (compareCaseInsensitive(user.name(), admin_user_name)) {
@@ -320,34 +351,24 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) 
         return nullptr;
     }();
     ASSERT_TRUE(repaired_admin_user);
+    EXPECT_EQ(repaired_admin_user->roles().size(), 1);
+    EXPECT_EQ(repaired_admin_user->roles(0), admin_role_name);
 
-    std::vector<std::string> expected_roles;
-    for (const auto& role : repaired->roles()) {
-        auto canonical = toLower(role.name());
-        if (std::ranges::find(expected_roles, canonical) == expected_roles.end()) {
-            expected_roles.emplace_back(std::move(canonical));
-        }
-    }
+    filesystem::path pwd_file_path = ms->config().db_path;
+    pwd_file_path /= "password.txt";
+    ifstream in{pwd_file_path};
+    string passwd;
+    in >> passwd;
+    ASSERT_FALSE(passwd.empty());
 
-    EXPECT_EQ(repaired_admin_user->roles().size(), expected_roles.size());
-    const auto is_upper_ascii = [](std::string_view value) {
-        return std::ranges::all_of(value, [](unsigned char ch) {
-            return ch < 'a' || ch > 'z';
-        });
-    };
-    for (const auto& user_role : repaired_admin_user->roles()) {
-        EXPECT_TRUE(is_upper_ascii(user_role));
-        EXPECT_TRUE(std::ranges::find_if(expected_roles, [&](const auto& expected) {
-                        return compareCaseInsensitive(expected, user_role);
-                    }) != expected_roles.end());
-    }
-
-    EXPECT_TRUE(std::ranges::find_if(repaired->roles(), [](const auto& role) {
-                    return compareCaseInsensitive(role.name(), legacy_role_name);
-                }) == repaired->roles().end());
-    EXPECT_TRUE(std::ranges::find_if(repaired_admin_user->roles(), [](const auto& role) {
-                    return compareCaseInsensitive(role, legacy_role_name);
-                }) == repaired_admin_user->roles().end());
+    const auto auth = ms.getAuthAs(admin_user_name, passwd);
+    ASSERT_TRUE(auth.access);
+    const auto session = any_cast<std::shared_ptr<Session>>(auth.extra);
+    ASSERT_TRUE(session);
+    EXPECT_TRUE(session->isAllowed(pb::Permission::LIST_ROLES));
+    EXPECT_TRUE(session->isAllowed(pb::Permission::GET_SELF_USER));
+    EXPECT_TRUE(session->isAllowed(pb::Permission::SHOW_LOG));
+    EXPECT_TRUE(session->isAllowed(pb::Permission::VARS_LIST));
 }
 
 int main(int argc, char **argv) {
