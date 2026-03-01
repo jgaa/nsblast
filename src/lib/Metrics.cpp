@@ -68,7 +68,7 @@ Metrics::Metrics(Server& server)
     dynip_updates_notfqdn_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "notfqdn"}});
     dynip_updates_disabled_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "disabled"}});
     dynip_updates_error_ = metrics_.AddCounter("nsblast_dynip_updates", "Number of DynIP update responses", {}, {{"result", "error"}});
-    dynip_update_latency_ = metrics_.AddSummary("nsblast_dynip_update_latency", "DynIP update response latency", "seconds", {}, {{0.5, 0.9, 0.95, 0.99}});
+    dynip_update_latency_ = metrics_.AddSummary("nsblast_dynip_update_latency_seconds", "DynIP update response latency", "seconds", {}, {{0.5, 0.9, 0.95, 0.99}});
 
 #ifdef NSBLAST_CLUSTER
     // Metrics are constructed before runtime role is initialized from vars.
