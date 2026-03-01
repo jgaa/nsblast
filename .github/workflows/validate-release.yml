@@ -1,0 +1,91 @@
+name: Validate Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/validate-release.yml'
+      - '.github/workflows/release.yml'
+      - 'cli/**'
+      - 'nsblast-book/**'
+      - 'build-docker-image.sh'
+      - 'docker/**'
+      - 'CMakeLists.txt'
+      - 'src/**'
+  pull_request:
+    paths:
+      - '.github/workflows/validate-release.yml'
+      - '.github/workflows/release.yml'
+      - 'cli/**'
+      - 'nsblast-book/**'
+      - 'build-docker-image.sh'
+      - 'docker/**'
+      - 'CMakeLists.txt'
+      - 'src/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install user manual tooling
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc wkhtmltopdf
+          cargo install mdbook --locked
+
+      - name: Validate CLI artifacts
+        shell: bash
+        run: |
+          cargo check -p dynip-client --manifest-path cli/Cargo.toml
+          cargo check -p nsblastctl --manifest-path cli/Cargo.toml
+
+      - name: Build CLI release artifacts
+        shell: bash
+        run: |
+          cargo build --release -p dynip-client --manifest-path cli/Cargo.toml
+          cargo build --release -p nsblastctl --manifest-path cli/Cargo.toml
+          mkdir -p dist
+
+          DYNIP_ASSET="nsblast-dynip-linux-x86_64"
+          cp cli/target/release/nsblast-dynip "dist/${DYNIP_ASSET}"
+          chmod +x "dist/${DYNIP_ASSET}"
+          sha256sum "dist/${DYNIP_ASSET}" > "dist/${DYNIP_ASSET}.sha256"
+
+          CTL_ASSET="nsblastctl-linux-x86_64"
+          cp cli/target/release/nsblastctl "dist/${CTL_ASSET}"
+          chmod +x "dist/${CTL_ASSET}"
+          sha256sum "dist/${CTL_ASSET}" > "dist/${CTL_ASSET}.sha256"
+
+      - name: Build user manual assets
+        shell: bash
+        run: |
+          mdbook build nsblast-book
+
+          pandoc \
+            nsblast-book/book/print.html \
+            --from html \
+            --to epub \
+            --metadata title="The nsBLAST Domain Name Server" \
+            --output "dist/nsblast-user-manual.epub"
+
+          wkhtmltopdf \
+            --enable-local-file-access \
+            nsblast-book/book/print.html \
+            "dist/nsblast-user-manual.pdf"
+
+      - name: Build container image (no push)
+        shell: bash
+        run: |
+          ./build-docker-image.sh --skip-tests
