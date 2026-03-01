@@ -2397,6 +2397,20 @@ TEST(ApiRequest, dynIpPostJson) {
     EXPECT_EQ(json.at("fqdn").as_string(), "router.home.dynip.example.com");
 }
 
+TEST(ApiRequest, backupRestoreRouteIsNotExposed) {
+    MockServer svr;
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "LIST_BACKUPS", "CREATE_BACKUP"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto req = makeDynIpRequest("/api/v1/backup/1/restore", "{}", yahat::Request::Type::POST, auth);
+    auto res = api.onReqest(req);
+    EXPECT_EQ(res.code, 404);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

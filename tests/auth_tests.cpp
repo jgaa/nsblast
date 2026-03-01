@@ -263,17 +263,17 @@ TEST(AuthMgr, migrateStorageBackfillsDynipPermission) {
     EXPECT_EQ(ms.auth().dataSchemaVersion(), CURRENT_DATA_SCHEMA_VERSION);
 }
 
-TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) {
+TEST(AuthMgr, ensureAdminTenantRoleConsistencyNormalizesAndBackfillsAdminRoles) {
     MockServer ms;
-    static constexpr std::string_view administrator_role_name = "Administrator";
     static constexpr std::string_view admin_user_name = "admin";
-    static constexpr std::string_view extra_role_name = "extra-role";
+    static constexpr std::string_view extra_role_name = "metrics";
+    static constexpr std::string_view legacy_role_name = "Administrator";
 
     const auto system_tenant_id = boost::uuids::to_string(nsblast::lib::nsblastTenantUuid);
     auto tenant = ms.auth().getTenant(system_tenant_id);
     ASSERT_TRUE(tenant);
 
-    // Add an extra role and remove DYNIP from tenant/Administrator.
+    // Add a real built-in role beside the legacy Administrator role and remove DYNIP.
     auto* extra_role = tenant->add_roles();
     extra_role->set_name(string{extra_role_name});
     extra_role->add_permissions(pb::Permission::USE_API);
@@ -282,25 +282,6 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) 
          it != tenant->mutable_allowedpermissions()->end();) {
         if (*it == pb::Permission::DYNIP) {
             it = tenant->mutable_allowedpermissions()->erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    auto* admin_role = [&]() -> pb::Role* {
-        for (auto& role : *tenant->mutable_roles()) {
-            if (compareCaseInsensitive(role.name(), administrator_role_name)) {
-                return &role;
-            }
-        }
-        return nullptr;
-    }();
-
-    ASSERT_TRUE(admin_role);
-    for (auto it = admin_role->mutable_permissions()->begin();
-         it != admin_role->mutable_permissions()->end();) {
-        if (*it == pb::Permission::DYNIP) {
-            it = admin_role->mutable_permissions()->erase(it);
         } else {
             ++it;
         }
@@ -317,7 +298,9 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) 
 
     ASSERT_TRUE(admin_user);
     admin_user->clear_roles();
-    admin_user->add_roles(string{administrator_role_name});
+    admin_user->add_roles("administrator");
+    admin_user->add_roles("METRICS");
+    admin_user->add_roles("metrics");
 
     ms.auth().upsertTenant(tenant->id(), *tenant, false);
     EXPECT_TRUE(ms.auth().ensureAdminTenantRoleConsistency(true));
@@ -327,18 +310,6 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) 
 
     EXPECT_TRUE(std::ranges::find(repaired->allowedpermissions(), pb::Permission::DYNIP)
                 != repaired->allowedpermissions().end());
-
-    const auto* repaired_admin_role = [&]() -> const pb::Role* {
-        for (const auto& role : repaired->roles()) {
-            if (compareCaseInsensitive(role.name(), administrator_role_name)) {
-                return &role;
-            }
-        }
-        return nullptr;
-    }();
-    ASSERT_TRUE(repaired_admin_role);
-    EXPECT_TRUE(std::ranges::find(repaired_admin_role->permissions(), pb::Permission::DYNIP)
-                != repaired_admin_role->permissions().end());
 
     const auto* repaired_admin_user = [&]() -> const pb::User* {
         for (const auto& user : repaired->users()) {
@@ -350,9 +321,33 @@ TEST(AuthMgr, ensureAdminTenantRoleConsistencyRepairsAdminAndAdministratorRole) 
     }();
     ASSERT_TRUE(repaired_admin_user);
 
-    EXPECT_TRUE(std::ranges::find_if(repaired_admin_user->roles(), [](const auto& rn) {
-                    return compareCaseInsensitive(rn, extra_role_name);
-                }) != repaired_admin_user->roles().end());
+    std::vector<std::string> expected_roles;
+    for (const auto& role : repaired->roles()) {
+        auto canonical = toLower(role.name());
+        if (std::ranges::find(expected_roles, canonical) == expected_roles.end()) {
+            expected_roles.emplace_back(std::move(canonical));
+        }
+    }
+
+    EXPECT_EQ(repaired_admin_user->roles().size(), expected_roles.size());
+    const auto is_upper_ascii = [](std::string_view value) {
+        return std::ranges::all_of(value, [](unsigned char ch) {
+            return ch < 'a' || ch > 'z';
+        });
+    };
+    for (const auto& user_role : repaired_admin_user->roles()) {
+        EXPECT_TRUE(is_upper_ascii(user_role));
+        EXPECT_TRUE(std::ranges::find_if(expected_roles, [&](const auto& expected) {
+                        return compareCaseInsensitive(expected, user_role);
+                    }) != expected_roles.end());
+    }
+
+    EXPECT_TRUE(std::ranges::find_if(repaired->roles(), [](const auto& role) {
+                    return compareCaseInsensitive(role.name(), legacy_role_name);
+                }) == repaired->roles().end());
+    EXPECT_TRUE(std::ranges::find_if(repaired_admin_user->roles(), [](const auto& role) {
+                    return compareCaseInsensitive(role, legacy_role_name);
+                }) == repaired_admin_user->roles().end());
 }
 
 int main(int argc, char **argv) {

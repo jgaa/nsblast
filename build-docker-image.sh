@@ -15,7 +15,7 @@ clean=false
 build_deb=false
 run_tests=ON
 swagger=true
-ui=OFF
+ui=ON
 cmake_build_type=RelWithDebInfo
 image_tag=$project
 scriptname=`basename "$0"`
@@ -34,7 +34,8 @@ usage() {
   echo "  --debug       Compile with debugging enabled"
   echo "  --strip       Strip the binary (makes backtraces less useful)"
   echo "  --clean       Perform a full, new build."
-  echo "  --ui          Build with embedded UI (requires npm in build stage)"
+  echo "  --ui          Build with embedded UI (default)"
+  echo "  --no-ui       Build without embedded UI"
   echo "  --no-swagger  Build without swagger (smaller binary)"
   echo "  --deb         Build a deb package for Debian as well"
   echo "  --push        Push the image to a docker registry"
@@ -97,6 +98,11 @@ while [ $# -gt 0 ];  do
         --ui)
             shift
             ui=ON
+            ;;
+
+        --no-ui)
+            shift
+            ui=OFF
             ;;
 
         --tag)

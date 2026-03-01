@@ -119,3 +119,95 @@ Passing `--cluster-role` on normal startup is rejected by the server.
 - `NSBLAST_CLUSTER_AUTH_KEY`
   Alternative to `--cluster-auth-key`; the environment variable contains the
   shared secret itself as plaintext.
+
+## Docker storage and certificates
+
+The container image intentionally does not declare Docker `VOLUME`s.
+
+That is a deliberate operational choice:
+
+- explicit mounts are clearer than anonymous Docker-managed volumes
+- operators usually want to control exactly where database state lives
+- certificates and private keys should be mounted explicitly, not baked into the
+  image and not hidden behind implicit volume behavior
+
+### Recommended mount layout
+
+Recommended persistent and configuration paths are:
+
+- `/var/lib/nsblast`
+  Database state, generated `password.txt`, and other local state
+- `/etc/nsblast`
+  Config files, certificates, and keys
+
+If you use local backups, mount that path explicitly too.
+
+### Ownership and permissions
+
+The container runs as UID `999`.
+
+That means:
+
+- `/var/lib/nsblast` must be writable by UID `999`
+- certificate files under `/etc/nsblast` must be readable by UID `999`
+- private keys should normally be mounted read-only
+
+### Best practices
+
+- use a bind mount or named volume for `/var/lib/nsblast`
+- keep certificate and key material in a separate read-only mount
+- pass `--db-path` explicitly, even if it points to the default location
+- persist any configured backup path explicitly instead of relying on the
+  container filesystem
+- treat TLS material as runtime secrets, not build-time image content
+
+### Why not Docker `VOLUME`
+
+Declaring `VOLUME /var/lib/nsblast` or `VOLUME /etc/nsblast` in the image would
+not actually configure a correct deployment. It would mostly create implicit
+Docker volume behavior, often with anonymous volumes, which makes data location
+and cleanup less obvious.
+
+For `nsblast`, explicit runtime mounts are the safer default.
+
+## Container logging to a mounted file
+
+In containers, `-C` or `--log-to-console` controls the log level written to
+stdout and stderr, which means it ends up in the normal Docker or container
+runtime logs.
+
+If you want a log file on a mounted path, use `-L` or `--log-file` and mount a
+directory for it explicitly.
+
+Example:
+
+```sh
+docker run --name nsblast --rm -it \
+  -v "$(pwd)/nsblast-data:/var/lib/nsblast" \
+  -v "$(pwd)/nsblast-logs:/var/log/nsblast" \
+  ghcr.io/jgaa/nsblast \
+  --db-path /var/lib/nsblast \
+  -C info \
+  -L /var/log/nsblast/nsblast.log
+```
+
+In that example:
+
+- `-C info` sends info-and-above logs to stdout/stderr for Docker logs
+- `-L /var/log/nsblast/nsblast.log` writes a separate log file to the mounted
+  volume
+
+Important current limitation:
+
+- the log file is not compressed
+- the log file is not rotated automatically
+
+Because of that, file logging is primarily useful for:
+
+- evaluation
+- testing
+- development
+- short-lived troubleshooting sessions
+
+It should not be treated as a complete long-term production log retention
+solution without an external rotation or collection strategy.

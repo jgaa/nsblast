@@ -184,7 +184,10 @@ Prefer integration-style tests using temporary RocksDB directories.
 ## 11. Behaviour
 
 - Dry-run mode (`--check-migrations`) that validates applicability without writes?
-- Built-in admin roles automatically receive all new permissions.
+- The built-in admin user is repaired to hold every built-in system-tenant role once,
+  using canonical uppercase role references.
+- Legacy `Administrator` role references are removed when the system tenant already
+  has the real built-in roles.
 
 ## 12. Summary
 

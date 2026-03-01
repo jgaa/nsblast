@@ -11,6 +11,7 @@ import NotImplementedPage from '../pages/NotImplementedPage';
 import About from '../pages/About';
 import LogView from '../pages/LogView';
 import DynIp from '../pages/DynIp';
+import Backups from '../pages/Backups';
 
 function LoggedIn() {
     return (
@@ -23,6 +24,7 @@ function LoggedIn() {
                 <Route path="/roles" element={<Roles/>} />
                 <Route path="/users" element={<Users/>} />
                 <Route path="/dynip" element={<DynIp/>} />
+                <Route path="/backups" element={<Backups/>} />
                 <Route path="/admin" element={<NotImplementedPage title="Admin Console" />} />
                 <Route path="/apikeys" element={<NotImplementedPage title="API Keys" />} />
                 <Route path="/events" element={<NotImplementedPage title="Events" />} />

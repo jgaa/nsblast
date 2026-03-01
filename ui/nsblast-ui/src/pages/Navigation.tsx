@@ -4,6 +4,7 @@ import {
     FaUsers,
     FaCrown,
     FaChartSimple,
+    FaDatabase,
     FaHouseUser,
     FaHouseLock,
     FaKey,
@@ -15,6 +16,7 @@ import {
 } from "react-icons/fa6"
 import { useAppState } from '../modules/AppState';
 import { detectDynIpAccess } from '../modules/dynip';
+import { detectBackupAccess } from '../modules/backup';
 
 export interface INavigationProps {
 }
@@ -24,6 +26,7 @@ export function Navigation(props: INavigationProps) {
   const loggedIn = state.loginToken.length > 0;
   const [canShowLog, setCanShowLog] = React.useState(false);
   const [canShowDynIp, setCanShowDynIp] = React.useState(false);
+  const [canShowBackups, setCanShowBackups] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
@@ -31,6 +34,7 @@ export function Navigation(props: INavigationProps) {
     if (!loggedIn) {
       setCanShowLog(false);
       setCanShowDynIp(false);
+      setCanShowBackups(false);
       return () => {
         active = false;
       };
@@ -38,14 +42,15 @@ export function Navigation(props: INavigationProps) {
 
     const probeNavigationAccess = async () => {
       try {
-        const [logAccess, dynIpAccess] = await Promise.allSettled([
+        const [logAccess, dynIpAccess, backupAccess] = await Promise.allSettled([
           api.request('/log/show', {
             method: 'GET',
             parse: 'none',
             retry: false,
             retries: 0
           }),
-          detectDynIpAccess(api)
+          detectDynIpAccess(api),
+          detectBackupAccess(api)
         ]);
 
         if (!active) {
@@ -58,12 +63,18 @@ export function Navigation(props: INavigationProps) {
         } else {
           setCanShowDynIp(false);
         }
+        if (backupAccess.status === 'fulfilled') {
+          setCanShowBackups(backupAccess.value.canList || backupAccess.value.canCreate);
+        } else {
+          setCanShowBackups(false);
+        }
       } catch {
         if (!active) {
           return;
         }
         setCanShowLog(false);
         setCanShowDynIp(false);
+        setCanShowBackups(false);
       }
     };
 
@@ -88,6 +99,7 @@ export function Navigation(props: INavigationProps) {
           <Link className='w3-bar-item w3-button' to="roles"><FaHouseLock/> Roles</Link>
           <Link className='w3-bar-item w3-button' to="users"><FaUsers/> Users</Link>
           {canShowDynIp && <Link className='w3-bar-item w3-button' to="dynip"><FaNetworkWired/> DynIP</Link>}
+          {canShowBackups && <Link className='w3-bar-item w3-button' to="backups"><FaDatabase/> Backups</Link>}
           <Link className='w3-bar-item w3-button' to="apikeys"><FaKey/> API Keys</Link>
           <Link className='w3-bar-item w3-button' to="events"><FaRectangleList/> Events</Link>
           {canShowLog && <Link className='w3-bar-item w3-button' to="log"><FaFileLines/> Log</Link>}

@@ -158,9 +158,65 @@ Building:
 The official image is published by GitHub Actions to GitHub Container Registry:
 `ghcr.io/jgaa/nsblast`
 
+## Docker storage and certificates
+
+The image does not declare Docker `VOLUME`s on purpose.
+
+For `nsblast`, explicit runtime mounts are the better operational model:
+
+- mount the database directory explicitly so the data location is obvious
+- mount TLS material explicitly so certificate lifecycle stays under operator
+  control
+- mount backup directories explicitly if you want them persisted outside the
+  container filesystem
+
+Important container paths:
+
+- `/var/lib/nsblast`
+  Default location for database state and generated `password.txt`
+- `/etc/nsblast`
+  Good place to mount config files and TLS material
+
+The image runs as UID `999`, so mounted directories and files must be readable
+or writable by that user as required.
+
+Recommended practices:
+
+- use a bind mount or named volume for `/var/lib/nsblast`
+- mount certs read-only when possible
+- keep private keys outside the image and inject them at runtime
+- be explicit about `--db-path` and any backup path you want persisted
+
 **Starting**:
-The example use the local docker IP. You can substitute that with a machines real IP.
+The example uses explicit mounts for state and certs. Substitute paths and IPs
+for your environment.
 
 ```sh
-docker run --name nsblast --rm -it -p 172.17.0.1:53:5353/udp -p 172.17.0.1:53:5353/tcp -p 172.17.0.1:80:8080/tcp ghcr.io/jgaa/nsblast -l trace --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080 --dns-endpoint 0.0.0.0 --http-endpoint 0.0.0.0
+mkdir -p ./nsblast-data ./nsblast-certs
+
+docker run --name nsblast --rm -it \
+  -v "$(pwd)/nsblast-data:/var/lib/nsblast" \
+  -v "$(pwd)/nsblast-certs:/etc/nsblast:ro" \
+  -p 172.17.0.1:53:5353/udp \
+  -p 172.17.0.1:53:5353/tcp \
+  -p 172.17.0.1:80:8080/tcp \
+  ghcr.io/jgaa/nsblast \
+  --db-path /var/lib/nsblast \
+  --dns-udp-port 5353 \
+  --dns-tcp-port 5353 \
+  --http-port 8080 \
+  --dns-endpoint 0.0.0.0 \
+  --http-endpoint 0.0.0.0
+```
+
+Bootstrap a brand new database explicitly before normal startup:
+
+```sh
+docker run --name nsblast-bootstrap --rm -it \
+  -e NSBLAST_ADMIN_PASSWORD='change-me' \
+  -v "$(pwd)/nsblast-data:/var/lib/nsblast" \
+  ghcr.io/jgaa/nsblast \
+  --db-path /var/lib/nsblast \
+  bootstrap \
+  --cluster-role none
 ```
