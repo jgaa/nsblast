@@ -13,6 +13,7 @@ type BackupItem = {
 };
 
 type BackupReply = {
+  message?: string;
   value?: {
     backups?: BackupItem[];
     num_backups?: number;
@@ -54,7 +55,7 @@ export default function Backups() {
 
   const canOpenPage = access.canList || access.canCreate;
 
-  const load = async (isRefresh = false) => {
+  const loadBackups = async (isRefresh = false, nextAccess: BackupAccess = access) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -63,9 +64,6 @@ export default function Backups() {
     setError('');
 
     try {
-      const nextAccess = await detectBackupAccess(api);
-      setAccess(nextAccess);
-
       if (!nextAccess.canList) {
         setItems([]);
         return;
@@ -86,7 +84,32 @@ export default function Backups() {
   };
 
   useEffect(() => {
-    void load(false);
+    let active = true;
+
+    const initialize = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const nextAccess = await detectBackupAccess(api);
+        if (!active) {
+          return;
+        }
+        setAccess(nextAccess);
+        await loadBackups(false, nextAccess);
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'Failed to load backups');
+        setLoading(false);
+      }
+    };
+
+    void initialize();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const onCreate = async () => {
@@ -98,9 +121,9 @@ export default function Backups() {
       const response = (await api.request('/backup', {
         method: 'POST',
         body: {}
-      })) as { message?: string };
+      })) as BackupReply;
       setNotice(response.message ?? 'Backup operation was started.');
-      await load(true);
+      await loadBackups(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start backup');
     } finally {
@@ -132,7 +155,7 @@ export default function Backups() {
         </h1>
         <button
           className="w3-button w3-blue w3-bar-item w3-right"
-          onClick={() => void load(true)}
+          onClick={() => void loadBackups(true)}
           disabled={refreshing || creating}
         >
           <FaArrowsRotate style={{ marginRight: '0.4rem' }} />

@@ -17,7 +17,7 @@ async function probeBackupCreate(api: ApiClientLike): Promise<boolean> {
   try {
     await api.request('/backup', {
       method: 'POST',
-      body: [],
+      body: { dryRun: true },
       parse: 'none',
       retry: false,
       retries: 0

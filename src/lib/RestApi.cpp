@@ -3182,6 +3182,7 @@ Response RestApi::startBackup(const yahat::Request &req, const Parsed &parsed)
     const auto uuid = newUuid();
 
     bool syncFirst = true;
+    bool dryRun = false;
     if (!req.body.empty()) {
         boost::system::error_code ec;
         const auto body = boost::json::parse(req.body, ec);
@@ -3196,9 +3197,23 @@ Response RestApi::startBackup(const yahat::Request &req, const Parsed &parsed)
                 }
                 syncFirst = flush->as_bool();
             }
+            if (auto probe = body.as_object().if_contains("dryRun")) {
+                if (!probe->is_bool()) {
+                    return {400, "'dryRun' must be boolean"};
+                }
+                dryRun = probe->as_bool();
+            }
         } else {
             return {400, "JSON payload must be an object"};
         }
+    }
+
+    if (dryRun) {
+        boost::json::object json;
+        json["rcode"] = 200;
+        json["error"] = false;
+        json["message"] = "Backup create access granted.";
+        return {200, "OK", boost::json::serialize(json)};
     }
 
     server().db().startBackup({}, syncFirst, uuid);

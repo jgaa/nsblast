@@ -8,8 +8,11 @@ function makeError(status: number, message = 'request failed') {
 
 describe('detectBackupAccess', () => {
   it('detects full backup access when probes pass validation', async () => {
-    const request = vi.fn(async (target: string) => {
+    const request = vi.fn(async (target: string, options?: Record<string, unknown>) => {
       if (target === '/backup') {
+        if (options?.method === 'POST') {
+          expect(options.body).toEqual({ dryRun: true });
+        }
         return null;
       }
       throw makeError(400);
