@@ -1,6 +1,5 @@
 [book]
 authors = ["Jarle Aase"]
 language = "en"
-multilingual = false
 src = "src"
 title = "The nsBLAST Domain Name Server"
