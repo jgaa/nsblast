@@ -111,6 +111,7 @@ public:
         std::weak_ptr<GrpcPrimary::SyncClientInterface> client_;
         PrimaryReplication& parent_;
         bool is_syncing_ = false;
+        bool pending_sync_ = false;
 
         std::atomic<State> state_{State::ITERATING_DB};
         std::atomic_uint64_t last_enqueued_trxid_{0};
@@ -171,4 +172,3 @@ private:
 
 std::ostream& operator <<(std::ostream& out, const nsblast::lib::PrimaryReplication::Agent& agent);
 std::ostream& operator <<(std::ostream& out, const nsblast::lib::PrimaryReplication::Agent::State& state);
-

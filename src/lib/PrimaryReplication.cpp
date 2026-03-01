@@ -257,9 +257,11 @@ void PrimaryReplication::Agent::syncLater()
 {
     assert(!mutex_.try_lock() && "The lock must me held");
     if (is_syncing_) {
+        pending_sync_ = true;
         return;
     }
     is_syncing_ = true;
+    pending_sync_ = false;
 
     // We must return immediately, so schedule a follow-up
     // on a worker-thread.
@@ -270,19 +272,28 @@ void PrimaryReplication::Agent::syncLater()
     // is reset.
     boost::asio::post(db_sync_, [w=weak_from_this()]{
         if (auto self = w.lock()) {
-            try {
-                if (self->state_ == State::ITERATING_DB) {
-                    self->iterateDb();
+            for (;;) {
+                try {
+                    if (self->state_ == State::ITERATING_DB) {
+                        self->iterateDb();
+                    }
+                } catch (const exception& ex) {
+                    LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
+                              << " caught exception from iterateDb() on "
+                              << self->uuid()
+                              << ": " << ex.what();
                 }
-            } catch (const exception& ex) {
-                LOG_ERROR << "PrimaryReplication::FollowerAgent::sync "
-                          << " caught exception from iterateDb() on "
-                          << self->uuid()
-                          << ": " << ex.what();
-            }
 
-            lock_guard lock{self->mutex_};
-            self->is_syncing_ = false;
+                std::unique_lock lock{self->mutex_};
+                if (self->pending_sync_ && self->state_ == State::ITERATING_DB) {
+                    self->pending_sync_ = false;
+                    lock.unlock();
+                    continue;
+                }
+
+                self->is_syncing_ = false;
+                break;
+            }
         }
     });
 }
