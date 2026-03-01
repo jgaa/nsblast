@@ -1,10 +1,11 @@
 use std::fs::{File, OpenOptions};
+use std::net::IpAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use fs2::FileExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,8 @@ struct Cli {
     on_changed: Option<PathBuf>,
     #[arg(long)]
     fqdn: Option<String>,
+    #[arg(long, action = ArgAction::Append)]
+    ip: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +49,8 @@ struct FileConfig {
     #[serde(alias = "password")]
     password: Option<String>,
     fqdn: Option<String>,
+    ip: Option<String>,
+    ips: Option<Vec<String>>,
     repeat_minutes: Option<u64>,
     lock_file: Option<PathBuf>,
     tls_ca_file: Option<PathBuf>,
@@ -58,6 +63,7 @@ struct AppConfig {
     url: String,
     token: String,
     fqdn: String,
+    ips: Vec<String>,
     repeat_minutes: u64,
     lock_file: PathBuf,
     tls_ca_file: Option<PathBuf>,
@@ -86,6 +92,8 @@ struct LockGuard {
 #[derive(Debug, Serialize)]
 struct UpdateRequest<'a> {
     fqdn: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_ref: Option<&'a str>,
 }
@@ -207,6 +215,8 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         ExitCode::OtherError
     })?;
 
+    let file_ips = collect_file_ips(&file_cfg);
+
     let fqdn = cli.fqdn.or(file_cfg.fqdn).ok_or_else(|| {
         error!("missing required config key: fqdn");
         ExitCode::OtherError
@@ -237,6 +247,14 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         .unwrap_or(DEFAULT_REPEAT_MINUTES)
         .max(1);
 
+    let cli_ips = cli.ip;
+    let ips = if cli_ips.is_empty() {
+        file_ips
+    } else {
+        cli_ips
+    };
+    let ips = validate_explicit_ips(ips)?;
+
     let lock_file = file_cfg
         .lock_file
         .unwrap_or_else(|| PathBuf::from(DEFAULT_LOCK_FILE));
@@ -245,6 +263,7 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         url,
         token,
         fqdn,
+        ips,
         repeat_minutes,
         lock_file,
         tls_ca_file: file_cfg.tls_ca_file,
@@ -256,6 +275,39 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         on_changed: cli.on_changed,
         daemon: cli.daemon,
     })
+}
+
+fn collect_file_ips(file_cfg: &FileConfig) -> Vec<String> {
+    let mut ips = file_cfg.ips.clone().unwrap_or_default();
+    if let Some(ip) = &file_cfg.ip {
+        ips.push(ip.clone());
+    }
+    ips
+}
+
+fn validate_explicit_ips(ips: Vec<String>) -> std::result::Result<Vec<String>, ExitCode> {
+    if ips.is_empty() {
+        return Ok(ips);
+    }
+
+    let mut normalized = Vec::with_capacity(ips.len());
+    for value in ips {
+        let ip = value.parse::<IpAddr>().map_err(|err| {
+            error!(ip = value, "invalid explicit ip: {err}");
+            ExitCode::OtherError
+        })?;
+        normalized.push(ip.to_string());
+    }
+
+    if normalized.len() > 1 {
+        error!(
+            count = normalized.len(),
+            "the current server endpoint accepts only one explicit IP per update request"
+        );
+        return Err(ExitCode::OtherError);
+    }
+
+    Ok(normalized)
 }
 
 fn expand_path(value: &str) -> PathBuf {
@@ -419,10 +471,16 @@ async fn update_once(
 
     let payload = UpdateRequest {
         fqdn: &cfg.fqdn,
+        ip: cfg.ips.first().map(String::as_str),
         client_ref: cfg.client_ref.as_deref(),
     };
 
-    debug!(endpoint = %endpoint, fqdn = %cfg.fqdn, "sending dynip update request");
+    debug!(
+        endpoint = %endpoint,
+        fqdn = %cfg.fqdn,
+        explicit_ip = ?cfg.ips.first(),
+        "sending dynip update request"
+    );
 
     let response = client
         .post(endpoint)
@@ -485,10 +543,7 @@ fn interpret_success(
         ExitCode::OtherError
     })?;
 
-    let response_fqdn = response
-        .fqdn
-        .or(response.response_fqdn)
-        .ok_or_else(|| {
+    let response_fqdn = response.fqdn.or(response.response_fqdn).ok_or_else(|| {
         error!("missing response field: fqdn");
         ExitCode::OtherError
     })?;
@@ -647,6 +702,26 @@ mod tests {
     fn test_build_endpoint_url_uses_primary_dynip_path() {
         let url = build_endpoint_url("https://dns.example.com/base").expect("url");
         assert_eq!(url.as_str(), "https://dns.example.com/api/v1/dynip/update");
+    }
+
+    #[test]
+    fn test_validate_explicit_ips_accepts_single_ip() {
+        let ips = validate_explicit_ips(vec!["203.0.113.10".to_string()]).expect("valid");
+        assert_eq!(ips, vec!["203.0.113.10".to_string()]);
+    }
+
+    #[test]
+    fn test_validate_explicit_ips_rejects_invalid_ip() {
+        let err = validate_explicit_ips(vec!["not-an-ip".to_string()]).expect_err("must fail");
+        assert_eq!(err, ExitCode::OtherError);
+    }
+
+    #[test]
+    fn test_validate_explicit_ips_rejects_multiple_values_for_current_server() {
+        let err =
+            validate_explicit_ips(vec!["203.0.113.10".to_string(), "2001:db8::1".to_string()])
+                .expect_err("must fail");
+        assert_eq!(err, ExitCode::OtherError);
     }
 
     #[test]

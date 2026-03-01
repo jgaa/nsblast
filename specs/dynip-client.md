@@ -61,6 +61,7 @@ Primary goals:
 - `--repeat-minutes <n>`: Interval in minutes in daemon mode. Default `15`.
 - `--on-changed <path>`: Execute script when effective IP changed.
 - `--fqdn <hostname>`: Override configured hostname.
+- `--ip <address>`: Optional explicit IP to send. May be repeated syntactically, but current server support is limited to one explicit IP per request.
 
 ## 5. JSON Request and Response Behavior
 
@@ -73,7 +74,7 @@ Primary goals:
   - `Content-Type: application/json`
   - `Accept: application/json`
 
-Request body (default behavior):
+Request body (default behavior without explicit IP):
 
 ```json
 {
@@ -87,7 +88,10 @@ Optional request fields:
 - `ipv4`
 - `ipv6`
 
-For v1 client behavior, send only `fqdn` (and `client_ref` if configured) unless an explicit future option enables client-supplied IP values.
+For current client behavior:
+- send `fqdn` only when no explicit IP is configured
+- send `fqdn` plus `ip` when one explicit IP is configured
+- reject more than one explicit IP value with exit code `5`, because the current server endpoint accepts only one explicit IP per request and would not preserve dual-stack state in one invocation
 
 ### 5.2 Success response handling
 

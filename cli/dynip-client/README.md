@@ -13,6 +13,8 @@ url: "https://dns.example.com"
 token: "dynip-capability-token"
 fqdn: "office.example.com"
 repeat_minutes: 15
+# optional explicit IP for current server versions that require it
+# ip: "203.0.113.10"
 # optional
 # client_ref: "router-01"
 # lock_file: "/tmp/nsblast-dynip.lock"
@@ -41,8 +43,11 @@ Binary:
 ## One-shot usage
 
 ```sh
-nsblast-dynip --config ~/.config/nsblast-dynip/config.yaml
+nsblast-dynip --config ~/.config/nsblast-dynip/config.yaml --ip 203.0.113.10
 ```
+
+`--ip` is optional in the client, but current server builds require an explicit IP on `/api/v1/dynip/update`.
+The flag may be repeated syntactically, but the current server endpoint only supports one explicit IP per request, so dual-stack `A` + `AAAA` updates cannot be completed in a single invocation yet.
 
 Exit codes:
 - `0` success, no change
@@ -58,6 +63,7 @@ Request:
 ```json
 {
   "fqdn": "office.example.com",
+  "ip": "203.0.113.10",
   "client_ref": "router-01"
 }
 ```
