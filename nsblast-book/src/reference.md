@@ -1,26 +1,121 @@
+# Reference
 
-# Bootstrapping
+## Bootstrap and startup lifecycle
 
-The first time the server is started, it will go trough a "bootstrapping" procedure. It will create a new database. Then it will add a tenant with the name "nsblast" with all privileges available. Then it will create a user "admin" with all permissions. This is the system user for the administrator for the server. If the environment variable `NSBLAST_ADMIN_PASSWORD` is set, the user will be initialized with the password set to the value of this setting. If no such variable is set, the server will generate a random password for the admin user and write it out in the servers database directory in a file named `password.txt`.
+`nsblast` no longer auto-bootstraps a new database on normal startup.
 
-# Resetting the admin password.
+The current lifecycle is:
 
-if the admin password is lost, or the admin user deleted, the server can re-create it. If you start the server from the command line with the command-line argument `--reset-auth`, the server will delete the `nsblast` tenant and re-create it and its `admin` user. All roles, API keys, and users for the `nsblast` user will be deleted. It's basically re-bootstrapping the system tenant. Zones owned by this tenant will not be affected. Other tenants will also not be affected.
+1. Create an empty database directory.
+2. Run `nsblast bootstrap --cluster-role <primary|follower|none>`.
+3. Start the server normally against that bootstrapped database.
 
-The server must be shut down if you go trough this procedure.
+If the database has not been bootstrapped, normal startup fails with:
 
+```text
+Database is not initialized at ... Run `nsblast bootstrap` first.
+```
 
-# Environment variables
+## Built-in system tenant
 
-- NSBLAST_ADMIN_PASSWORD If set, the server will set this password for the system user `admin` for the `nsblast` tenant when the system is bootstrapped.
+Bootstrap creates the built-in tenant:
 
-# Starting the server
+- tenant: `nsblast`
+- user: `admin`
 
-## Running locally as an unprivileged user
+That user is granted the full permission set.
 
-The following command can be used to start the server locally as a normal user.
-It will use port *8080* for the HTTP endpoint, and *5353* for the DNS endpoints (UDP and TCP).
+## Admin password initialization
+
+During `bootstrap` and `reset-auth`:
+
+- if `NSBLAST_ADMIN_PASSWORD` is set and non-empty, that value becomes the
+  password for `admin`
+- otherwise a random password is generated and written to `password.txt` under
+  the database directory
+
+Outside those commands, `NSBLAST_ADMIN_PASSWORD` is ignored.
+
+## Resetting auth
+
+`reset-auth` is still supported:
 
 ```sh
-nsblast -d /var/tmp/nsblast/master -l trace -C info -L /var/tmp/nsblast.log --dns-udp-port 5353 --dns-tcp-port 5353 --http-port 8080
+nsblast --db-path /path/to/db reset-auth
 ```
+
+It recreates the built-in `nsblast/admin` identity and system tenant content.
+It does not require the database to be bootstrapped again.
+
+## Permanent variables
+
+The current permanent-variable interface is:
+
+```sh
+nsblast --db-path /path/to/db vars list
+nsblast --db-path /path/to/db vars get <name>
+nsblast --db-path /path/to/db vars set <name=value>
+nsblast --db-path /path/to/db vars unset <name>
+```
+
+`vars set` and `vars unset` support `--force` for non-mutable variables.
+`vars list` and `vars get` support `--json`.
+
+### Current variable families
+
+As of the current implementation, permanent variables cover:
+
+- `cluster_role`
+- `dynip_enabled`
+- `dynip_realm`
+- `dynip_max_hosts_per_root`
+- `dynip_default_ttl`
+- `dynip_min_ttl`
+- `dynip_max_ttl`
+- `dynip_allow_txt`
+- `dynip_enable_get`
+- `dynip_enable_post_json`
+- `dynip_allow_partial_multi_host`
+- `dynip_max_hosts_per_request`
+- `dynip_require_user_agent`
+- `dynip_allow_private_ips`
+
+There are also internal vars such as:
+
+- `schema_version`
+- `pv_bootstrapped`
+
+### Important scope note
+
+Many runtime settings have not yet been migrated to permanent vars.
+
+These still come from normal CLI/config-file settings, for example:
+
+- HTTP endpoint, port, TLS cert/key, and thread count
+- DNS endpoint, ports, and worker settings
+- logging
+- backup paths and scheduling
+- cluster TLS files and cluster transport address
+- replication queue thresholds
+
+So the correct mental model today is:
+
+- `cluster_role` and DynIP policy live in `vars`
+- transport and process wiring still live in normal startup config
+
+## Bootstrap-only arguments
+
+These arguments are only valid with the `bootstrap` command:
+
+- `--cluster-role`
+- `--set name=value`
+
+Passing `--cluster-role` on normal startup is rejected by the server.
+
+## Selected environment variables
+
+- `NSBLAST_ADMIN_PASSWORD`
+  Used by `bootstrap` and `reset-auth` to set the built-in admin password.
+- `NSBLAST_CLUSTER_AUTH_KEY`
+  Alternative to `--cluster-auth-key`; the environment variable contains the
+  shared secret itself as plaintext.

@@ -1,160 +1,169 @@
-# Setting up a simple cluster with one primary and one follower
+# Quick Start
 
-Linux and docker must be installed on the server.
+This chapter shows the current bootstrap and startup flow for a single local
+`nsblast` instance.
 
-## Setting up the primary
+The important change is that a new database must be bootstrapped explicitly
+before the server can start serving DNS, HTTP, or gRPC. Bootstrap also writes
+the initial permanent variables snapshot.
 
-Get the docker image.
-
-```sh
-docker pull jgaafromnorth/nsblast
-```
-
-**Create TLS certificates** for the gRPC server. These are
-self-signed certs. Substitute `ns1.nsblast.com` with
-the fqdn of your server.
+## Build
 
 ```sh
-mkdir -p nsblast/tls
-docker run --user $UID --rm -it -v $(pwd)/nsblast/tls:/certs jgaafromnorth/nsblast \
-    --create-cert-subject ns1.nsblast.com \
-    --create-certs-num-clients 1 \
-    --create-certs-path /certs
+cmake -S . -B build
+cmake --build build -j"$(nproc)"
 ```
 
-Now we should have a CA root cert, server cert and key and cert and key for one client.
-The client is the follower server.
+The server binary will normally be available as:
 
-You can of cource also use openssl and create proper self signed certificates
-if you prefer that. The command above is added for convenience.
+```text
+build/bin/nsblast
+```
 
-**Bootstrap the server***
+## Bootstrap a new standalone database
 
-Create a shared secret for the cluster. This is a password used by
-the follower to autheticate itself with the server.
+Choose a database directory and an admin password:
 
 ```sh
-dd if=/dev/random bs=256 count=1 | base64  > nsblast/cluster.secret
+export NSBLAST_ADMIN_PASSWORD='change-me'
+DB_DIR=/tmp/nsblast-quickstart
+mkdir -p "$DB_DIR"
 ```
 
-Nsblast will by default run as user 999. Make that user the owner of the `nsblast/` directory.
+Bootstrap the database once:
 
 ```sh
-sudo chown -R 999:root nsblast/
+build/bin/nsblast \
+  --db-path "$DB_DIR" \
+  bootstrap \
+  --cluster-role none
 ```
 
-Now, start the server in the bacground with automatic restart. This makes
-sure that the server starts automatically when the server starts up and
-if the nextappd application crash.
+Notes:
+
+- `bootstrap` aborts if the database already exists.
+- `--cluster-role` is required for `bootstrap` and is persisted as the permanent
+  variable `cluster_role`.
+- `NSBLAST_ADMIN_PASSWORD` is only used during `bootstrap` and `reset-auth`.
+- If `NSBLAST_ADMIN_PASSWORD` is unset, bootstrap generates a random password
+  and writes it to `password.txt` under the database directory.
+
+You can inspect the initialized permanent variables with:
 
 ```sh
-docker run --restart=always -d --name nsblast -v $(pwd)/nsblast:/var/lib/nsblast --network host jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --hourly-backup-interval 6 --cluster-role primary --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/server1-cert.pem --cluster-server-key /var/lib/nsblast/tls/server1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --with-swagger --http-endpoint 0.0.0.0 --http-port 443 --http-tls-key /var/lib/nsblast/tls/certbot/privkey1.pem --http-tls-cert /var/lib/nsblast/tls/certbot/fullchain1.pem  --cluster-server-address 0.0.0.0:10123 --log-file /var/lib/nsblast/nsblast.log --log-level trace
+build/bin/nsblast --db-path "$DB_DIR" vars list
 ```
 
-Now, before we can use the API from a remote location, we need to get a TLS certificate.
-If we want to self-host the dommain for the nameserver, that means that
-we need to configure the server locally or on a secure network, as the api interface
-is currently running unencrypted on port 80.
+## Start the server
 
-Lets start by setting up netrc so we can use curl without entering the *admin* password in
-clear text. The admin password was generated when the server was started the first time. It is
-now stored in `nsblast/password.txt`.
+Once bootstrapped, start the server normally:
 
 ```sh
-echo -n "machine 127.0.0.1 login admin password" > .netrc
-cat nsblast/password.txt  >> .netrc
+build/bin/nsblast \
+  --db-path "$DB_DIR" \
+  --http-endpoint 127.0.0.1 \
+  --http-port 8080 \
+  --dns-endpoint 127.0.0.1 \
+  --dns-udp-port 5353 \
+  --dns-tcp-port 5353 \
+  --with-swagger \
+  --with-ui \
+  --log-to-console info
 ```
 
-We can now verify that the credential is OK by asking the server for it's version.
+This starts:
+
+- the REST API on `http://127.0.0.1:8080/api/v1`
+- Swagger on `http://127.0.0.1:8080/api/swagger` if built with swagger support
+- the UI on `http://127.0.0.1:8080/ui` if built with UI support
+- DNS on `127.0.0.1:5353` over UDP and TCP
+
+If you try to start `nsblast` against a non-bootstrapped database, startup
+fails with an error telling you to run `nsblast bootstrap` first.
+
+## Verify the server
+
+Check the version endpoint:
 
 ```sh
-curl --netrc http://127.0.0.1/api/v1/version
+curl -u admin:change-me http://127.0.0.1:8080/api/v1/version
 ```
 
-That should return a json payload like this:
-
-```json
-{"rcode":200,"error":false,"message":"","value":{"app":"nsblast","version":"0.1.0","Boost":"1_83","RocksDB":"8.9.1","C++ standard":"C++23","Platform":"linux","Compiler":"GNU C++ version 14.0.1 20240412 (experimental) [master r14-9935-g67e1433a94f]","Build date":"Jul 12 2024"}}
-```
-
-Now, lets set the server up for use. In this example I will configure `ns1.nsblast.com`. You can substitute that with whatever server you are configuring.
+Create a zone:
 
 ```sh
-echo "Creating the zone."
-
-curl --netrc -X 'POST' \
-  'http://127.0.0.1/api/v1/zone/nsblast.com?kind=brief' \
-  -H 'accept: application/json' \
+curl -u admin:change-me \
+  -X POST \
   -H 'Content-Type: application/json' \
+  'http://127.0.0.1:8080/api/v1/zone/example.test?kind=brief' \
   -d '{
-  "soa": {
-    "mname": "ns1.nsblast.com",
-    "rname": "jgaa.jgaa.com"
-  }
-}'
-
-echo "Creating the A record for ns1"
-
-curl --netrc -X 'PUT' \
-  'http://127.0.0.1/api/v1/rr/ns1.nsblast.com' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "a": [
-    "139.162.132.207"
-  ]
-}'
-
-echo "Creating the A record for ns2"
-
-curl --netrc -X 'POST' \
-  'http://127.0.0.1/api/v1/rr/ns2.nsblast.com' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "a": [
-    "172.105.103.206"
-  ]
-}'
-
-echo "Creating ns records for the zone"
-
-curl --netrc -X 'PATCH' \
-  'http://127.0.0.1/api/v1/rr/nsblast.com' \
-  -H 'accept: appl
-  -H 'Content-Type: application/json' \
-  -d '{
-  "ns": [
-    "ns1.nsblast.com", "ns2.nsblast.com"
-  ]
-}'
-
-echo "List the rr's we have created"
-
-curl --netrc -X 'GET' \
-  'http://127.0.0.1/api/v1/zone/nsblast.com?limit=100&kind=verbose' \
-  -H 'accept: application/json'
-
+    "soa": {
+      "mname": "ns1.example.test",
+      "rname": "hostmaster.example.test"
+    }
+  }'
 ```
 
-At this point you can also verify that the nameserver is serving the
-domain.
+Add an `A` record:
 
 ```sh
-dig ns1.nsblast.com @<IP to your server>
+curl -u admin:change-me \
+  -X PUT \
+  -H 'Content-Type: application/json' \
+  'http://127.0.0.1:8080/api/v1/rr/ns1.example.test' \
+  -d '{
+    "a": ["127.0.0.1"]
+  }'
 ```
 
-## Setting up the follower.
-
-Copy the cluster.secret, CA cert and client-sert to nsblast on the secondary server.
-
-Then prepare to start the follower server.
+Read the zone back:
 
 ```sh
-docker pull jgaafromnorth/nsblast
-
-docker run --restart=always -d --name nsblast v $(pwd)/nsblast:/var/lib/nsblast -p 80:80 -p 53:53 -p 53:53/udp --add-host ns1.nsblast.com:139.162.132.207 jgaafromnorth/nsblast -C debug --backup-path /var/lib/nsblast/backup --cluster-role follower --cluster-auth-key /var/lib/nsblast/cluster.secret --cluster-server-cert /var/lib/nsblast/tls/client1-cert.pem --cluster-server-key /var/lib/nsblast/tls/client1-key.pem --cluster-ca-cert /var/lib/nsblast/tls/ca-cert.pem --dns-endpoint 0.0.0.0 --dns-enable-ixfr 0 --default-nameserver ns1.nsblast.com --default-nameserver ns2.nsblast.com --cluster-server-address ns1.nsblast.com:10123 --disable-http-server
-
+curl -u admin:change-me \
+  'http://127.0.0.1:8080/api/v1/zone/example.test?limit=100&kind=verbose'
 ```
 
+And verify DNS:
 
+```sh
+dig @127.0.0.1 -p 5353 ns1.example.test
+```
+
+## Permanent vars versus CLI arguments
+
+Today the runtime configuration is split across three places:
+
+- bootstrap-only arguments: currently `bootstrap --cluster-role ...` and
+  optional `bootstrap --set name=value`
+- permanent variables: currently `cluster_role` and the DynIP-related settings
+- normal CLI/config-file settings: HTTP, DNS, logging, backup, cluster TLS, and
+  cluster transport addresses
+
+That means:
+
+- `cluster_role` is no longer a normal startup flag; it is set during bootstrap
+  and later visible through `vars`
+- DynIP enablement and limits are configured through `vars`, not normal server
+  flags
+- many other settings have not yet been migrated and still live in the normal
+  command line or config file
+
+Examples:
+
+```sh
+build/bin/nsblast --db-path "$DB_DIR" vars get cluster_role
+build/bin/nsblast --db-path "$DB_DIR" vars set dynip_enabled=true
+build/bin/nsblast --db-path "$DB_DIR" vars set dynip_realm=dynip.example.test
+```
+
+## Reset the built-in admin account
+
+If the `nsblast/admin` system account needs to be recreated:
+
+```sh
+export NSBLAST_ADMIN_PASSWORD='new-password'
+build/bin/nsblast --db-path "$DB_DIR" reset-auth
+```
+
+`reset-auth` keeps the existing zones and tenant data outside the system tenant,
+but it recreates the built-in `nsblast` tenant and its `admin` user.
