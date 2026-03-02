@@ -2504,6 +2504,60 @@ TEST(ApiRequest, dynIpPostJsonDefaultsToPeerIp) {
     EXPECT_EQ(json.at("fqdn").as_string(), "router.home.dynip.example.com");
 }
 
+TEST(ApiRequest, dynIpSuccessfulUpdatePersistsHostMetadata) {
+    MockServer svr;
+    svr.setVars({"dynip_realm=dynip.example.com", "dynip_enabled=true"});
+    RestApi api{svr};
+
+    const auto tenantUser = svr.createTenant("tenant", "", user_passwd, [](auto&) {},
+                                             {"USE_API", "DYNIP_PROVISION", "DYNIP_CREATE", "DYNIP_LIST"});
+    const auto auth = svr.getAuthAs(tenantUser, user_passwd);
+    ASSERT_TRUE(auth.access);
+
+    auto zoneReq = makeRequest(svr, "zone", "dynip.example.com", boost::json::serialize(getZoneJson("dynip.example.com")), yahat::Request::Type::POST);
+    ASSERT_EQ(api.onZone(zoneReq, api.parse(zoneReq)).code, 201);
+
+    ASSERT_EQ(api.onReqest(makeDynIpRequest("/api/v1/dynip/home", "{}", yahat::Request::Type::POST, auth)).code, 201);
+    auto provisionHostRes = api.onReqest(makeDynIpRequest("/api/v1/dynip/home/router", "{}", yahat::Request::Type::POST, auth));
+    ASSERT_EQ(provisionHostRes.code, 201);
+    const auto token = string{boost::json::parse(provisionHostRes.body).as_object().at("token").as_string()};
+
+    yahat::Auth capabilityAuth;
+    capabilityAuth.access = true;
+    capabilityAuth.extra = std::format("Bearer {}", token);
+
+    auto updateReq = makeDynIpRequest("/api/v1/dynip/update",
+                                      R"({"fqdn":"router.home.dynip.example.com","ip":"203.0.113.12"})",
+                                      yahat::Request::Type::POST,
+                                      capabilityAuth);
+    auto updateRes = api.onReqest(updateReq);
+    ASSERT_EQ(updateRes.code, 200);
+
+    auto listRes = api.onReqest(makeDynIpRequest("/api/v1/dynip/home/hosts", {}, yahat::Request::Type::GET, auth));
+    ASSERT_EQ(listRes.code, 200);
+    auto hosts = boost::json::parse(listRes.body).as_object().at("items").as_array();
+    ASSERT_EQ(hosts.size(), 1);
+    const auto& host = hosts.front().as_object();
+    EXPECT_EQ(host.at("update_count").as_int64(), 1);
+    EXPECT_EQ(host.at("last_ip").as_string(), "203.0.113.12");
+    EXPECT_FALSE(string{host.at("last_update").as_string()}.empty());
+
+    updateReq = makeDynIpRequest("/api/v1/dynip/update",
+                                 R"({"fqdn":"router.home.dynip.example.com","ip":"203.0.113.12"})",
+                                 yahat::Request::Type::POST,
+                                 capabilityAuth);
+    updateRes = api.onReqest(updateReq);
+    ASSERT_EQ(updateRes.code, 200);
+    const auto updateJson = boost::json::parse(updateRes.body).as_object();
+    EXPECT_EQ(updateJson.at("status").as_string(), "nochg");
+
+    listRes = api.onReqest(makeDynIpRequest("/api/v1/dynip/home/hosts", {}, yahat::Request::Type::GET, auth));
+    ASSERT_EQ(listRes.code, 200);
+    hosts = boost::json::parse(listRes.body).as_object().at("items").as_array();
+    ASSERT_EQ(hosts.size(), 1);
+    EXPECT_EQ(hosts.front().as_object().at("update_count").as_int64(), 1);
+}
+
 TEST(ApiRequest, dynIpRotateHostTokenWithPut) {
     MockServer svr;
     svr.setVars({"dynip_realm=dynip.example.com", "dynip_enabled=true"});

@@ -2498,6 +2498,12 @@ definitions:
         type: integer
       update_count:
         type: integer
+      last_update:
+        type: string
+        description: RFC 3339 UTC timestamp for the most recent successful DynIP change.
+      last_ip:
+        type: string
+        description: Last IP address stored by a successful DynIP update.
       disabled:
         type: boolean
 

@@ -59,6 +59,11 @@ const rrProto =
       }
       ],
     },
+  cname: {
+    brief: "Canonical name",
+    canAdd: true,
+    proto: "",
+    },
   txt: {
     brief: "Text record",
     canAdd: true,
@@ -538,9 +543,22 @@ function castStringToType(type, newVar) {
   }
 }
 
+export function normalizeRrValue(type, value) {
+  if (type !== 'cname') {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    return value.replace(/\.$/, '')
+  }
+
+  return value
+}
+
 function setValueInRr(rr, type, ix, value) {
 
   const isAdding = ix === -1
+  value = normalizeRrValue(type, value)
   const destType = Object.hasOwn(rr, type) ? rr[type] : rrProto[type].proto
 
 

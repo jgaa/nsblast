@@ -42,6 +42,10 @@ public:
                                 std::string_view host);
     std::vector<pb::DynipHost> listHosts(std::string_view tenantId, std::string_view root);
     bool deleteHost(std::string_view tenantId, std::string_view root, std::string_view host);
+    void recordHostUpdate(std::string_view root,
+                          std::string_view host,
+                          std::string_view ip,
+                          std::string_view updatedAt);
 
     std::optional<pb::DynipHost> lookupHost(std::string_view root, std::string_view host);
     std::optional<pb::DynipTokenIndex> lookupByToken(std::string_view token);

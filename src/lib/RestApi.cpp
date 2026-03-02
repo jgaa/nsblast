@@ -1923,7 +1923,9 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         return string{};
     };
 
-    const auto makeJsonReply = [now = nowUtc()](int code,
+    const auto now = nowUtc();
+
+    const auto makeJsonReply = [now](int code,
                                                  string_view status,
                                                  bool changed,
                                                  string_view fqdn,
@@ -1961,6 +1963,21 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         trackResult(status);
         logOutcome(code, status, fqdn, effectiveIp, message);
         return makeJsonReply(code, status, changed, fqdn, effectiveIp, recordType, message);
+    };
+
+    const auto splitDynIpLabels = [](string_view fqdn) -> optional<pair<string, string>> {
+        const auto firstDot = fqdn.find('.');
+        if (firstDot == string_view::npos) {
+            return nullopt;
+        }
+        const auto secondDot = fqdn.find('.', firstDot + 1);
+        if (secondDot == string_view::npos) {
+            return nullopt;
+        }
+        return pair<string, string>{
+            string{fqdn.substr(firstDot + 1, secondDot - firstDot - 1)},
+            string{fqdn.substr(0, firstDot)}
+        };
     };
 
     optional<string> reqFqdn;
@@ -2162,6 +2179,10 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         return jsonReply(rrReply.code, status, false, fqdn, {}, {}, rrReply.reason);
     }
 
+    if (const auto labels = splitDynIpLabels(fqdn); labels.has_value() && !now.empty()) {
+        dynStore.recordHostUpdate(labels->first, labels->second, effectiveIp.to_string(), now);
+    }
+
     if (legacyResponse) {
         return legacyReplyWithIp("good", effectiveIp.to_string(), fqdn, "updated");
     }
@@ -2233,6 +2254,8 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
                 item["fqdn"] = h.fqdn();
                 item["ttl"] = static_cast<int64_t>(h.ttl());
                 item["update_count"] = static_cast<int64_t>(h.update_count());
+                item["last_update"] = h.last_update();
+                item["last_ip"] = h.last_ip();
                 item["disabled"] = h.disabled();
                 hosts.emplace_back(std::move(item));
             }

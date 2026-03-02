@@ -396,6 +396,28 @@ bool DynIpStore::deleteHost(string_view tenantId, string_view root, string_view 
     return true;
 }
 
+void DynIpStore::recordHostUpdate(string_view root,
+                                  string_view host,
+                                  string_view ip,
+                                  string_view updatedAt) {
+    const auto rootLower = normalizeLabel(root);
+    const auto hostLower = normalizeLabel(host);
+    auto trx = resource_.transaction();
+
+    const ResourceIf::RealKey hostKey{makeHostKey(rootLower, hostLower), ResourceIf::RealKey::Class::DYNIP_HOST};
+    auto dynHost = readProto<pb::DynipHost>(*trx, hostKey);
+    if (!dynHost) {
+        throw NotFoundException{"DynIP host not found"};
+    }
+
+    dynHost->set_last_ip(string{ip});
+    dynHost->set_last_update(string{updatedAt});
+    dynHost->set_update_count(dynHost->update_count() + 1);
+
+    writeProto(*trx, hostKey, *dynHost, false);
+    trx->commit();
+}
+
 optional<pb::DynipHost> DynIpStore::lookupHost(string_view root, string_view host) {
     auto trx = resource_.transaction();
     return readProto<pb::DynipHost>(*trx,

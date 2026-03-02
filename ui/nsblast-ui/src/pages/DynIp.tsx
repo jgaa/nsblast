@@ -118,6 +118,26 @@ function extractIps(payload: unknown): string[] {
   return ips;
 }
 
+export function formatDynIpTimestamp(value?: string): string {
+  if (!value) {
+    return 'Never';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(date);
+}
+
 export default function DynIp() {
   const { api } = useAppState();
   const [access, setAccess] = useState<DynIpAccess>(initialAccess);
@@ -648,8 +668,8 @@ export default function DynIp() {
                     <th>Host FQDN</th>
                     <th>IPs</th>
                     <th>TTL</th>
-                    <th>Updates</th>
-                    <th>Disabled</th>
+                    <th>Recorded Updates</th>
+                    <th>Last Change</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -668,7 +688,7 @@ export default function DynIp() {
                       <td>{renderIps(host)}</td>
                       <td>{host.ttl}</td>
                       <td>{host.update_count}</td>
-                      <td>{host.disabled ? 'yes' : 'no'}</td>
+                      <td>{formatDynIpTimestamp(host.last_update)}</td>
                       <td>
                         <button
                           className="w3-button w3-blue w3-small"
