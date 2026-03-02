@@ -16,31 +16,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
 
       - name: Validate CLI artifacts
         shell: bash
         run: |
-          cargo check -p dynip-client --manifest-path cli/Cargo.toml
-          cargo check -p nsblastctl --manifest-path cli/Cargo.toml
+          cargo check --target x86_64-unknown-linux-musl -p dynip-client --manifest-path cli/Cargo.toml
+          cargo check --target x86_64-unknown-linux-musl -p nsblastctl --manifest-path cli/Cargo.toml
 
       - name: Build CLI release artifacts
         shell: bash
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          cargo build --release -p dynip-client --manifest-path cli/Cargo.toml
-          cargo build --release -p nsblastctl --manifest-path cli/Cargo.toml
+          cargo build --release --target x86_64-unknown-linux-musl -p dynip-client --manifest-path cli/Cargo.toml
+          cargo build --release --target x86_64-unknown-linux-musl -p nsblastctl --manifest-path cli/Cargo.toml
           mkdir -p dist
 
           DYNIP_ASSET="nsblast-dynip-${RELEASE_TAG}-linux-x86_64"
-          cp cli/target/release/nsblast-dynip "dist/${DYNIP_ASSET}"
+          cp cli/target/x86_64-unknown-linux-musl/release/nsblast-dynip "dist/${DYNIP_ASSET}"
           chmod +x "dist/${DYNIP_ASSET}"
           sha256sum "dist/${DYNIP_ASSET}" > "dist/${DYNIP_ASSET}.sha256"
 
           CTL_ASSET="nsblastctl-${RELEASE_TAG}-linux-x86_64"
-          cp cli/target/release/nsblastctl "dist/${CTL_ASSET}"
+          cp cli/target/x86_64-unknown-linux-musl/release/nsblastctl "dist/${CTL_ASSET}"
           chmod +x "dist/${CTL_ASSET}"
           sha256sum "dist/${CTL_ASSET}" > "dist/${CTL_ASSET}.sha256"
 
