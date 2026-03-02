@@ -340,9 +340,17 @@ void AuthMgr::deleteZone(trx_t &trx, std::string_view fqdn, std::string_view ten
     LOG_INFO << "Deleting Zone " << fqdn << " for tenant " << tenant
              << " with uuid " << zone->id();
 
+    for (const auto& rrFqdn : collectZoneRrFqdns(trx, fqdn)) {
+        trx.remove(ResourceIf::RealKey{rrFqdn, key_class_t::ENTRY}, false, ResourceIf::Category::ENTRY);
+        trx.remove(ResourceIf::RealKey{fqdn, rrFqdn, key_class_t::ZRR}, false, ResourceIf::Category::ACCOUNT);
+    }
+
+    for (const auto& diffKey : collectZoneDiffKeys(trx, fqdn)) {
+        trx.remove(diffKey, false, ResourceIf::Category::DIFF);
+    }
+
     trx.remove(key_zone, false, ResourceIf::Category::ACCOUNT);
     trx.remove(key_tzone, false, ResourceIf::Category::ACCOUNT);
-    updateZoneRrIx(trx, fqdn, 0, true);
 }
 
 void AuthMgr::bootstrap()
@@ -708,6 +716,50 @@ void AuthMgr::updateZoneRrIx(ResourceIf::TransactionIf &trx, std::string_view fq
 
     LOG_TRACE_N << "Removong " << key;
     trx.remove(key, false, ResourceIf::Category::ACCOUNT);
+}
+
+vector<string> AuthMgr::collectZoneRrFqdns(trx_t& trx, std::string_view zoneFqdn)
+{
+    vector<string> fqdns;
+    const ResourceIf::RealKey startKey{zoneFqdn, key_class_t::ZRR};
+
+    trx.iterate(startKey, [&](trx_t::key_t key, span_t) {
+        const auto [zone, fqdn] = key.getFirstAndSecondStr();
+        if (zone != zoneFqdn) {
+            return false;
+        }
+
+        if (!fqdn.empty()) {
+            fqdns.emplace_back(fqdn);
+        }
+
+        return true;
+    }, ResourceIf::Category::ACCOUNT);
+
+    if (ranges::find(fqdns, zoneFqdn) == fqdns.end()) {
+        fqdns.emplace_back(zoneFqdn);
+    }
+
+    ranges::sort(fqdns);
+    fqdns.erase(unique(fqdns.begin(), fqdns.end()), fqdns.end());
+    return fqdns;
+}
+
+vector<ResourceIf::RealKey> AuthMgr::collectZoneDiffKeys(trx_t& trx, std::string_view zoneFqdn)
+{
+    vector<ResourceIf::RealKey> keys;
+    const ResourceIf::RealKey startKey{zoneFqdn, 0, key_class_t::DIFF};
+
+    trx.iterate(startKey, [&](trx_t::key_t key, span_t) {
+        if (!startKey.isSameFqdn(key)) {
+            return false;
+        }
+
+        keys.emplace_back(key);
+        return true;
+    }, ResourceIf::Category::DIFF);
+
+    return keys;
 }
 
 yahat::Auth AuthMgr::basicAuth(std::string hash,

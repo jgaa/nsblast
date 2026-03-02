@@ -189,6 +189,62 @@ TEST(AuthMgr, deleteZone) {
     }
 }
 
+TEST(AuthMgr, deleteZoneRemovesZoneRrsIndexesAndDiffsOnlyForTargetZone) {
+    const string tenant = "ares";
+    const string zone = "example.com";
+    const string otherZone = "awesomeexample.com";
+    const string child = "www.example.com";
+    const string otherChild = "www.awesomeexample.com";
+
+    MockServer ms;
+    {
+        pb::Tenant tenantPb;
+        tenantPb.set_root(zone);
+        tenantPb.set_id(tenant);
+        ms.auth().createTenant(tenantPb);
+
+        ms->createTestZone(zone);
+        ms->createWwwA();
+        ms->createTestZone(otherZone);
+
+        StorageBuilder sb;
+        auto otherIp = boost::asio::ip::make_address_v4("127.0.0.9");
+        sb.createA(otherChild, 1000, otherIp);
+        sb.setZoneLen(otherZone.size());
+        sb.finish();
+        {
+            auto trx = ms->resource().transaction();
+            trx->write({otherChild, key_class_t::ENTRY}, sb.buffer(), true);
+            trx->commit();
+        }
+
+        auto trx = ms->resource().transaction();
+        ms.auth().addZone(*trx, zone, tenant);
+        ms.auth().addZone(*trx, otherZone, tenant);
+        ms.auth().updateZoneRrIx(*trx, child, zone.size(), true);
+        ms.auth().updateZoneRrIx(*trx, otherChild, otherZone.size(), true);
+
+        const ResourceIf::RealKey zoneDiffKey{zone, 1, key_class_t::DIFF};
+        const ResourceIf::RealKey otherZoneDiffKey{otherZone, 1, key_class_t::DIFF};
+        trx->write(zoneDiffKey, "zone-diff", true, ResourceIf::Category::DIFF);
+        trx->write(otherZoneDiffKey, "other-zone-diff", true, ResourceIf::Category::DIFF);
+
+        ms.auth().deleteZone(*trx, zone, tenant);
+
+        EXPECT_FALSE(trx->keyExists({zone, key_class_t::ENTRY}));
+        EXPECT_FALSE(trx->keyExists({child, key_class_t::ENTRY}));
+        EXPECT_FALSE(trx->keyExists({zone, zone, key_class_t::ZRR}, ResourceIf::Category::ACCOUNT));
+        EXPECT_FALSE(trx->keyExists({zone, child, key_class_t::ZRR}, ResourceIf::Category::ACCOUNT));
+        EXPECT_FALSE(trx->keyExists(zoneDiffKey, ResourceIf::Category::DIFF));
+
+        EXPECT_TRUE(trx->keyExists({otherZone, key_class_t::ENTRY}));
+        EXPECT_TRUE(trx->keyExists({otherChild, key_class_t::ENTRY}));
+        EXPECT_TRUE(trx->keyExists({otherZone, otherZone, key_class_t::ZRR}, ResourceIf::Category::ACCOUNT));
+        EXPECT_TRUE(trx->keyExists({otherZone, otherChild, key_class_t::ZRR}, ResourceIf::Category::ACCOUNT));
+        EXPECT_TRUE(trx->keyExists(otherZoneDiffKey, ResourceIf::Category::DIFF));
+    }
+}
+
 TEST(AuthMgr, bootstrap) {
     MockServer ms;
     //ms.auth().bootstrap();

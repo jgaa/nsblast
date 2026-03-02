@@ -391,6 +391,8 @@ private:
     void upsertTenantIndexes(trx_t& trx, const pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
     void deleteUserIndexes(trx_t& trx, const pb::Tenant& tenant);
     void deleteTenantIndexes(trx_t& trx, const pb::Tenant& tenant);
+    std::vector<std::string> collectZoneRrFqdns(trx_t& trx, std::string_view zoneFqdn);
+    std::vector<ResourceIf::RealKey> collectZoneDiffKeys(trx_t& trx, std::string_view zoneFqdn);
     uint32_t getDataSchemaVersion(trx_t& trx) const;
     void setDataSchemaVersion(trx_t& trx, uint32_t version) const;
     void migrateToV2AddDynip(trx_t& trx) const;
