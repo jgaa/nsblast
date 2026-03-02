@@ -122,6 +122,8 @@ message VarsSnapshot {
     uint32 dynip_min_ttl = 104;
     uint32 dynip_max_ttl = 105;
     bool dynip_allow_txt = 106;
+    uint32 dynip_min_root_len = 107;
+    uint32 dynip_max_root_len = 108;
 
     bool dynip_enable_get = 120;
     bool dynip_enable_post_json = 121;

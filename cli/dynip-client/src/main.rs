@@ -108,10 +108,26 @@ struct UpdateResponse {
     response_fqdn: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ErrorResponse {
+    status: Option<String>,
+    message: Option<String>,
+    fqdn: Option<String>,
+    #[serde(alias = "hostname")]
+    response_fqdn: Option<String>,
+}
+
 #[derive(Debug)]
 struct UpdateOutcome {
     changed: bool,
     effective_ip: String,
+    fqdn: String,
+}
+
+#[derive(Debug)]
+struct UpdateFailure {
+    code: ExitCode,
+    message: String,
 }
 
 #[tokio::main]
@@ -140,6 +156,7 @@ async fn run(cli: Cli) -> std::result::Result<(), ExitCode> {
         let result = update_once(&client, &cfg).await;
         match result {
             Ok(outcome) => {
+                print_update_result(&outcome);
                 maybe_run_on_changed(
                     &cfg,
                     None,
@@ -153,7 +170,10 @@ async fn run(cli: Cli) -> std::result::Result<(), ExitCode> {
                     Err(ExitCode::SuccessNoChange)
                 }
             }
-            Err(code) => Err(code),
+            Err(err) => {
+                eprintln!("{}", err.message);
+                Err(err.code)
+            }
         }
     }
 }
@@ -362,7 +382,7 @@ fn acquire_lock(path: &Path) -> std::result::Result<LockGuard, ExitCode> {
         ExitCode::OtherError
     })?;
 
-    info!(path = %path.display(), "lock acquired");
+    debug!(path = %path.display(), "lock acquired");
     Ok(LockGuard {
         _file: lock_file,
         path: path.to_path_buf(),
@@ -426,8 +446,8 @@ async fn run_daemon(client: reqwest::Client, cfg: AppConfig) {
                     return;
                 }
             }
-            Err(code) => {
-                warn!(exit_code = code as i32, "dynip update failed");
+            Err(err) => {
+                warn!(exit_code = err.code as i32, error = %err.message, "dynip update failed");
                 let sleep_for = if backoff > base_interval {
                     base_interval
                 } else {
@@ -463,10 +483,10 @@ fn startup_jitter_seconds() -> u64 {
 async fn update_once(
     client: &reqwest::Client,
     cfg: &AppConfig,
-) -> std::result::Result<UpdateOutcome, ExitCode> {
-    let endpoint = build_endpoint_url(&cfg.url).map_err(|err| {
-        error!("invalid URL: {err}");
-        ExitCode::OtherError
+) -> std::result::Result<UpdateOutcome, UpdateFailure> {
+    let endpoint = build_endpoint_url(&cfg.url).map_err(|err| UpdateFailure {
+        code: ExitCode::OtherError,
+        message: format!("DynIP update failed for {}: invalid URL: {err}", cfg.fqdn),
     })?;
 
     let payload = UpdateRequest {
@@ -489,19 +509,26 @@ async fn update_once(
         .json(&payload)
         .send()
         .await
-        .map_err(|err| {
-            warn!("request failed: {err}");
-            ExitCode::NetworkFailure
+        .map_err(|err| UpdateFailure {
+            code: ExitCode::NetworkFailure,
+            message: format!(
+                "DynIP update failed for {}: request failed: {err}",
+                cfg.fqdn
+            ),
         })?;
 
     let status = response.status();
     if status != StatusCode::OK {
-        return Err(map_http_status(status));
+        let body = response.text().await.unwrap_or_default();
+        return Err(interpret_error(status, &body, &cfg.fqdn));
     }
 
-    let parsed: UpdateResponse = response.json().await.map_err(|err| {
-        error!("failed to parse JSON response: {err}");
-        ExitCode::OtherError
+    let parsed: UpdateResponse = response.json().await.map_err(|err| UpdateFailure {
+        code: ExitCode::OtherError,
+        message: format!(
+            "DynIP update failed for {}: failed to parse JSON response: {err}",
+            cfg.fqdn
+        ),
     })?;
 
     interpret_success(parsed, &cfg.fqdn)
@@ -527,26 +554,35 @@ fn map_http_status(status: StatusCode) -> ExitCode {
 fn interpret_success(
     response: UpdateResponse,
     expected_fqdn: &str,
-) -> std::result::Result<UpdateOutcome, ExitCode> {
-    let status_value = response.status.ok_or_else(|| {
-        error!("missing response field: status");
-        ExitCode::OtherError
+) -> std::result::Result<UpdateOutcome, UpdateFailure> {
+    let status_value = response.status.ok_or_else(|| UpdateFailure {
+        code: ExitCode::OtherError,
+        message: format!("DynIP update failed for {expected_fqdn}: missing response field: status"),
     })?;
 
-    let changed = response.changed.ok_or_else(|| {
-        error!("missing response field: changed");
-        ExitCode::OtherError
+    let changed = response.changed.ok_or_else(|| UpdateFailure {
+        code: ExitCode::OtherError,
+        message: format!(
+            "DynIP update failed for {expected_fqdn}: missing response field: changed"
+        ),
     })?;
 
-    let effective_ip = response.effective_ip.ok_or_else(|| {
-        error!("missing response field: effective_ip");
-        ExitCode::OtherError
+    let effective_ip = response.effective_ip.ok_or_else(|| UpdateFailure {
+        code: ExitCode::OtherError,
+        message: format!(
+            "DynIP update failed for {expected_fqdn}: missing response field: effective_ip"
+        ),
     })?;
 
-    let response_fqdn = response.fqdn.or(response.response_fqdn).ok_or_else(|| {
-        error!("missing response field: fqdn");
-        ExitCode::OtherError
-    })?;
+    let response_fqdn = response
+        .fqdn
+        .or(response.response_fqdn)
+        .ok_or_else(|| UpdateFailure {
+            code: ExitCode::OtherError,
+            message: format!(
+                "DynIP update failed for {expected_fqdn}: missing response field: fqdn"
+            ),
+        })?;
 
     if response_fqdn != expected_fqdn {
         warn!(
@@ -559,14 +595,69 @@ fn interpret_success(
         "good" | "nochg" => Ok(UpdateOutcome {
             changed,
             effective_ip,
+            fqdn: response_fqdn,
         }),
-        other => {
-            error!(
-                status = other,
-                "unexpected status token in success response"
-            );
-            Err(ExitCode::OtherError)
-        }
+        other => Err(UpdateFailure {
+            code: ExitCode::OtherError,
+            message: format!(
+                "DynIP update failed for {}: unexpected status token in success response: {}",
+                expected_fqdn, other
+            ),
+        }),
+    }
+}
+
+fn interpret_error(status: StatusCode, body: &str, expected_fqdn: &str) -> UpdateFailure {
+    let code = map_http_status(status);
+
+    if let Ok(parsed) = serde_json::from_str::<ErrorResponse>(body) {
+        let fqdn = parsed
+            .fqdn
+            .or(parsed.response_fqdn)
+            .unwrap_or_else(|| expected_fqdn.to_string());
+        let status_text = parsed.status.unwrap_or_else(|| status.as_str().to_string());
+        let message = parsed.message.unwrap_or_else(|| {
+            status
+                .canonical_reason()
+                .unwrap_or("request failed")
+                .to_string()
+        });
+
+        return UpdateFailure {
+            code,
+            message: format!("DynIP update failed for {fqdn}: {message} ({status_text})"),
+        };
+    }
+
+    let detail = if body.trim().is_empty() {
+        status
+            .canonical_reason()
+            .unwrap_or("request failed")
+            .to_string()
+    } else {
+        body.trim().to_string()
+    };
+
+    UpdateFailure {
+        code,
+        message: format!(
+            "DynIP update failed for {}: HTTP {} {}",
+            expected_fqdn,
+            status.as_u16(),
+            detail
+        ),
+    }
+}
+
+fn print_update_result(outcome: &UpdateOutcome) {
+    println!("{}", format_update_result(outcome));
+}
+
+fn format_update_result(outcome: &UpdateOutcome) -> String {
+    if outcome.changed {
+        format!("Updated {} to {}", outcome.fqdn, outcome.effective_ip)
+    } else {
+        format!("Unchanged {} at {}", outcome.fqdn, outcome.effective_ip)
     }
 }
 
@@ -617,7 +708,7 @@ async fn maybe_run_on_changed(
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        info!(path = %self.path.display(), "releasing lock");
+        debug!(path = %self.path.display(), "releasing lock");
     }
 }
 
@@ -667,6 +758,7 @@ mod tests {
         let outcome = interpret_success(response, "host.example.com").expect("valid response");
         assert!(outcome.changed);
         assert_eq!(outcome.effective_ip, "203.0.113.10");
+        assert_eq!(outcome.fqdn, "host.example.com");
     }
 
     #[test]
@@ -680,7 +772,7 @@ mod tests {
         };
 
         let err = interpret_success(response, "host.example.com").expect_err("must fail");
-        assert_eq!(err, ExitCode::OtherError);
+        assert_eq!(err.code, ExitCode::OtherError);
     }
 
     #[test]
@@ -696,6 +788,45 @@ mod tests {
         let outcome = interpret_success(response, "host.example.com").expect("valid response");
         assert!(outcome.changed);
         assert_eq!(outcome.effective_ip, "203.0.113.10");
+        assert_eq!(outcome.fqdn, "host.example.com");
+    }
+
+    #[test]
+    fn test_interpret_error_uses_json_message() {
+        let err = interpret_error(
+            StatusCode::BAD_REQUEST,
+            r#"{"status":"badip","message":"Missing explicit IP","fqdn":"host.example.com"}"#,
+            "host.example.com",
+        );
+
+        assert_eq!(err.code, ExitCode::OtherError);
+        assert_eq!(
+            err.message,
+            "DynIP update failed for host.example.com: Missing explicit IP (badip)"
+        );
+    }
+
+    #[test]
+    fn test_print_update_result_formats_changed_and_unchanged() {
+        let changed = UpdateOutcome {
+            changed: true,
+            effective_ip: "203.0.113.10".to_string(),
+            fqdn: "host.example.com".to_string(),
+        };
+        let unchanged = UpdateOutcome {
+            changed: false,
+            effective_ip: "203.0.113.11".to_string(),
+            fqdn: "host.example.com".to_string(),
+        };
+
+        assert_eq!(
+            format_update_result(&changed),
+            "Updated host.example.com to 203.0.113.10"
+        );
+        assert_eq!(
+            format_update_result(&unchanged),
+            "Unchanged host.example.com at 203.0.113.11"
+        );
     }
 
     #[test]

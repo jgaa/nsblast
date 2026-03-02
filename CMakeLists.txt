@@ -176,6 +176,9 @@ FetchContent_Declare(
     yahat_dep
     GIT_REPOSITORY https://github.com/jgaa/yahat-cpp.git
     GIT_TAG origin/HEAD
+    PATCH_COMMAND ${CMAKE_COMMAND}
+        -DYAHAT_SOURCE_DIR=<SOURCE_DIR>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_yahat_remote_address.cmake
 )
 FetchContent_MakeAvailable(logfault_dep mkres_dep glad_dep yahat_dep)
 

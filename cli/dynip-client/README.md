@@ -46,7 +46,7 @@ Binary:
 nsblast-dynip --config ~/.config/nsblast-dynip/config.yaml --ip 203.0.113.10
 ```
 
-`--ip` is optional in the client, but current server builds require an explicit IP on `/api/v1/dynip/update`.
+`--ip` is optional. If omitted, the server uses the HTTP peer IP address for the update.
 The flag may be repeated syntactically, but the current server endpoint only supports one explicit IP per request, so dual-stack `A` + `AAAA` updates cannot be completed in a single invocation yet.
 
 Exit codes:
@@ -63,7 +63,6 @@ Request:
 ```json
 {
   "fqdn": "office.example.com",
-  "ip": "203.0.113.10",
   "client_ref": "router-01"
 }
 ```

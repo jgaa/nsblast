@@ -59,6 +59,9 @@ const initialAvailability: AvailabilityState = {
   message: 'Enter a root label to check availability.'
 };
 
+const DYNIP_MIN_ROOT_LEN = 3;
+const DYNIP_MAX_ROOT_LEN = 24;
+
 function parseItems<T>(payload: unknown): T[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return [];
@@ -79,6 +82,12 @@ function isValidDnsLabel(value: string): boolean {
     return false;
   }
   return /^[a-z0-9-]+$/.test(value);
+}
+
+function isValidDynIpRootLabel(value: string): boolean {
+  return value.length >= DYNIP_MIN_ROOT_LEN
+    && value.length <= DYNIP_MAX_ROOT_LEN
+    && isValidDnsLabel(value);
 }
 
 function formatDynIpError(err: unknown, fallback: string): string {
@@ -207,10 +216,10 @@ export default function DynIp() {
       return;
     }
 
-    if (!isValidDnsLabel(normalized)) {
+    if (!isValidDynIpRootLabel(normalized)) {
       setAvailability({
         kind: 'invalid',
-        message: 'Root labels must be 1-63 chars of a-z, 0-9, or hyphen.'
+        message: `Root labels must be ${DYNIP_MIN_ROOT_LEN}-${DYNIP_MAX_ROOT_LEN} chars of a-z, 0-9, or hyphen.`
       });
       return;
     }
@@ -301,8 +310,8 @@ export default function DynIp() {
 
   const onCreateRoot = async () => {
     const normalized = normalizeRootLabel(rootName);
-    if (!isValidDnsLabel(normalized)) {
-      setError('A valid DynIP root label is required.');
+    if (!isValidDynIpRootLabel(normalized)) {
+      setError(`DynIP root labels must be ${DYNIP_MIN_ROOT_LEN}-${DYNIP_MAX_ROOT_LEN} chars of a-z, 0-9, or hyphen.`);
       return;
     }
     if (!access.canProvision) {

@@ -156,6 +156,23 @@ vector<string> splitHostnames(string_view csv) {
     return out;
 }
 
+void validateDynIpHostnameLabel(std::string_view label, std::string_view fieldName) {
+    if (!DynIpStore::isValidLabel(toLower(string{label}))) {
+        throw ConstraintException{format("{} must be a valid DNS host label", fieldName)};
+    }
+}
+
+void validateDynIpRootLabel(std::string_view root, const pb::VarsSnapshot& vars) {
+    validateDynIpHostnameLabel(root, "DynIP root");
+    if (root.size() < vars.dynip_min_root_len() || root.size() > vars.dynip_max_root_len()) {
+        throw ConstraintException{
+            format("DynIP root length must be between {} and {} characters",
+                   vars.dynip_min_root_len(),
+                   vars.dynip_max_root_len())
+        };
+    }
+}
+
 Response legacyDynIpReply(string_view token) {
     return {200, "OK", string{token}, {}, "text/plain"};
 }
@@ -1856,21 +1873,41 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         }
     };
 
-    const auto legacyReply = [&](std::string_view token) {
+    const auto logOutcome = [&](int code,
+                                std::string_view status,
+                                std::string_view fqdn = {},
+                                std::string_view effectiveIp = {},
+                                std::string_view message = {}) {
+        LOG_DEBUG << "DynIP update outcome status=" << status
+                  << " http=" << code
+                  << " fqdn=" << (fqdn.empty() ? "-" : std::string{fqdn})
+                  << " ip=" << (effectiveIp.empty() ? "-" : std::string{effectiveIp})
+                  << " message=" << (message.empty() ? "-" : std::string{message});
+    };
+
+    const auto legacyReply = [&](std::string_view token,
+                                 std::string_view fqdn = {},
+                                 std::string_view message = {}) {
         trackResult(token);
+        logOutcome(200, token, fqdn, {}, message);
         return legacyDynIpReply(token);
     };
 
-    const auto legacyReplyWithIp = [&](std::string_view token, std::string_view ip) {
+    const auto legacyReplyWithIp = [&](std::string_view token,
+                                       std::string_view ip,
+                                       std::string_view fqdn = {},
+                                       std::string_view message = {}) {
         trackResult(token);
+        logOutcome(200, token, fqdn, ip, message);
         return legacyDynIpReply(std::format("{} {}", token, ip));
     };
 
     if (!vars->dynip_enabled()) {
         if (legacyResponse) {
-            return legacyReply("!disabled");
+            return legacyReply("!disabled", {}, "DynIP disabled");
         }
         trackResult("disabled");
+        logOutcome(403, "disabled", {}, {}, "DynIP disabled");
         return Response{403, "DynIP disabled"};
     }
 
@@ -1922,6 +1959,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
                                std::string_view recordType,
                                std::string_view message = {}) {
         trackResult(status);
+        logOutcome(code, status, fqdn, effectiveIp, message);
         return makeJsonReply(code, status, changed, fqdn, effectiveIp, recordType, message);
     };
 
@@ -1942,10 +1980,12 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     case Request::Type::POST: {
         if (!vars->dynip_enable_post_json()) {
             trackResult("disabled");
+            logOutcome(405, "disabled", {}, {}, "POST DynIP updates are disabled");
             return {405, "Method Not Allowed"};
         }
         const auto json = parseJson(req.body);
         if (!json.is_object()) {
+            logOutcome(400, "error", {}, {}, "Request body must be a JSON object");
             return {400, "Request body must be a JSON object"};
         }
         const auto& obj = json.as_object();
@@ -1960,24 +2000,30 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     } break;
     default:
         trackResult("error");
+        logOutcome(405, "error", {}, {}, "Only GET and POST are supported");
         return {405, "Only GET and POST are supported"};
     }
 
     if (!reqFqdn.has_value()) {
-        return legacyResponse ? legacyReply("notfqdn")
+        return legacyResponse ? legacyReply("notfqdn", {}, "Missing fqdn")
                               : jsonReply(400, "notfqdn", false, {}, {}, {}, "Missing fqdn");
     }
 
     const auto fqdn = toLower(*reqFqdn);
+    const auto peerIp = req.remote_address;
+    LOG_DEBUG << "DynIP update request fqdn=" << fqdn
+              << " ip=" << (reqIp.has_value() && !reqIp->empty() ? *reqIp : string{"-"})
+              << " peer=" << (peerIp.empty() ? string{"-"} : peerIp)
+              << " route=" << (legacyResponse ? "legacy" : "json");
     if (!validateFqdn(fqdn)) {
-        return legacyResponse ? legacyReply("notfqdn")
+        return legacyResponse ? legacyReply("notfqdn", fqdn, "Invalid fqdn")
                               : jsonReply(400, "notfqdn", false, fqdn, {}, {}, "Invalid fqdn");
     }
 
     // Capability auth is provided by AuthMgr through req.auth.extra (raw Authorization header).
     const auto authHeader = getDynIpAuthHeader(req);
     if (!authHeader) {
-        return legacyResponse ? legacyReply("badauth")
+        return legacyResponse ? legacyReply("badauth", fqdn, "Missing credentials")
                               : jsonReply(401, "badauth", false, fqdn, {}, {}, "Missing credentials");
     }
 
@@ -1991,7 +2037,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
         string_view cred{decoded.data(), decoded.size()};
         const auto pos = cred.find(':');
         if (pos == string_view::npos) {
-            return legacyResponse ? legacyReply("badauth")
+            return legacyResponse ? legacyReply("badauth", fqdn, "Malformed basic auth")
                                   : jsonReply(401, "badauth", false, fqdn, {}, {}, "Malformed basic auth");
         }
         const auto basicFqdn = toLower(cred.substr(0, pos));
@@ -2001,53 +2047,56 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
             tokenIx.reset();
         }
     } else {
-        return legacyResponse ? legacyReply("badauth")
+        return legacyResponse ? legacyReply("badauth", fqdn, "Unsupported auth scheme")
                               : jsonReply(401, "badauth", false, fqdn, {}, {}, "Unsupported auth scheme");
     }
 
     if (!tokenIx || tokenIx->disabled()) {
-        return legacyResponse ? legacyReply("badauth")
+        return legacyResponse ? legacyReply("badauth", fqdn, "Invalid credentials")
                               : jsonReply(401, "badauth", false, fqdn, {}, {}, "Invalid credentials");
     }
     if (!secureEquals(toLower(tokenIx->fqdn()), fqdn)) {
-        return legacyResponse ? legacyReply("nohost")
+        return legacyResponse ? legacyReply("nohost", fqdn, "Capability scope mismatch")
                               : jsonReply(404, "nohost", false, fqdn, {}, {}, "Capability scope mismatch");
     }
 
     if (!reqIp.has_value() || reqIp->empty() || *reqIp == "auto") {
-        return legacyResponse ? legacyReply("badip")
-                              : jsonReply(400, "badip", false, fqdn, {}, {}, "Missing explicit IP");
+        if (peerIp.empty()) {
+            return legacyResponse ? legacyReply("badip", fqdn, "Unable to determine peer IP address")
+                                  : jsonReply(400, "badip", false, fqdn, {}, {}, "Unable to determine peer IP address");
+        }
+        reqIp = peerIp;
     }
 
     boost::asio::ip::address effectiveIp;
     try {
         effectiveIp = boost::asio::ip::make_address(*reqIp);
     } catch(const std::exception&) {
-        return legacyResponse ? legacyReply("badip")
+        return legacyResponse ? legacyReply("badip", fqdn, "Invalid IP address")
                               : jsonReply(400, "badip", false, fqdn, {}, {}, "Invalid IP address");
     }
 
     if (!vars->dynip_allow_private_ips() && isPrivateIp(effectiveIp)) {
-        return legacyResponse ? legacyReply("badip")
+        return legacyResponse ? legacyReply("badip", fqdn, "Private IPs are disabled")
                               : jsonReply(400, "badip", false, fqdn, {}, {}, "Private IPs are disabled");
     }
 
     auto trx = resource_.transaction();
     auto existing = trx->lookupEntryAndSoa(fqdn);
     if (!existing.hasSoa()) {
-        return legacyResponse ? legacyReply("nohost")
+        return legacyResponse ? legacyReply("nohost", fqdn, "Hostname not found")
                               : jsonReply(404, "nohost", false, fqdn, {}, {}, "Hostname not found");
     }
 
     if (existing.hasRr() && !isSingleDynIpEntry(existing.rr())) {
-        return legacyResponse ? legacyReply("badauth")
+        return legacyResponse ? legacyReply("badauth", fqdn, "RR set is not DynIP-compatible")
                               : jsonReply(403, "badauth", false, fqdn, {}, {}, "RR set is not DynIP-compatible");
     }
 
     if (existing.hasRr()) {
         if (const auto currentIp = getSingleDynIpAddress(existing.rr()); currentIp && *currentIp == effectiveIp) {
             if (legacyResponse) {
-                return legacyReplyWithIp("nochg", effectiveIp.to_string());
+                return legacyReplyWithIp("nochg", effectiveIp.to_string(), fqdn, "No change");
             }
             return jsonReply(200, "nochg", false, fqdn, effectiveIp.to_string(),
                              effectiveIp.is_v4() ? "A" : "AAAA", "No change");
@@ -2056,12 +2105,12 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
 
     auto tenantId = existing.soa().tenantId();
     if (!tenantId.has_value()) {
-        return legacyResponse ? legacyReply("911")
+        return legacyResponse ? legacyReply("911", fqdn, "Zone has no tenant owner")
                               : jsonReply(500, "911", false, fqdn, {}, {}, "Zone has no tenant owner");
     }
     auto tenant = server().auth().getTenant(boost::uuids::to_string(*tenantId));
     if (!tenant) {
-        return legacyResponse ? legacyReply("911")
+        return legacyResponse ? legacyReply("911", fqdn, "Tenant not found")
                               : jsonReply(500, "911", false, fqdn, {}, {}, "Tenant not found");
     }
 
@@ -2103,9 +2152,9 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     const auto rrReply = onResourceRecord(rrReq, rrParsed);
     if (!rrReply.ok()) {
         if (legacyResponse) {
-            if (rrReply.code == 404) return legacyReply("nohost");
-            if (rrReply.code == 400) return legacyReply("badip");
-            return legacyReply("911");
+            if (rrReply.code == 404) return legacyReply("nohost", fqdn, rrReply.reason);
+            if (rrReply.code == 400) return legacyReply("badip", fqdn, rrReply.reason);
+            return legacyReply("911", fqdn, rrReply.reason);
         }
         string_view status = "911";
         if (rrReply.code == 404) status = "nohost";
@@ -2114,7 +2163,7 @@ Response RestApi::onDynIpUpdate(const yahat::Request& req, const Parsed& parsed,
     }
 
     if (legacyResponse) {
-        return legacyReplyWithIp("good", effectiveIp.to_string());
+        return legacyReplyWithIp("good", effectiveIp.to_string(), fqdn, "updated");
     }
     return jsonReply(200, "good", true, fqdn, effectiveIp.to_string(),
                      effectiveIp.is_v4() ? "A" : "AAAA", "updated");
@@ -2198,6 +2247,7 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
                 if (!allow(pb::Permission::DYNIP_PROVISION)) {
                     return failDenied();
                 }
+                validateDynIpRootLabel(root, *vars);
                 uint32_t hostLimit = vars->dynip_max_hosts_per_root();
                 if (!req.body.empty()) {
                     const auto json = parseJson(req.body);
@@ -2234,6 +2284,8 @@ Response RestApi::onDynIpProvision(const yahat::Request& req, const Parsed& pars
             if (!(allow(pb::Permission::DYNIP_CREATE) || session->isAllowed(pb::Permission::DYNIP_PROVISION))) {
                 return failDenied();
             }
+            validateDynIpRootLabel(root, *vars);
+            validateDynIpHostnameLabel(op, "DynIP host");
             uint32_t ttl = vars->dynip_default_ttl();
             if (!req.body.empty()) {
                 const auto json = parseJson(req.body);

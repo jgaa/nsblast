@@ -3,8 +3,11 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <google/protobuf/descriptor.h>
 
 #include "nsblast/Vars.h"
 
@@ -47,6 +50,48 @@ string normalize(string_view input) {
     return toLower(trimView(input));
 }
 
+bool applyMissingDefaults(pb::VarsSnapshot& snap, const pb::VarsSnapshot& defaults) {
+    const auto* snapReflection = snap.GetReflection();
+    const auto* defaultsReflection = defaults.GetReflection();
+
+    vector<const google::protobuf::FieldDescriptor*> setFields;
+    snapReflection->ListFields(snap, &setFields);
+
+    unordered_set<int> present;
+    present.reserve(setFields.size());
+    for (const auto* field : setFields) {
+        present.insert(field->number());
+    }
+
+    vector<const google::protobuf::FieldDescriptor*> defaultFields;
+    defaultsReflection->ListFields(defaults, &defaultFields);
+
+    bool changed = false;
+    for (const auto* field : defaultFields) {
+        if (present.contains(field->number())) {
+            continue;
+        }
+
+        switch (field->cpp_type()) {
+        case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+            snapReflection->SetBool(&snap, field, defaultsReflection->GetBool(defaults, field));
+            break;
+        case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+            snapReflection->SetUInt32(&snap, field, defaultsReflection->GetUInt32(defaults, field));
+            break;
+        case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+            snapReflection->SetString(&snap, field, defaultsReflection->GetString(defaults, field));
+            break;
+        default:
+            continue;
+        }
+
+        changed = true;
+    }
+
+    return changed;
+}
+
 } // namespace
 
 const vector<Vars::Def>& Vars::defs() {
@@ -62,6 +107,8 @@ const vector<Vars::Def>& Vars::defs() {
         {"dynip_min_ttl", ValueType::UINT32, false, false, "Minimum DynIP TTL."},
         {"dynip_max_ttl", ValueType::UINT32, false, false, "Maximum DynIP TTL."},
         {"dynip_allow_txt", ValueType::BOOL, false, false, "Allow DynIP TXT records."},
+        {"dynip_min_root_len", ValueType::UINT32, false, false, "Minimum DynIP root label length."},
+        {"dynip_max_root_len", ValueType::UINT32, false, false, "Maximum DynIP root label length."},
 
         {"dynip_enable_get", ValueType::BOOL, false, false, "Enable legacy GET /nic/update."},
         {"dynip_enable_post_json", ValueType::BOOL, false, false, "Enable JSON POST /nic/update."},
@@ -92,6 +139,8 @@ pb::VarsSnapshot Vars::defaults(const Config& config) {
     snap.set_dynip_min_ttl(60);
     snap.set_dynip_max_ttl(3600);
     snap.set_dynip_allow_txt(false);
+    snap.set_dynip_min_root_len(3);
+    snap.set_dynip_max_root_len(24);
 
     snap.set_dynip_enable_get(true);
     snap.set_dynip_enable_post_json(true);
@@ -129,6 +178,18 @@ void Vars::validate(const pb::VarsSnapshot& snap) {
 
     if (snap.dynip_max_hosts_per_request() == 0) {
         throw Error{2, "dynip_max_hosts_per_request must be greater than zero"};
+    }
+
+    if (snap.dynip_min_root_len() == 0 || snap.dynip_max_root_len() == 0) {
+        throw Error{2, "DynIP root length bounds must be greater than zero"};
+    }
+
+    if (snap.dynip_min_root_len() > snap.dynip_max_root_len()) {
+        throw Error{2, "dynip_min_root_len <= dynip_max_root_len is required"};
+    }
+
+    if (snap.dynip_max_root_len() > 63) {
+        throw Error{2, "dynip_max_root_len exceeds DNS label bounds"};
     }
 
     if (!snap.cluster_role().empty()) {
@@ -197,8 +258,13 @@ void Vars::setSnapshot(pb::VarsSnapshot snap) {
 
 void Vars::loadOrCreateForUpgrade() {
     if (auto existing = readSnapshot()) {
-        validate(*existing);
-        setSnapshot(std::move(*existing));
+        auto snap = std::move(*existing);
+        const bool backfilled = applyMissingDefaults(snap, defaults_);
+        validate(snap);
+        if (backfilled) {
+            persistSnapshot(snap);
+        }
+        setSnapshot(std::move(snap));
         return;
     }
 
@@ -422,6 +488,18 @@ void Vars::apply(pb::VarsSnapshot& snap,
         snap.set_dynip_allow_txt(tmp);
         return;
     }
+    if (lower == "dynip_min_root_len") {
+        auto tmp = defaultValues.dynip_min_root_len();
+        if (!isUnset) set_u32(&tmp);
+        snap.set_dynip_min_root_len(tmp);
+        return;
+    }
+    if (lower == "dynip_max_root_len") {
+        auto tmp = defaultValues.dynip_max_root_len();
+        if (!isUnset) set_u32(&tmp);
+        snap.set_dynip_max_root_len(tmp);
+        return;
+    }
     if (lower == "dynip_enable_get") {
         auto tmp = defaultValues.dynip_enable_get();
         if (!isUnset) set_bool(&tmp);
@@ -475,6 +553,8 @@ boost::json::value Vars::getValue(const pb::VarsSnapshot& snap, string_view name
     if (lower == "dynip_min_ttl") return static_cast<int64_t>(snap.dynip_min_ttl());
     if (lower == "dynip_max_ttl") return static_cast<int64_t>(snap.dynip_max_ttl());
     if (lower == "dynip_allow_txt") return snap.dynip_allow_txt();
+    if (lower == "dynip_min_root_len") return static_cast<int64_t>(snap.dynip_min_root_len());
+    if (lower == "dynip_max_root_len") return static_cast<int64_t>(snap.dynip_max_root_len());
 
     if (lower == "dynip_enable_get") return snap.dynip_enable_get();
     if (lower == "dynip_enable_post_json") return snap.dynip_enable_post_json();

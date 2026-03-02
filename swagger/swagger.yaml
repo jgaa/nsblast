@@ -53,7 +53,7 @@ paths:
         - name: myip
           in: query
           required: false
-          description: IP address to set for hostname.
+          description: Optional IP address to set for hostname. If omitted, the server uses the HTTP peer IP address.
           type: string
       produces:
         - text/plain
@@ -109,7 +109,7 @@ paths:
       tags:
         - dynip
       summary: Dynamic IP update with JSON payload
-      description: Primary DynIP update endpoint. Uses capability credentials (`Bearer` or `Basic`).
+      description: Primary DynIP update endpoint. Uses capability credentials (`Bearer` or `Basic`). If `ip` is omitted or set to `auto`, the server uses the HTTP peer IP address.
       consumes:
         - application/json
       produces:
@@ -159,6 +159,7 @@ paths:
         name: root
         required: true
         type: string
+        description: DNS hostname label for the DynIP root. Must satisfy RFC 1123 label rules and the server root-length bounds.
     post:
       tags:
         - dynip
@@ -226,10 +227,12 @@ paths:
         name: root
         required: true
         type: string
+        description: DNS hostname label for the DynIP root. Must satisfy RFC 1123 label rules and the server root-length bounds.
       - in: path
         name: host
         required: true
         type: string
+        description: DNS hostname label for the DynIP host. Must satisfy RFC 1123 label rules.
     post:
       tags:
         - dynip
@@ -2416,7 +2419,7 @@ definitions:
         description: Legacy alias for `fqdn`.
       ip:
         type: string
-        description: Single IPv4 or IPv6 address, or `auto`.
+        description: Optional single IPv4 or IPv6 address. If omitted or set to `auto`, the server uses the HTTP peer IP address.
 
   DynIpUpdateResponse:
     type: object
@@ -2442,6 +2445,7 @@ definitions:
 
   DynIpCreateRootRequest:
     type: object
+    description: The root path parameter must be a valid DNS hostname label and its length must be within the server's DynIP root bounds.
     properties:
       host_limit:
         type: integer
@@ -2477,6 +2481,7 @@ definitions:
 
   DynIpCreateHostRequest:
     type: object
+    description: The host path parameter must be a valid DNS hostname label.
     properties:
       ttl:
         type: integer
