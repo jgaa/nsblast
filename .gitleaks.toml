@@ -2,12 +2,3 @@ title = "nsblast gitleaks config"
 
 [extend]
 useDefault = true
-
-[[allowlists]]
-description = "Allow known historical test-data false positives in old commits"
-commits = [
-  "23f1b5ad2d10557f90d6c5edf3575f1fd3634698",
-  "efb625261951d3d63fdbbeef2b4145f8b74b40b0",
-  "8601ad77beb2a3dae7135c64e6518a87b5e05372",
-  "6c5957950af22bbd0fc07e40f98ae643b5528701",
-]

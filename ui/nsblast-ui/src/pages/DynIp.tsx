@@ -17,6 +17,7 @@ type DynIpHost = {
   fqdn: string;
   ttl: number;
   update_count: number;
+  last_update?: string | null;
   disabled: boolean;
 };
 
@@ -118,7 +119,7 @@ function extractIps(payload: unknown): string[] {
   return ips;
 }
 
-export function formatDynIpTimestamp(value?: string): string {
+export function formatDynIpTimestamp(value?: string | null): string {
   if (!value) {
     return 'Never';
   }

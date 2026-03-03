@@ -263,6 +263,47 @@ target_link_libraries(replication_tests
 
 add_test(NAME replication_tests COMMAND replication_tests)
 
+####### replication_idle_keepalive_tests
+
+add_executable(replication_idle_keepalive_tests
+    replication_idle_keepalive_tests.cpp
+    TmpDb.h
+    )
+
+set_property(TARGET replication_idle_keepalive_tests PROPERTY CXX_STANDARD 20)
+
+add_dependencies(replication_idle_keepalive_tests
+    nsblastlib
+     ${DEPENDS_GTEST}
+    )
+
+target_include_directories(replication_idle_keepalive_tests
+    PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/include
+    $<BUILD_INTERFACE:${NSBLAST_ROOT}/src/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+target_link_libraries(replication_idle_keepalive_tests
+    ${GTEST_LIBRARIES}
+    nsblastlib
+    yahat
+    ${Protobuf_LIBRARIES}
+    ${SNAPPY_LIBRARIES} # Not working
+    ${ROCKSDB_LIBRARIES}
+    ${NSBLAST_BOOST_LIBS}
+    ${ZLIB_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    stdc++fs
+    lz4
+    snappy
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
+add_test(NAME replication_idle_keepalive_tests COMMAND replication_idle_keepalive_tests)
+
 ########## Run the tests
 
 if (NSBLAST_RUN_TESTS)

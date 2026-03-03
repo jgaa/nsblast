@@ -5,13 +5,19 @@ on:
   push:
     paths:
       - '.github/workflows/security.yml'
+      - '.gitleaksignore'
       - '.gitleaks.toml'
+      - 'nsblast-book/**'
+      - 'tests/**'
       - 'ui/nsblast-ui/**'
       - 'functional-tests/**'
   pull_request:
     paths:
       - '.github/workflows/security.yml'
+      - '.gitleaksignore'
       - '.gitleaks.toml'
+      - 'nsblast-book/**'
+      - 'tests/**'
       - 'ui/nsblast-ui/**'
       - 'functional-tests/**'
   schedule:

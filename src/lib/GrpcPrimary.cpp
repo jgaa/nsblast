@@ -181,6 +181,22 @@ void GrpcPrimary::SyncClient::OnReadDone(bool ok)
     assert(replication_);
     replication_->onTrxId(req_.startafter());
 
+    // Followers periodically repeat their last request as a keepalive. When we
+    // are already streaming and have nothing queued, answer with an empty
+    // in-sync update so the follower sees fresh inbound activity.
+    if (replication_->isStreaming()) {
+        const auto heartbeat_needed = [&] {
+            std::lock_guard lock{mutex_};
+            return !is_done_ && !current_ && pending_.empty();
+        }();
+
+        if (heartbeat_needed) {
+            auto update = std::make_shared<grpc::nsblast::pb::SyncUpdate>();
+            update->set_isinsync(true);
+            enqueue(std::move(update));
+        }
+    }
+
     req_.Clear();
     StartRead(&req_);
 }

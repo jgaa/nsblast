@@ -89,22 +89,31 @@ Examples of values still configured outside the API vars surface:
 
 ## Quick probe examples
 
+Set scanner-safe shell variables for the examples:
+
+```sh
+export NSBLAST_ADMIN_USER=admin
+export NSBLAST_ADMIN_PASS='<admin-password>'
+```
+
 Version:
 
 ```sh
-curl -u admin:secret http://127.0.0.1:8080/api/v1/version
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
+  http://127.0.0.1:8080/api/v1/version
 ```
 
 List vars:
 
 ```sh
-curl -u admin:secret http://127.0.0.1:8080/api/v1/admin/vars
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
+  http://127.0.0.1:8080/api/v1/admin/vars
 ```
 
 Enable DynIP:
 
 ```sh
-curl -u admin:secret \
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
   -X PUT \
   -H 'Content-Type: application/json' \
   http://127.0.0.1:8080/api/v1/admin/vars/dynip_enabled \

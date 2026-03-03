@@ -83,16 +83,24 @@ fails with an error telling you to run `nsblast bootstrap` first.
 
 ## Verify the server
 
+Set scanner-safe shell variables for the examples:
+
+```sh
+export NSBLAST_ADMIN_USER=admin
+export NSBLAST_ADMIN_PASS='<admin-password>'
+```
+
 Check the version endpoint:
 
 ```sh
-curl -u admin:change-me http://127.0.0.1:8080/api/v1/version
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
+  http://127.0.0.1:8080/api/v1/version
 ```
 
 Create a zone:
 
 ```sh
-curl -u admin:change-me \
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
   -X POST \
   -H 'Content-Type: application/json' \
   'http://127.0.0.1:8080/api/v1/zone/example.test?kind=brief' \
@@ -107,7 +115,7 @@ curl -u admin:change-me \
 Add an `A` record:
 
 ```sh
-curl -u admin:change-me \
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
   -X PUT \
   -H 'Content-Type: application/json' \
   'http://127.0.0.1:8080/api/v1/rr/ns1.example.test' \
@@ -119,7 +127,7 @@ curl -u admin:change-me \
 Read the zone back:
 
 ```sh
-curl -u admin:change-me \
+curl --user "$NSBLAST_ADMIN_USER:$NSBLAST_ADMIN_PASS" \
   'http://127.0.0.1:8080/api/v1/zone/example.test?limit=100&kind=verbose'
 ```
 
