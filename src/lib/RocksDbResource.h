@@ -42,6 +42,8 @@ public:
         void iterate(key_t, iterator_fn_t fn, Category category = Category::ENTRY) override;
         bool keyExists(key_t key, Category category = Category::ENTRY) override;
         bool exists(std::string_view fqdn, uint16_t type) override;
+        void lock(key_t key, Category category = Category::ENTRY) override;
+        void indexMailReferences(key_t key, data_t data);
         void write(key_t key, data_t data, bool isNew, Category category = Category::ENTRY) override;
         read_ptr_t read(key_t key, Category category = Category::ENTRY, bool throwIfNoeExixt = true) override;
         bool read(key_t key, std::string& buffer, Category category = Category::ENTRY, bool throwIfNoeExixt = true) override;
@@ -152,6 +154,8 @@ public:
         // TransactionIf interface
     public:
     };
+
+    void setReplica(bool replica) noexcept { replica_ = replica; }
 
     RocksDbResource(const Config& config); // For unit tests
     RocksDbResource(Server& server); // For use
@@ -282,6 +286,7 @@ private:
     void loadTrxId();
     std::filesystem::path getBackupPath(std::filesystem::path path) const;
 
+    std::atomic_bool replica_{false};
     const Config& config_;
     rocksdb::TransactionDB *db_ = {};
     std::vector<rocksdb::ColumnFamilyDescriptor> cfd_;

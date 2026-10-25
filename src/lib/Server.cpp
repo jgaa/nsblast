@@ -11,6 +11,8 @@
 #include "nsblast/util.h"
 #include "Notifications.h"
 #include "RestApi.h"
+#include "MailProvisioner.h"
+#include "TimedTasks.h"
 #include "SlaveMgr.h"
 #include "RocksDbResource.h"
 #include "AuthMgr.h"
@@ -455,13 +457,14 @@ void Server::start()
         auth_->ensureAdminTenantRoleConsistency(apply_admin_fixes);
     }
 
-    if (!config_.disable_http) {
-        LOG_DEBUG_N << "Starting Api...";
-        startApi();
-    }
+    // Mail task handlers also run when the HTTP listener is disabled.
+    startApi();
 
     LOG_DEBUG_N << "Starting Follower mgr...";
     startSlaveMgr();
+    // Initialize notification/DNS dependencies before accepting API mutations.
+    startNotifications();
+    startDns();
 
     if (config_.disable_http) {
         LOG_INFO << "HTTP server (including the API server) is dsabled.";
@@ -473,11 +476,7 @@ void Server::start()
     LOG_DEBUG_N << "Starting IO threads...";
     startIoThreads();
 
-    LOG_DEBUG_N << "Starting Notifications...";
-    startNotifications();
-
-    LOG_DEBUG_N << "Starting Dns...";
-    startDns();
+    timed_tasks_->start();
 
     LOG_DEBUG_N << "Starting Backup manager...";
     startBackupMgr();
@@ -533,6 +532,7 @@ void Server::startRocksDb(bool init, bool allow_bootstrap)
     vars_ = make_shared<lib::Vars>(*this);
     if (!allow_bootstrap) {
         vars_->loadOrCreateForUpgrade();
+        rdb->setReplica(vars_->snapshot()->cluster_role() == "follower");
     }
 }
 
@@ -543,6 +543,7 @@ void Server::bootstrapVars(std::string_view clusterRole,
         vars_ = make_shared<lib::Vars>(*this);
     }
     vars_->bootstrap(clusterRole, overrides);
+    db().setReplica(vars_->snapshot()->cluster_role() == "follower");
 }
 
 void Server::startIoThreads()
@@ -565,6 +566,11 @@ void Server::startHttpServer()
 
     http_->addRoute("/api/v1", api_);
     http_->addRoute("/nic", api_);
+    yahat::RouteOptions policy_options;
+    policy_options.public_access = true;
+    policy_options.exact_match = true;
+    policy_options.allowed_methods = {yahat::Request::Type::GET};
+    http_->addRouteWithOptions("/.well-known/mta-sts.txt", api_, std::move(policy_options));
 
 #ifdef NSBLAST_WITH_SWAGGER
     if (config().swagger) {
@@ -590,9 +596,17 @@ void Server::startHttpServer()
     ft_http_ = http_->start();
 }
 
+void Server::wakeTimedTasks()
+{
+    if (timed_tasks_) timed_tasks_->wake();
+}
+
 void Server::startApi()
 {
     api_ = make_shared<RestApi>(*this);
+    mail_ = make_shared<lib::MailProvisioner>(*this);
+    timed_tasks_ = make_shared<lib::TimedTasks>(*this);
+    timed_tasks_->registerHandler("mail-retirement/v1", [this](auto& trx, const auto& payload) { return mail_->execute(trx, payload); });
 }
 
 void Server::startSlaveMgr()
@@ -720,6 +734,7 @@ void Server::stop()
     LOG_DEBUG << "Server::stop() is called.";
     call_once(stop_once_, [this]{
         LOG_INFO << "Server::stop(): Service is now stopping.";
+        if (timed_tasks_) timed_tasks_->stop();
         done_ = true;
         if (dns_) {
             dns_->stop();

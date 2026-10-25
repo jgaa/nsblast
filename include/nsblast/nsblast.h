@@ -305,7 +305,7 @@ static constexpr size_t TXT_SEGMENT_MAX = 255;
 static constexpr size_t TXT_MAX = TXT_SEGMENT_MAX * 32; // Our own limit
 
 constexpr char CURRENT_STORAGE_VERSION = 1;
-constexpr uint32_t CURRENT_DATA_SCHEMA_VERSION = 2;
+constexpr uint32_t CURRENT_DATA_SCHEMA_VERSION = 4;
 
 static constexpr size_t MAX_UDP_QUERY_BUFFER = 512;
 static constexpr size_t MAX_UDP_QUERY_BUFFER_WITH_OPT = 4096;

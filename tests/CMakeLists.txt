@@ -96,6 +96,7 @@ add_test(NAME db_tests COMMAND db_tests)
 
 add_executable(api_tests
     api_tests.cpp
+    mail_tests.cpp
     TmpDb.h
 #    test_res.cpp test_res.h
     )

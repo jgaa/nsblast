@@ -2,6 +2,7 @@
 
 #include <boost/json.hpp>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 
@@ -42,6 +43,12 @@ public:
 
     yahat::Response onTenant(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onRole(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onApiKey(const yahat::Request &req, const Parsed& parsed);
+    yahat::Response onMail(const yahat::Request& req, const Parsed& parsed);
+    using DnsChanges = std::map<std::string, std::pair<std::string, std::string>>; // before, after; empty means absent
+    std::vector<std::string> applyDnsChanges(ResourceIf::TransactionIf& trx, const DnsChanges& changes);
+    void notifyDnsChanges(const std::vector<std::string>& zones);
+    std::shared_ptr<std::mutex> getRrUpdateMutex(std::string_view zoneFqdn);
     yahat::Response onPermissions(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onUser(const yahat::Request &req, const Parsed& parsed);
     yahat::Response onZone(const yahat::Request &req, const Parsed& parsed);
@@ -85,7 +92,6 @@ private:
     yahat::Response deleteBackups(const yahat::Request &req, const Parsed& parsed);
 
     void refactorZone(boost::json::object& zone);
-    std::shared_ptr<std::mutex> getRrUpdateMutex(std::string_view zoneFqdn);
 
     const Config& config_;
     ResourceIf& resource_;

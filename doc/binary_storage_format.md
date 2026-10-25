@@ -51,6 +51,9 @@ Some classes reverse the string payload for lexical grouping by zone suffix:
 | `DIFF` | `[class][reverse(zone-fqdn)][0x00][serial-u32-be]` | `diff` |
 | `TENANT` | `[class][tenant-id]` | `account` |
 | `USER` | `[class][lowercase-login]` | `account` |
+| `APIKEY` | `[class][base64-sha256-token-hash]` | `account` |
+| `TAPIKEY` | `[class][tenant-id '/' base64-sha256-token-hash]` | `account` |
+| `APIKEY_NAME` | `[class][tenant-id '/' folded-name]` | `account` |
 | `TENANT_NAME` | `[class][tenant-name]` | `account` |
 | `ZONE` | `[class][reverse(zone-fqdn)]` | `account` |
 | `TZONE` | `[class][tenant-id '/' fqdn]` | `account` |
@@ -191,6 +194,23 @@ Auth flow:
 4. locate user in `tenant.users[]`
 5. verify stored hash using seed
 
+### API keys
+
+`APIKEY` maps the SHA-256 hash of the complete token (standard Base64 encoding) to a tenant id.
+`TAPIKEY` stores the serialized `pb::ApiKey` containing that hash, a display name, and tenant role names.
+The plaintext token is returned only by `POST /api/v1/apikey` and is never persisted.
+Tokens consist of `nsb_` followed by 64 Base64url characters from 48 OpenSSL random bytes.
+Bearer authentication resolves the tenant and roles on every request; missing roles grant no permissions,
+and inactive or deleted tenants cannot authenticate. Keys belong to tenants, independently of users.
+Names are unique per tenant, ignoring Unicode case, using `APIKEY_NAME` to map the folded name
+to the token hash. Creation and deletion serialize name checks and update all indexes atomically.
+`GET /api/v1/apikey` lists names and roles without hashes; `DELETE /api/v1/apikey/{name}` revokes
+a key by name. Tenant deletion removes all three indexes.
+
+Data schema version 3 appends `APIKEY`, `TAPIKEY`, and `APIKEY_NAME` as key class bytes 15, 16, and 17, preserving
+all existing class values. Its incremental upgrade needs no data backfill; versions 1 and 2
+are still applied in order when upgrading older databases.
+
 ### Additional account indexes
 
 - `TENANT_NAME` -> tenant-id
@@ -237,3 +257,31 @@ Not covered by fixed-endian packing:
 - `zonelen` in entry header is used to infer zone key from an RR key when resolving RR + zone SOA together.
 - RR iteration is driven by the trailing index table, not by linear RR boundary scanning.
 - DIFF iteration starts from `DIFF(zone, from_serial)` and scans forward in key order.
+
+### Mail provisioning and durable execution (data schema 4)
+
+Appended ACCOUNT key classes (existing numeric classes are unchanged):
+
+| Class | Byte | Key | Value |
+|---|---:|---|---|
+| MAIL_POLICY | 18 | normalized domain | Version 1 JSON policy, tenant, generation, conservative cache-expiry bounds and optional pending transition |
+| TIMED_TASK | 19 | UUID | Version 1 JSON typed task, due/next UTC seconds, persisted attempts/retry limit, state, claim, payload and diagnostic |
+| TASK_DUE | 20 | 20-digit UTC seconds `/` UUID | Task UUID; ordered index for pending deadlines and claim recovery |
+| MAIL_HOST | 21 | normalized hostname | Version 1 JSON exclusive address ownership (tenant/domain and DNS fingerprint) |
+| DNS_REF | 22 | hostname `/` RR owner | `mx` for MX-only references, otherwise `other` (NS/CNAME/PTR/SRV/SOA) |
+
+These records are part of the existing database and backup. Mail policy is not a complete
+provisioning manifest. Only temporary pending tasks retain the desired request. MAIL_HOST
+claims are invalidated by DNS changes at that owner or a shared MX/other DNS host reference;
+DNS_REF is maintained by the storage transaction path, including ordinary RR operations,
+zone removal, transfers, and replicated updates. Expired/completed/failed task diagnostics
+remain stored, while terminal-task desired payloads are cleared; retry budgets never reset automatically.
+
+Schema 4 rebuilds ZRR using the correct zone suffix, backfills DNS_REF and publishes existing authorization records in restartable
+batches (256 records), then advances the schema marker. No policy history is invented for
+manually created MTA-STS TXT. Version 1/2/3 migrations still run first when necessary.
+
+The transaction logger now includes DIFF, mail/task/ownership/reference ACCOUNT keys and
+TENANT/USER/TENANT_NAME/APIKEY/TAPIKEY/APIKEY_NAME and ZONE/TZONE/ZRR changes. This keeps deferred authorization
+checks current after failover. Instance-local META/Vars settings are not replicated.
+Follower application disables logging and aborts a whole transaction on any failed part.

@@ -283,6 +283,37 @@ TEST(AuthMgr, migrateStorageWritesVersionKey) {
     }
 }
 
+TEST(AuthMgr, migrateApiKeyStorageFromV2PreservesTenantAndKey) {
+    MockServer ms;
+    pb::Tenant tenant;
+    tenant.set_name("api-key-migration");
+    auto role = tenant.add_roles();
+    role->set_name("reader");
+    role->add_permissions(pb::USE_API);
+    const auto id = ms.auth().createTenant(tenant);
+    pb::ApiKey key;
+    key.set_name("migration-key");
+    key.add_roles("reader");
+    ms.auth().createApiKey(id, key);
+    {
+        auto trx = ms->resource().transaction();
+        string version(sizeof(uint32_t), '\0');
+        setValueAt(version, 0, uint32_t{2});
+        trx->write({"data_schema_version", key_class_t::META}, version, false, ResourceIf::Category::ACCOUNT);
+        trx->commit();
+    }
+    ms.auth().migrateStorage();
+    ms.auth().migrateStorage(); // Incremental upgrade is idempotent.
+    EXPECT_EQ(ms.auth().dataSchemaVersion(), CURRENT_DATA_SCHEMA_VERSION);
+    const auto stored = ms.auth().getTenant(id);
+    ASSERT_TRUE(stored);
+    EXPECT_EQ(stored->SerializeAsString(), tenant.SerializeAsString());
+    auto trx = ms->resource().transaction();
+    string raw;
+    ASSERT_TRUE(trx->read({id, key.hash(), key_class_t::TAPIKEY}, raw, ResourceIf::Category::ACCOUNT, false));
+    EXPECT_EQ(raw, key.SerializeAsString());
+}
+
 TEST(AuthMgr, migrateStorageBackfillsDynipPermission) {
     MockServer ms;
 

@@ -532,6 +532,11 @@ void StorageBuilder::finish()
         throw runtime_error{"StorageBuilder::finish: No room in buffer_ for the header."};
     }
 
+    if (buffer_.size() > std::numeric_limits<uint16_t>::max()
+        || index_.size() > std::numeric_limits<uint16_t>::max()) {
+        throw std::length_error{"DNS storage entry exceeds its 16-bit offset/count limit"};
+    }
+
     if (sort_) {
         sort(index_.begin(), index_.end(), [](const auto& left, const auto& right) {
             static constexpr array<uint8_t, 255> sorting_table = {
@@ -569,17 +574,15 @@ void StorageBuilder::finish()
         });
     }// sort
 
-    boost::span index{reinterpret_cast<const char *>(&index_[0]), index_.size() * sizeof(Index)};
-
-    // Convert the index entries to network byte order
-    for(auto& e : index_) {
-        e.offset = htons(e.offset);
-        e.type = htons(e.type);
-    }
-
-    // Append the (may be) sorted and converted index to the buffer.
+    // deque storage is segmented. Serialize each index explicitly instead of
+    // treating its first element as a contiguous array (also handles an empty index).
     index_offset_ = buffer_.size();
-    buffer_.insert(buffer_.end(), index.begin(), index.end());
+    for (auto& entry : index_) {
+        entry.offset = htons(entry.offset);
+        entry.type = htons(entry.type);
+        const auto* bytes = reinterpret_cast<const char*>(&entry);
+        buffer_.insert(buffer_.end(), bytes, bytes + sizeof(Index));
+    }
 
     // Commit the header
     auto *h = reinterpret_cast<Header *>(buffer_.data());

@@ -100,6 +100,8 @@ const vector<Vars::Def>& Vars::defs() {
         {"pv_bootstrapped", ValueType::BOOL, true, false, "Permanent variables bootstrap marker."},
         {"cluster_role", ValueType::STRING, true, true, "Cluster role for this instance."},
 
+        {"timed_task_concurrency", ValueType::UINT32, false, false, "Maximum queued and running timed tasks (1..256)."},
+        {"timed_task_max_retries", ValueType::UINT32, false, false, "Retries after initial timed task attempt (0..100); captured when scheduled."},
         {"dynip_enabled", ValueType::BOOL, false, false, "Enable DynIP feature."},
         {"dynip_realm", ValueType::STRING, false, false, "DynIP realm/FQDN."},
         {"dynip_max_hosts_per_root", ValueType::UINT32, false, false, "Max DynIP hosts under a root."},
@@ -132,6 +134,8 @@ pb::VarsSnapshot Vars::defaults(const Config& config) {
     snap.set_schema_version(kSchemaVersion);
     snap.set_pv_bootstrapped(false);
 
+    snap.set_timed_task_concurrency(8);
+    snap.set_timed_task_max_retries(5);
     snap.set_dynip_enabled(false);
     snap.set_dynip_realm("");
     snap.set_dynip_max_hosts_per_root(5);
@@ -153,6 +157,10 @@ pb::VarsSnapshot Vars::defaults(const Config& config) {
 }
 
 void Vars::validate(const pb::VarsSnapshot& snap) {
+    if (snap.timed_task_concurrency() < 1 || snap.timed_task_concurrency() > 256
+        || snap.timed_task_max_retries() > 100) {
+        throw Error{2, "Timed task concurrency must be 1..256 and retries 0..100"};
+    }
     if (snap.schema_version() == 0) {
         throw Error{2, "schema_version must be greater than zero"};
     }
@@ -446,6 +454,14 @@ void Vars::apply(pb::VarsSnapshot& snap,
         return;
     }
 
+    if (lower == "timed_task_concurrency" || lower == "timed_task_max_retries") {
+        auto tmp = lower == "timed_task_concurrency" ? defaultValues.timed_task_concurrency() : defaultValues.timed_task_max_retries();
+        if (!isUnset) set_u32(&tmp);
+        if (lower == "timed_task_concurrency") snap.set_timed_task_concurrency(tmp);
+        else snap.set_timed_task_max_retries(tmp);
+        return;
+    }
+
     if (lower == "dynip_enabled") {
         auto tmp = defaultValues.dynip_enabled();
         if (!isUnset) set_bool(&tmp);
@@ -546,6 +562,8 @@ boost::json::value Vars::getValue(const pb::VarsSnapshot& snap, string_view name
     if (lower == "pv_bootstrapped") return snap.pv_bootstrapped();
     if (lower == "cluster_role") return !snap.cluster_role().empty() ? boost::json::value{snap.cluster_role()} : boost::json::value{};
 
+    if (lower == "timed_task_concurrency") return static_cast<int64_t>(snap.timed_task_concurrency());
+    if (lower == "timed_task_max_retries") return static_cast<int64_t>(snap.timed_task_max_retries());
     if (lower == "dynip_enabled") return snap.dynip_enabled();
     if (lower == "dynip_realm") return boost::json::value{snap.dynip_realm()};
     if (lower == "dynip_max_hosts_per_root") return static_cast<int64_t>(snap.dynip_max_hosts_per_root());
@@ -614,6 +632,7 @@ void Vars::set(string_view name,
     validate(next);
     persistSnapshot(next);
     setSnapshot(std::move(next));
+    server_.wakeTimedTasks();
 }
 
 void Vars::setFromAssignment(string_view assignment,
@@ -642,6 +661,7 @@ void Vars::unset(string_view name,
     validate(next);
     persistSnapshot(next);
     setSnapshot(std::move(next));
+    server_.wakeTimedTasks();
 }
 
 } // namespace nsblast::lib

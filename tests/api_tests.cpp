@@ -1,5 +1,6 @@
 
 #include <format>
+#include <boost/asio/spawn.hpp>
 
 #include "gtest/gtest.h"
 #include "RestApi.h"
@@ -303,6 +304,29 @@ auto makeDynIpRequest(std::string target, std::string body, yahat::Request::Type
     req.auth = auth;
     req.remote_address = "198.51.100.10";
     return req;
+}
+
+yahat::Auth authenticateHeader(AuthMgr& mgr, const string& header,
+                               const string& target = "/api/v1/role") {
+    boost::asio::io_context ctx;
+    yahat::Auth result;
+    boost::asio::spawn(ctx, [&](boost::asio::yield_context yield) {
+        yahat::Request req{target, {}, yahat::Request::Type::GET, &yield};
+        yahat::AuthReq auth_req{req, yield};
+        auth_req.auth_header = header;
+        result = mgr.authorize(auth_req);
+    }, [](std::exception_ptr error) {
+        if (error) {
+            std::rethrow_exception(error);
+        }
+    });
+    ctx.run();
+    return result;
+}
+
+yahat::Auth authenticateHeader(MockServer& server, const string& header,
+                               const string& target = "/api/v1/role") {
+    return authenticateHeader(server.auth(), header, target);
 }
 
 uint32_t getSoaSerial(string_view fqdn, ResourceIf& db) {
@@ -1607,6 +1631,242 @@ TEST(ApiRequest, deleteTenant) {
 
     res = api.onTenant(req, parsed);
     EXPECT_EQ(res.code, 404);
+}
+
+TEST(ApiRequest, createApiKeyAndAuthenticateWithCurrentRoles) {
+    MockServer svr{make_shared<TmpDb>(true)};
+    pb::Tenant initial;
+    initial.set_active(true);
+    auto role = initial.add_roles();
+    role->set_name("issuer");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::CREATE_APIKEY);
+    role->add_permissions(pb::READ_RR);
+    role = initial.add_roles();
+    role->set_name("reader");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::READ_RR);
+    const auto tenant_id = svr.auth().createTenant(initial);
+    auto tenant = svr.auth().getTenant(tenant_id);
+    ASSERT_TRUE(tenant);
+    auto issuer = make_shared<Session>(svr.auth(), *tenant, "issuer", vector<string>{"issuer"});
+    auto req = makeRequest(svr, "apikey", "", R"({"name":"automation","roles":["reader"]})",
+                           yahat::Request::Type::POST);
+    req.auth = issuer->getAuth();
+    RestApi api{svr};
+    auto res = api.onReqest(req);
+    ASSERT_EQ(res.code, 201) << res.reason;
+    EXPECT_EQ(res.headers["Cache-Control"], "no-store");
+    const auto body = boost::json::parse(res.body).as_object();
+    const auto token = string{body.at("value").as_object().at("key").as_string()};
+    EXPECT_EQ(token.size(), 68);
+    EXPECT_TRUE(token.starts_with("nsb_"));
+    EXPECT_FALSE(body.at("value").as_object().contains("hash"));
+
+    const auto hash = sha256(token);
+    {
+        auto trx = svr->resource().transaction();
+        string owner, raw;
+        ASSERT_TRUE(trx->read({hash, key_class_t::APIKEY}, owner, ResourceIf::Category::ACCOUNT, false));
+        EXPECT_EQ(owner, tenant_id);
+        ASSERT_TRUE(trx->read({owner, hash, key_class_t::TAPIKEY}, raw, ResourceIf::Category::ACCOUNT, false));
+        EXPECT_EQ(raw.find(token), string::npos);
+        pb::ApiKey stored;
+        ASSERT_TRUE(stored.ParseFromString(raw));
+        EXPECT_EQ(stored.hash(), hash);
+        EXPECT_EQ(stored.name(), "automation");
+        ASSERT_EQ(stored.roles_size(), 1);
+        EXPECT_EQ(stored.roles(0), "reader");
+    }
+    auto auth = authenticateHeader(svr, "bEaReR " + token);
+    ASSERT_TRUE(auth.access);
+    auto session = any_cast<shared_ptr<Session>>(auth.extra);
+    EXPECT_EQ(session->tenant(), tenant_id);
+    EXPECT_TRUE(session->isAllowed(pb::READ_RR));
+    EXPECT_FALSE(session->isAllowed(pb::CREATE_APIKEY));
+    EXPECT_FALSE(session->isAllowed(pb::UPDATE_RR));
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token, "/metrics").access);
+
+    // API keys cannot create another key without CREATE_APIKEY.
+    req.auth = auth;
+    EXPECT_EQ(api.onReqest(req).code, 403);
+    string damaged = token;
+    damaged.back() = damaged.back() == 'a' ? 'b' : 'a';
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + damaged).access);
+    for (const auto& invalid : {string{}, token.substr(1), token + "x", token + " ", string(68, '!')}) {
+        EXPECT_FALSE(authenticateHeader(svr, "Bearer " + invalid).access);
+    }
+
+    // A new AuthMgr resolves the key from storage, without an in-memory registration.
+    AuthMgr fresh{svr};
+    EXPECT_TRUE(authenticateHeader(fresh, "Bearer " + token).access);
+    pb::ApiKey other;
+    other.set_name("second");
+    other.add_roles("reader");
+    const auto second_token = fresh.createApiKey(tenant_id, other);
+    EXPECT_NE(token, second_token);
+    EXPECT_TRUE(authenticateHeader(svr, "Bearer " + second_token).access);
+
+    tenant->mutable_roles(1)->clear_permissions();
+    tenant->mutable_roles(1)->add_permissions(pb::USE_API);
+    svr.auth().upsertTenant(tenant_id, *tenant, false);
+    auth = authenticateHeader(svr, "Bearer " + token);
+    ASSERT_TRUE(auth.access);
+    session = any_cast<shared_ptr<Session>>(auth.extra);
+    EXPECT_FALSE(session->isAllowed(pb::READ_RR));
+
+    tenant->set_active(false);
+    svr.auth().upsertTenant(tenant_id, *tenant, false);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token).access);
+    tenant->set_active(true);
+    tenant->mutable_roles()->RemoveLast();
+    svr.auth().upsertTenant(tenant_id, *tenant, false);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token).access);
+    svr.auth().deleteTenant(tenant_id);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token).access);
+    auto trx = svr->resource().transaction();
+    EXPECT_FALSE(trx->keyExists({hash, key_class_t::APIKEY}, ResourceIf::Category::ACCOUNT));
+    EXPECT_FALSE(trx->keyExists({tenant_id, hash, key_class_t::TAPIKEY}, ResourceIf::Category::ACCOUNT));
+}
+
+TEST(ApiRequest, apiKeyCreationValidatesInputAndDelegation) {
+    MockServer svr{make_shared<TmpDb>(true)};
+    pb::Tenant tenant;
+    auto role = tenant.add_roles();
+    role->set_name("issuer");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::CREATE_APIKEY);
+    role->add_permissions(pb::READ_RR);
+    role->mutable_filter()->set_fqdn("example.com");
+    role->mutable_filter()->set_recursive(false);
+    role = tenant.add_roles();
+    role->set_name("scoped-reader");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::READ_RR);
+    *role->mutable_filter() = tenant.roles(0).filter();
+    role = tenant.add_roles();
+    role->set_name("broad-reader");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::READ_RR);
+    role = tenant.add_roles();
+    role->set_name("writer");
+    role->add_permissions(pb::USE_API);
+    role->add_permissions(pb::UPDATE_RR);
+    const auto tid = svr.auth().createTenant(tenant);
+    auto issuer = make_shared<Session>(svr.auth(), tenant, "issuer", vector<string>{"issuer"});
+    RestApi api{svr};
+    auto req = makeRequest(svr, "apikey", "", {}, yahat::Request::Type::POST);
+    req.auth = issuer->getAuth();
+    for (const auto* body : {"{}", "invalid", R"({"name":"x","roles":[]})",
+                            R"({"name":"x","roles":["missing"]})",
+                            R"({"name":"x","roles":["scoped-reader"],"hash":"supplied"})"}) {
+        req.body = body;
+        EXPECT_EQ(api.onReqest(req).code, 400) << body;
+    }
+    for (const auto* role_name : {"broad-reader", "writer"}) {
+        req.body = format(R"({{"name":"x","roles":["{}"]}})", role_name);
+        EXPECT_EQ(api.onReqest(req).code, 403) << role_name;
+    }
+    req.body = R"({"name":"x","roles":["scoped-reader"]})";
+    auto res = api.onReqest(req);
+    ASSERT_EQ(res.code, 201) << res.reason;
+    const auto token = string{boost::json::parse(res.body).at("value").at("key").as_string()};
+    const auto auth = authenticateHeader(svr, "Bearer " + token);
+    ASSERT_TRUE(auth.access);
+    auto session = any_cast<shared_ptr<Session>>(auth.extra);
+    Session::Options opts; // Exercise scope without requiring DNS entries in this fixture.
+    EXPECT_TRUE(session->isAllowed(pb::READ_RR, "example.com", opts));
+    EXPECT_FALSE(session->isAllowed(pb::READ_RR, "sub.example.com", opts));
+    EXPECT_FALSE(session->isAllowed(pb::READ_RR, "other.com", opts));
+    req.type = yahat::Request::Type::GET;
+    EXPECT_EQ(api.onReqest(req).code, 403);
+    req.type = yahat::Request::Type::PUT;
+    EXPECT_EQ(api.onReqest(req).code, 405);
+    req.type = yahat::Request::Type::POST;
+    req.auth = {};
+    EXPECT_EQ(api.onReqest(req).code, 401);
+}
+
+TEST(ApiRequest, basicAuthenticationStillWorks) {
+    MockServer svr{make_shared<TmpDb>(true)};
+    svr.createTenant(newUuidStr(), "apikey-test-user", "test-password", {});
+    EXPECT_TRUE(authenticateHeader(svr, "Basic " + Base64Encode(string_view{"apikey-test-user:test-password"})).access);
+    EXPECT_FALSE(authenticateHeader(svr, "Basic " + Base64Encode(string_view{"apikey-test-user:wrong-password"})).access);
+}
+
+TEST(ApiRequest, listAndDeleteApiKeysByTenantUniqueName) {
+    MockServer svr{make_shared<TmpDb>(true)};
+    pb::Tenant tenant;
+    auto role = tenant.add_roles();
+    role->set_name("manager");
+    for (const auto perm : {pb::USE_API, pb::CREATE_APIKEY, pb::LIST_APIKEYS, pb::DELETE_APIKEY}) {
+        role->add_permissions(perm);
+    }
+    role = tenant.add_roles();
+    role->set_name("guest");
+    role->add_permissions(pb::USE_API);
+    const auto tid = svr.auth().createTenant(tenant);
+    auto manager = make_shared<Session>(svr.auth(), tenant, "manager", vector<string>{"manager"});
+    auto guest = make_shared<Session>(svr.auth(), tenant, "guest", vector<string>{"guest"});
+    RestApi api{svr};
+    auto req = makeRequest(svr, "apikey", "", R"({"name":"Automation","roles":["guest"]})",
+                           yahat::Request::Type::POST);
+    req.auth = manager->getAuth();
+    auto res = api.onReqest(req);
+    ASSERT_EQ(res.code, 201) << res.reason;
+    const auto token = string{boost::json::parse(res.body).at("value").at("key").as_string()};
+    const auto hash = sha256(token);
+    req.body = R"({"name":"automation","roles":["guest"]})";
+    EXPECT_EQ(api.onReqest(req).code, 409);
+
+    pb::ApiKey other;
+    other.set_name("Automation");
+    other.add_roles("guest");
+    pb::Tenant another{tenant};
+    another.clear_id();
+    const auto other_tid = svr.auth().createTenant(another);
+    const auto other_token = svr.auth().createApiKey(other_tid, other);
+
+    req.type = yahat::Request::Type::GET;
+    req.body.clear();
+    res = api.onReqest(req);
+    ASSERT_EQ(res.code, 200);
+    const auto keys = boost::json::parse(res.body).at("value").as_array();
+    ASSERT_EQ(keys.size(), 1);
+    EXPECT_EQ(keys[0].at("name").as_string(), "Automation");
+    EXPECT_FALSE(keys[0].as_object().contains("hash"));
+    EXPECT_FALSE(keys[0].as_object().contains("key"));
+    EXPECT_EQ(res.body.find(token), string::npos);
+    EXPECT_EQ(res.body.find(hash), string::npos);
+    req.auth = guest->getAuth();
+    EXPECT_EQ(api.onReqest(req).code, 403);
+
+    req = makeRequest(svr, "apikey", "AUTOMATION", {}, yahat::Request::Type::DELETE);
+    req.auth = guest->getAuth();
+    EXPECT_EQ(api.onReqest(req).code, 403);
+    EXPECT_TRUE(authenticateHeader(svr, "Bearer " + token).access);
+    req.auth = manager->getAuth();
+    EXPECT_EQ(api.onReqest(req).code, 200);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token).access);
+    EXPECT_TRUE(authenticateHeader(svr, "Bearer " + other_token).access);
+    EXPECT_EQ(api.onReqest(req).code, 404);
+    {
+        auto trx = svr->resource().transaction();
+        EXPECT_FALSE(trx->keyExists({hash, key_class_t::APIKEY}, ResourceIf::Category::ACCOUNT));
+        EXPECT_FALSE(trx->keyExists({tid, hash, key_class_t::TAPIKEY}, ResourceIf::Category::ACCOUNT));
+        EXPECT_FALSE(trx->keyExists({tid, "automation", key_class_t::APIKEY_NAME}, ResourceIf::Category::ACCOUNT));
+    }
+    // Revocation releases the name, without making the old token usable again.
+    pb::ApiKey replacement;
+    replacement.set_name("Automation");
+    replacement.add_roles("guest");
+    const auto replacement_token = svr.auth().createApiKey(tid, replacement);
+    EXPECT_NE(replacement_token, token);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + token).access);
+    svr.auth().deleteTenant(tid);
+    EXPECT_FALSE(authenticateHeader(svr, "Bearer " + replacement_token).access);
+    auto trx = svr->resource().transaction();
+    EXPECT_FALSE(trx->keyExists({tid, "automation", key_class_t::APIKEY_NAME}, ResourceIf::Category::ACCOUNT));
 }
 
 TEST(ApiRequest, createRole) {

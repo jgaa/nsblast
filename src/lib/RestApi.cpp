@@ -27,6 +27,8 @@
 #include "proto_util.h"
 #include "DynIpStore.h"
 #include "Metrics.h"
+#include "MailProvisioner.h"
+#include "TimedTasks.h"
 
 //#include "glad/AsyncCache.hpp"
 
@@ -407,7 +409,7 @@ void addDiff(string_view zoneName,
              const Entry& newContent,
              ResourceIf::TransactionIf& trx) {
 
-    assert(newSoa.serial() > oldSoa.serial());
+    assert(static_cast<uint32_t>(newSoa.serial() - oldSoa.serial()) == 1);
 
     LOG_TRACE << "addDiff: Creating diff for zone: " << zoneName;
 
@@ -650,7 +652,14 @@ RestApi::RestApi(const Config &config, ResourceIf &resource)
 
 Response RestApi::onReqest(const Request &req)
 {
+    if (req.target == "/.well-known/mta-sts.txt") return server().mail().policy(req);
     const auto p = parse(req);
+    if (server_ && server().role() == Server::Role::CLUSTER_FOLLOWER
+        && ((req.type != Request::Type::GET && req.type != Request::Type::OPTIONS)
+            || req.route == "/nic" || (p.what == "nic" && p.target == "update") || (p.what == "dynip" && p.target == "update"))
+        && !(p.what == "admin" && p.target == "vars")) {
+        return {403, "Mutations require the primary server"};
+    }
 
     try {
         if (req.route == string_view{"/nic"}) {
@@ -673,6 +682,8 @@ Response RestApi::onReqest(const Request &req)
             }
             return onDynIpProvision(req, p);
         }
+
+        if (p.what == "provision" && p.target == "mail") return onMail(req, p);
 
         if (p.what == "rr") {
             return onResourceRecord(req, p);
@@ -701,6 +712,10 @@ Response RestApi::onReqest(const Request &req)
 
         if (p.what == "role") {
             return onRole(req, p);
+        }
+
+        if (p.what == "apikey") {
+            return onApiKey(req, p);
         }
 
         if (p.what == "permissions") {
@@ -1405,6 +1420,88 @@ delete_tenant:
     return {200, "OK"};
 }
 
+Response RestApi::onMail(const yahat::Request& req, const Parsed& parsed)
+{
+    auto domain = parsed.operation;
+    std::string_view operation;
+    if (auto slash = domain.find('/'); slash != domain.npos) {
+        operation = domain.substr(slash + 1);
+        domain = domain.substr(0, slash);
+    }
+    return server().mail().request(req, domain, operation);
+}
+
+Response RestApi::onApiKey(const yahat::Request &req, const Parsed &parsed)
+{
+    if (req.type != Request::Type::POST && req.type != Request::Type::GET
+        && req.type != Request::Type::DELETE) {
+        return {405, "Method not allowed"};
+    }
+    if (!parsed.operation.empty()
+        || (req.type != Request::Type::DELETE && !parsed.target.empty())
+        || (req.type == Request::Type::DELETE && parsed.target.empty())) {
+        return {400, "Use /apikey to create/list and /apikey/{name} to delete"};
+    }
+    if (!getSession(req)) {
+        return {401, "Unauthorized"};
+    }
+    auto [res, session, tenant, all] = getSessionAndTenant(req, server());
+    if (res) {
+        return *res;
+    }
+    if (req.type == Request::Type::GET) {
+        if (!session->isAllowed(pb::Permission::LIST_APIKEYS)) {
+            return {403, "Access Denied"};
+        }
+        auto keys = server().auth().listApiKeys(tenant->id());
+        auto reply = makeReply(keys);
+        reply.headers.set("Cache-Control", "no-store");
+        return reply;
+    }
+    if (req.type == Request::Type::DELETE) {
+        if (!session->isAllowed(pb::Permission::DELETE_APIKEY)) {
+            return {403, "Access Denied"};
+        }
+        if (!server().auth().deleteApiKey(tenant->id(), parsed.target)) {
+            return {404, "API key not found"};
+        }
+        return {200, "OK"};
+    }
+    if (!session->isAllowed(pb::Permission::CREATE_APIKEY)) {
+        return {403, "Access Denied"};
+    }
+
+    pb::ApiKey key;
+    if (!fromJson(req.body, key) || key.name().empty() || key.roles().empty() || key.has_hash()) {
+        return {400, "Provide name and roles; hash is server generated"};
+    }
+    for (const auto& name : key.roles()) {
+        auto role = getFromList(tenant->roles(), name);
+        if (!role) {
+            return {400, "Unknown API key role"};
+        }
+        if (!session->canDelegate(*role)) {
+            return {403, "Cannot delegate permissions or scope you do not hold"};
+        }
+    }
+    const auto token = server().auth().createApiKey(tenant->id(), key);
+    boost::json::object value;
+    value["name"] = key.name();
+    boost::json::array roles;
+    for (const auto& name : key.roles()) {
+        roles.emplace_back(name);
+    }
+    value["roles"] = std::move(roles);
+    value["key"] = token;
+    boost::json::object body;
+    body["error"] = false;
+    body["status"] = 201;
+    body["value"] = std::move(value);
+    Response reply{201, "Created", boost::json::serialize(body)};
+    reply.headers.set("Cache-Control", "no-store");
+    return reply;
+}
+
 Response RestApi::onRole(const yahat::Request &req, const Parsed &parsed)
 {
     auto [res, session, tenant, all] = getSessionAndTenant(req, server());
@@ -1780,8 +1877,20 @@ Response RestApi::onZone(const Request &req, const RestApi::Parsed &parsed)
     if (res) {
         return *res;
     }
-    auto trx = resource_.transaction();
     auto lowercaseFqdn = toLower(parsed.target);
+    std::vector<std::shared_ptr<std::mutex>> zone_mutexes;
+    std::vector<std::unique_lock<std::mutex>> zone_locks;
+    {
+        auto reader = resource_.transaction();
+        std::set<std::string> zones{lowercaseFqdn};
+        if (auto dot = lowercaseFqdn.find('.'); dot != std::string::npos) {
+            auto parent = reader->lookupEntryAndSoa(lowercaseFqdn.substr(dot + 1));
+            if (parent.hasSoa()) zones.insert(toLower(parent.soa().getSoa().labels().string()));
+        }
+        for (const auto& zone : zones) zone_mutexes.push_back(getRrUpdateMutex(zone));
+        for (const auto& mutex : zone_mutexes) zone_locks.emplace_back(*mutex);
+    }
+    auto trx = resource_.transaction();
     auto exists = trx->zoneExists(lowercaseFqdn);
 
     int rcode = 200;
@@ -2366,6 +2475,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 {
     const auto lowercaseFqdn = toLower(parsed.target);
     std::unique_lock<std::mutex> rr_update_lock;
+    std::string locked_zone;
 
     if (req.type != Request::Type::GET) {
         auto trx = resource_.transaction();
@@ -2375,6 +2485,7 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         }
 
         const auto zoneFqdn = toLower(existing.soa().begin()->labels().string());
+        locked_zone = zoneFqdn;
         rr_update_lock = std::unique_lock<std::mutex>(*getRrUpdateMutex(zoneFqdn));
     }
 
@@ -2390,6 +2501,10 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
 
     if (!existing.hasSoa()) {
         return {404, "Not authorative for zone"};
+    }
+
+    if (!locked_zone.empty() && toLower(existing.soa().getSoa().labels().string()) != locked_zone) {
+        return {409, "Authoritative zone changed concurrently; retry the request"};
     }
 
     if (auto id = existing.soa().tenantId()) {
@@ -2419,7 +2534,6 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
     }
 
     size_t soa_zone_len = 0; // Part of the fqdn that forms the zone's fqdn. 0 = zone/same.
-    optional<bool> need_to_update_zrr; // true = update, false = delete, unset = nothing.
 
     if (!existing.isSame()) {
         assert(existing.soa().begin()->type() == TYPE_SOA);
@@ -2433,13 +2547,10 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
         checkSrv(sb.buffer(), *trx);
     }
 
-    bool need_version_increment = false;
 
     optional<StorageBuilder> merged;
     const auto& oldData = existing.rr();
     Entry newData;
-    std::optional<RrSoa> newSoa;
-    const auto oldSoa = existing.soa().getSoa();
 
     // Apply change
     switch(req.type) {
@@ -2468,20 +2579,10 @@ Response RestApi::onResourceRecord(const Request &req, const RestApi::Parsed &pa
             return {409, "The rr already exists"};
         }
 
-        need_version_increment = true;
         assert(existing.hasSoa());
         assert(!existing.isSame());
 
-        try {
-            trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), true);
-            need_to_update_zrr = true;
-
-            if (config_.dns_enable_ixfr) {
-                newData = {sb.buffer()};
-            }
-        } catch(const AlreadyExistException&) {
-            return {409, "The rr already exists"};
-        }
+        newData = {sb.buffer()};
 
     } break;
 
@@ -2505,19 +2606,7 @@ put:
         if (!allowed) {
             return {403, "Access Denied"};
         }
-        if (existing.isSame()) {
-            sb.incrementSoaVersion(existing.soa());
-            newSoa = sb.soa();
-            assert(newSoa.has_value());
-        } else {
-            need_version_increment = true;
-        }
-        trx->write({lowercaseFqdn, key_class_t::ENTRY}, sb.buffer(), false);
-        need_to_update_zrr = true;
-
-        if (config_.dns_enable_ixfr) {
-            newData = {sb.buffer()};
-        }
+        newData = {sb.buffer()};
     } break;
 
     case Request::Type::PATCH: {
@@ -2565,23 +2654,16 @@ put:
             }
         }
 
-        if (existing.isSame()) {
-            merged->incrementSoaVersion(existing.soa());
-            newSoa = merged->soa();
-        } else {
-            need_version_increment = true;
+        if (!existing.isSame()) {
             assert(existing.soa().begin()->type() == TYPE_SOA);
             merged->setZoneLen(existing.soa().begin()->labels().size() -1);
         }
 
         merged->finish();
 
-        trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged->buffer(), false);
-        need_to_update_zrr = true;
 
-        if (config_.dns_enable_ixfr) {
-            newData = {merged->buffer()};
-        }
+
+        newData = {merged->buffer()};
     } break;
 
     case Request::Type::DELETE: {
@@ -2603,11 +2685,7 @@ put:
                 }
             }
 
-            if (existing.isSame()) {
-                merged->incrementSoaVersion(existing.soa());
-                newSoa = merged->soa();
-            } else {
-                need_version_increment = true;
+            if (!existing.isSame()) {
                 assert(existing.soa().begin()->type() == TYPE_SOA);
                 merged->setZoneLen(existing.soa().begin()->labels().size() -1);
             }
@@ -2616,11 +2694,7 @@ put:
 
             // Only write back the changed entry if it still contains some RR's
             if (merged->rrCount()) {
-                trx->write({lowercaseFqdn, key_class_t::ENTRY}, merged->buffer(), false);
-
-                if (config_.dns_enable_ixfr) {
-                    newData = {merged->buffer()};
-                }
+                newData = {merged->buffer()};
 
                 break;
             }
@@ -2628,67 +2702,17 @@ put:
             // Fall back to delete the entry!
         }
 
-        try {
-            trx->remove({lowercaseFqdn, key_class_t::ENTRY}, false);
-            need_version_increment = true;
-            need_to_update_zrr = false;
-        } catch(const NotFoundException&) {
-            return {404, "The rr don't exist"};
-        }
     } break;
     default:
         return {405, "Operation is not implemented"};
     }
 
-    string lowercaseSoaFqdn;
-
-    StorageBuilder soaSb;
-    if (need_version_increment) {
-        soaSb.setTenantId(existing.soa().tenantId());
-        assert(!existing.isSame());
-
-        // We need to copy the Entry containing the soa and then increment the version
-        auto soa_fqdn = labelsToFqdnKey(existing.soa().begin()->labels());
-        for(const auto& rr : existing.soa()) {
-            soaSb.createRr(soa_fqdn, rr.type(), rr.ttl(), rr.rdata());
-        }
-        soaSb.incrementSoaVersion(existing.soa());
-        soaSb.finish();
-
-        lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
-        LOG_TRACE << "Incrementing soa version for " << lowercaseSoaFqdn;
-        trx->write({lowercaseSoaFqdn, key_class_t::ENTRY}, soaSb.buffer(), false);
-        newSoa = soaSb.soa();
-    }
-
-    if (config_.dns_enable_ixfr) {
-        if (lowercaseSoaFqdn.empty()) {
-            lowercaseSoaFqdn = toLower(existing.soa().begin()->labels().string());
-        }
-        assert(newSoa.has_value());
-        assert(newSoa->serial() > oldSoa.serial());
-        addDiff(lowercaseSoaFqdn, oldSoa, newSoa.value(), oldData, newData, *trx);
-    }
-
-    if (need_to_update_zrr) {
-        server().auth().updateZoneRrIx(*trx, lowercaseFqdn, soa_zone_len, *need_to_update_zrr);
-    }
-
+    const auto copy = [](const Entry& entry) { const auto data = entry.buffer(); return std::string{data.data(), data.size()}; };
+    const auto zones = applyDnsChanges(*trx, {{lowercaseFqdn, {oldData.empty() ? std::string{} : copy(oldData), newData.empty() ? std::string{} : copy(newData)}}});
     trx->commit();
     const auto repl_id = trx->replicationId();
     trx.reset();
-
-    if (config_.dns_enable_notify) {
-        try {
-            assert(newSoa.has_value());
-            LOG_TRACE << "RestApi::onResourceRecord - Notifying slave servers about update for "
-                      << lowercaseSoaFqdn << " with SOA version " << newSoa->serial();
-            server_->notifications().notify(lowercaseSoaFqdn);
-        } catch(const exception& ex) {
-            LOG_WARN << "RestApi::onResourceRecord - Failed to notify slave servers about update of zone "
-                     << lowercaseSoaFqdn;
-        }
-    }
+    notifyDnsChanges(zones);
 
     auto rcode = 200;
 
@@ -2701,6 +2725,83 @@ put:
     }
 
     return {rcode, "OK"};
+}
+
+std::vector<std::string> RestApi::applyDnsChanges(ResourceIf::TransactionIf& trx, const DnsChanges& changes)
+{
+    struct ZoneChange {
+        std::string original;
+        DnsChanges records;
+    };
+    std::map<std::string, ZoneChange> zones;
+    auto equivalent = [](const std::string& left, const std::string& right) {
+        auto values = [](const std::string& data) {
+            std::multiset<std::tuple<uint16_t, uint32_t, std::string>> result;
+            for (const auto& rr : Entry{data}) result.emplace(rr.type(), rr.ttl(), std::string{rr.rdata().data(), rr.rdata().size()});
+            return result;
+        };
+        return values(left) == values(right);
+    };
+    for (const auto& [name, data] : changes) {
+        if (equivalent(data.first, data.second)) continue;
+        auto existing = trx.lookupEntryAndSoa(name);
+        if (!existing.hasSoa()) throw Response{404, "Not authoritative for affected name"};
+        const auto zone = toLower(existing.soa().getSoa().labels().string());
+        auto& group = zones[zone];
+        if (group.original.empty()) {
+            const auto buffer = existing.soa().buffer();
+            group.original.assign(buffer.data(), buffer.size());
+        }
+        group.records.emplace(name, data);
+    }
+    // The existing IXFR storage format has 16-bit offsets. Refuse an oversized
+    // atomic change before writing, rather than truncate a diff or partially apply it.
+    if (config_.dns_enable_ixfr) {
+        for (const auto& [zone, group] : zones) {
+            size_t bytes = 2048; // Two SOAs, headers, and indexes.
+            for (const auto& [name, data] : group.records) bytes += data.first.size() + data.second.size();
+            if (bytes > 60000) throw Response{413, "Atomic zone change exceeds the 60000-byte IXFR storage limit"};
+        }
+    }
+    std::vector<std::string> changed;
+    for (auto& [zone, group] : zones) {
+        Entry old_soa{group.original};
+        StorageBuilder soa;
+        soa.setTenantId(old_soa.tenantId());
+        auto apex = group.records.find(zone);
+        const Entry apex_entry{apex == group.records.end() ? group.original : apex->second.second};
+        if (apex_entry.empty()) throw Response{400, "Cannot remove a zone through record mutations"};
+        for (const auto& rr : apex_entry) soa.createRr(zone, rr.type(), rr.ttl(), rr.rdata());
+        soa.incrementSoaVersion(old_soa);
+        soa.finish();
+        StorageBuilder before, after;
+        before.oneSoa(false); after.oneSoa(false);
+        for (const auto& [name, data] : group.records) {
+            const Entry old_entry{data.first}, new_entry{data.second};
+            for (const auto& rr : old_entry) if (rr.type() != TYPE_SOA) before.addRr(rr);
+            for (const auto& rr : new_entry) if (rr.type() != TYPE_SOA) after.addRr(rr);
+            if (name == zone) continue; // Write the apex with the new serial below.
+            if (new_entry.empty() || new_entry.count() == 0) trx.remove({name, key_class_t::ENTRY}, false);
+            else trx.write({name, key_class_t::ENTRY}, data.second, false);
+            server().auth().updateZoneRrIx(trx, name, old_soa.getSoa().labels().size() - 1, !new_entry.empty() && new_entry.count() != 0);
+        }
+        trx.write({zone, key_class_t::ENTRY}, soa.buffer(), false);
+        if (config_.dns_enable_ixfr) {
+            before.finish(); after.finish();
+            addDiff(zone, old_soa.getSoa(), *soa.soa(), Entry{before.buffer()}, Entry{after.buffer()}, trx);
+        }
+        changed.push_back(zone);
+    }
+    return changed;
+}
+
+void RestApi::notifyDnsChanges(const std::vector<std::string>& zones)
+{
+    if (!config_.dns_enable_notify) return;
+    for (const auto& zone : zones) {
+        try { server().notifications().notify(zone); }
+        catch (const std::exception& ex) { LOG_WARN << "Cannot notify zone " << zone << ": " << ex.what(); }
+    }
 }
 
 std::shared_ptr<std::mutex> RestApi::getRrUpdateMutex(std::string_view zoneFqdn)

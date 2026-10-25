@@ -1,5 +1,7 @@
 
 #include <chrono>
+#include <set>
+#include <boost/json.hpp>
 
 #include "rocksdb/db.h"
 
@@ -27,6 +29,21 @@ using ROCKSDB_NAMESPACE::TransactionDBOptions;
 namespace nsblast::lib {
 
 namespace {
+
+bool replicated(ResourceIf::Category category, ResourceIf::RealKey::Class key) {
+    using Class = ResourceIf::RealKey::Class;
+    if (category == ResourceIf::Category::ENTRY || category == ResourceIf::Category::DIFF) return true;
+    if (category != ResourceIf::Category::ACCOUNT) return false;
+    switch (key) {
+    case Class::MAIL_POLICY: case Class::TIMED_TASK: case Class::TASK_DUE:
+    case Class::MAIL_HOST: case Class::DNS_REF:
+    case Class::TENANT: case Class::USER: case Class::TENANT_NAME:
+    case Class::APIKEY: case Class::TAPIKEY: case Class::APIKEY_NAME:
+    case Class::ZONE: case Class::TZONE: case Class::ZRR: return true;
+    default: return false;
+    }
+}
+
 
 
 class DbLogger : public rocksdb::Logger {
@@ -264,6 +281,40 @@ bool RocksDbResource::Transaction::exists(string_view fqdn, uint16_t type)
     return false;
 }
 
+void RocksDbResource::Transaction::lock(key_t key, Category category) {
+    rocksdb::PinnableSlice previous;
+    const auto status = trx_->GetForUpdate({}, owner_.handle(category), toSlice(key.key()), &previous);
+    if (!status.ok() && !status.IsNotFound()) throw InternalErrorException{"RocksDB write-intent lock failed: " + status.ToString()};
+}
+
+void RocksDbResource::Transaction::indexMailReferences(key_t key, data_t data)
+{
+    const auto owner = key.dataAsString();
+    // Any DNS mutation of a managed address owner invalidates its exclusivity.
+    // A provisioning transaction may reclaim it after validating and applying its plan.
+    const RealKey ownership{owner, RealKey::Class::MAIL_HOST};
+    lock(ownership, Category::ACCOUNT);
+    if (keyExists(ownership, Category::ACCOUNT)) remove(ownership, false, Category::ACCOUNT);
+    const auto previous = dnsHostReferences(lookup(owner));
+    const auto next = dnsHostReferences(Entry{data});
+    for (const auto& [host, kind] : previous) {
+        if (!next.contains(host)) remove({host, owner, RealKey::Class::DNS_REF}, false, Category::ACCOUNT);
+    }
+    for (const auto& [host, kind] : next) {
+        const auto old = previous.find(host);
+        if (old != previous.end() && old->second == kind) continue;
+        lock({host, RealKey::Class::MAIL_HOST}, Category::ACCOUNT);
+        write({host, owner, RealKey::Class::DNS_REF}, kind, false, Category::ACCOUNT);
+        // References from another mail domain revoke exclusive address ownership.
+        const RealKey claim{host, RealKey::Class::MAIL_HOST};
+        std::string raw;
+        if (read(claim, raw, Category::ACCOUNT, false)) {
+            auto object = boost::json::parse(raw).as_object();
+            if (kind != "mx" || object.at("domain").as_string() != owner) remove(claim, false, Category::ACCOUNT);
+        }
+    }
+}
+
 void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
                                          ResourceIf::TransactionIf::data_t data,
                                          bool isNew, Category category)
@@ -272,21 +323,21 @@ void RocksDbResource::Transaction::write(ResourceIf::TransactionIf::key_t key,
               << uuid() << " key: " <<  key
               << ", category " << category;
 
-    if (isNew && keyExists(key)) {
-        throw AlreadyExistException{"Key exists"};
+    if (isNew) {
+        rocksdb::PinnableSlice previous;
+        const auto status = trx_->GetForUpdate({}, owner_.handle(category), toSlice(key.key()), &previous);
+        if (status.ok()) throw AlreadyExistException{"Key exists"};
+        if (!status.IsNotFound()) throw InternalErrorException{"RocksDB uniqueness check failed: " + status.ToString()};
     }
+    if (category == Category::ENTRY && key.kClass() == RealKey::Class::ENTRY) indexMailReferences(key, data);
     const auto status = trx_->Put(owner_.handle(category), toSlice(key.key()), toSlice(data));
 
     if (!status.ok()) {
         throw InternalErrorException{"Rocksdb write failed: "s + status.ToString(), "Database error"};
     }
 
-    if (isNew && status.IsOkOverwritten()) { // TODO: don't actually work...
-        throw AlreadyExistException{"Key exists"};
-    }
-
-    if (!disable_trxlog_ && owner_.config_.db_log_transactions) {
-        if (category == Category::ENTRY) {
+    if (!disable_trxlog_ && !owner_.replica_ && owner_.config_.db_log_transactions) {
+        if (replicated(category, key.kClass())) {
             if (!trxlog_) {
                 trxlog_ = make_unique<pb::Transaction>();
             }
@@ -376,37 +427,29 @@ void RocksDbResource::Transaction::remove(ResourceIf::TransactionIf::key_t key,
         auto it = makeUniqueFrom(trx_->GetIterator(options, owner_.handle(category)));
         for(it->Seek(toSlice(key.key())); it->Valid() ; it->Next()) {
             const auto ck = it->key();
-            const auto extra_len = static_cast<int>(ck.size() - key.size());
-            if (extra_len < 0) {
-                break;
-            }
-            if (extra_len > 0) {
-                // Validate that ck is a desecndent of key
-                assert(ck.size() > key.size() - 1);
-                if (ck[ck.size() - key.size() - 1] != '.') {
-                    break;
-                }
-                if (extra_len > 1) {
-                    // Corner-case - escaped dot in the same location as the zone-dot, but for a different zone
-                    if (ck[ck.size() - key.size() - 2] == '\\') {
-                        break;
-                    }
+            if (ck.size() < key.size() || memcmp(ck.data(), key.data(), key.size()) != 0) break;
+            if (ck.size() > key.size()) {
+                const auto boundary = RealKey::isReversed(key.kClass()) ? '.' : '/';
+                if (ck[key.size()] != boundary) break;
+                if (boundary == '.') {
+                    size_t escapes = 0;
+                    for (size_t i = key.size() + 1; i < ck.size() && ck[i] == '\\'; ++i) ++escapes;
+                    if (escapes % 2) continue; // An escaped literal dot is not a zone boundary.
                 }
             }
-
-            assert(extra_len >= 0);
-            // Check that the zone-part of ck is equal to the zone (that we have not skipped beoynd the zone)
-            if (memcmp(ck.data() + extra_len, key.data(), key.size()) != 0) {
-                break;
-            }
-            trx_->Delete(owner_.handle(category), it->key());
-            addDeletedToTrxlog(key, category);
+            const RealKey current{RealKey::Binary{ck}};
+            if (category == Category::ENTRY && current.kClass() == RealKey::Class::ENTRY) indexMailReferences(current, {});
+            const auto status = trx_->Delete(owner_.handle(category), ck);
+            if (!status.ok()) throw InternalErrorException{"RocksDB delete failed: " + status.ToString()};
+            addDeletedToTrxlog(current.key(), category);
         }
     } else {
         LOG_TRACE << "RocksDbResource::Transaction::remove Removing key "
                   << key << ", category " << category;
 
-        trx_->Delete(owner_.handle(category), toSlice(key));
+        if (category == Category::ENTRY && key.kClass() == RealKey::Class::ENTRY) indexMailReferences(key, {});
+        const auto status = trx_->Delete(owner_.handle(category), toSlice(key));
+        if (!status.ok()) throw InternalErrorException{"RocksDB delete failed: " + status.ToString()};
         addDeletedToTrxlog(key, category);
     }
 
@@ -514,8 +557,9 @@ void RocksDbResource::Transaction::handleTrxLog()
 
 void RocksDbResource::Transaction::addDeletedToTrxlog(span_t key, Category category)
 {
-    if (!disable_trxlog_ && owner_.config_.db_log_transactions) {
-        if (category == Category::ENTRY) {
+    if (!disable_trxlog_ && !owner_.replica_ && owner_.config_.db_log_transactions) {
+        const auto kclass = key.empty() ? RealKey::Class::UNKNOWN_ : static_cast<RealKey::Class>(key.front());
+        if (replicated(category, kclass)) {
             if (!trxlog_) {
                 trxlog_ = make_unique<pb::Transaction>();
             }

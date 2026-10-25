@@ -87,6 +87,10 @@ add_library(${PROJECT_NAME}
     FollowerReplication.cpp
     FollowerReplication.h
     LogCapture.cpp
+    MailProvisioner.cpp
+    MailProvisioner.h
+    TimedTasks.cpp
+    TimedTasks.h
     Metrics.cpp
     Metrics.h
     Notifications.cpp

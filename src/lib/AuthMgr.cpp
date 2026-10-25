@@ -1,5 +1,7 @@
 
 #include <memory>
+#include <openssl/rand.h>
+#include <openssl/crypto.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/uuid/string_generator.hpp>
@@ -29,6 +31,12 @@ void validate(const pb::User& user) {
 
 void validate(const pb::Zone& zone) {
     // TODO: Validate
+}
+
+void validate(const pb::ApiKey& key) {
+    if (key.name().empty() || key.roles().empty() || key.hash().empty()) {
+        throw ConstraintException{"API key requires a name, roles, and a generated hash"};
+    }
 }
 
 bool hasPermission(const pb::Tenant& tenant, pb::Permission perm) {
@@ -154,6 +162,12 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
         return {};
     }
 
+    static constexpr string_view bearer = "bearer ";
+    if (compareCaseInsensitive(bearer, ar.auth_header, false)) {
+        // Resolve current tenant/roles on every request; never cache bearer grants.
+        return apiKeyAuth(ar.auth_header.substr(bearer.size()), required_perm);
+    }
+
     auto hash = sha256(ar.auth_header, false);
     if (auto existing = keys_.get(hash)) {
         LOG_TRACE_N << "Request " <<  ar.req.uuid << " proceeded with session-key " << Base64Encode(hash);
@@ -166,7 +180,7 @@ yahat::Auth AuthMgr::authorize(const yahat::AuthReq &ar)
                          ar.req.uuid, required_perm);
     }
 
-    LOG_DEBUG_N << "AuthMgr::authorize: Unrecognized authentication method" << ar.auth_header.substr(0, 10);
+    LOG_DEBUG_N << "AuthMgr::authorize: Unrecognized authentication method";
     return {};
 }
 
@@ -191,6 +205,146 @@ optional<pb::Tenant> AuthMgr::getTenant(std::string_view tenantId) const
     ResourceIf::RealKey key{tenantId, ResourceIf::RealKey::Class::TENANT};
 
     return get<pb::Tenant>(*trx, key);
+}
+
+string AuthMgr::createApiKey(std::string_view tenantId, pb::ApiKey& key)
+{
+    std::lock_guard lock{api_keys_mutex_};
+    auto trx = server_.resource().transaction();
+    auto tenant = get<pb::Tenant>(*trx, {tenantId, key_class_t::TENANT});
+    if (!tenant || !PB_GET(tenant.value(), active, true)) {
+        throw ConstraintException{"Tenant is missing or inactive"};
+    }
+    if (key.name().empty() || key.roles().empty() || key.has_hash()) {
+        throw ConstraintException{"An API key requires a name and roles; hash is server generated"};
+    }
+    if (key.name().size() > 128 || !ranges::all_of(key.name(), [](unsigned char ch) {
+            return ch >= 32 && ch != 127 && ch != '/';
+        })) {
+        throw ConstraintException{"API key names must be at most 128 bytes, without slashes or control characters"};
+    }
+    const ResourceIf::RealKey name_key{tenantId, utf8FoldCase(key.name()), key_class_t::APIKEY_NAME};
+    if (trx->keyExists(name_key, ResourceIf::Category::ACCOUNT)) {
+        throw AlreadyExistException{"API key name already exists"};
+    }
+    for (const auto& name : key.roles()) {
+        if (!ranges::any_of(tenant->roles(), [&](const auto& role) {
+                return compareCaseInsensitive(role.name(), name, true);
+            })) {
+            throw ConstraintException{"Unknown API key role"};
+        }
+    }
+
+    array<unsigned char, 48> random_bytes{};
+    const ScopedExit wipe{[&] { OPENSSL_cleanse(random_bytes.data(), random_bytes.size()); }};
+    if (RAND_bytes(random_bytes.data(), static_cast<int>(random_bytes.size())) != 1) {
+        throw InternalErrorException{"Failed to generate API key"};
+    }
+    auto encoded = Base64Encode({reinterpret_cast<const char*>(random_bytes.data()), random_bytes.size()});
+    ranges::replace(encoded, '+', '-');
+    ranges::replace(encoded, '/', '_');
+    const auto token = "nsb_" + encoded; // 68 characters, 384 random bits, no padding.
+    key.set_hash(sha256(token));
+    trx->write({key.hash(), key_class_t::APIKEY}, tenantId, true, ResourceIf::Category::ACCOUNT);
+    upsert(*trx, {tenantId, key.hash(), key_class_t::TAPIKEY}, key, true);
+    trx->write(name_key, key.hash(), true, ResourceIf::Category::ACCOUNT);
+    trx->commit();
+    LOG_INFO << "Created API key for tenant " << tenantId;
+    return token;
+}
+
+vector<pb::ApiKey> AuthMgr::listApiKeys(std::string_view tenantId) const
+{
+    auto trx = server_.resource().transaction();
+    vector<pb::ApiKey> result;
+    const ResourceIf::RealKey prefix{tenantId, "", key_class_t::TAPIKEY};
+    trx->iterate(prefix, [&](trx_t::key_t key, span_t raw) {
+        const auto [owner, hash] = key.getFirstAndSecondStr();
+        if (owner != tenantId) {
+            return false;
+        }
+        pb::ApiKey stored;
+        if (!stored.ParseFromArray(raw.data(), static_cast<int>(raw.size()))) {
+            throw InternalErrorException{"Failed to deserialize API key"};
+        }
+        stored.clear_hash();
+        result.push_back(std::move(stored));
+        return true;
+    }, ResourceIf::Category::ACCOUNT);
+    ranges::sort(result, {}, &pb::ApiKey::name);
+    LOG_DEBUG << "Listed " << result.size() << " API keys for tenant " << tenantId;
+    return result;
+}
+
+bool AuthMgr::deleteApiKey(std::string_view tenantId, std::string_view name)
+{
+    std::lock_guard lock{api_keys_mutex_};
+    auto trx = server_.resource().transaction();
+    const ResourceIf::RealKey name_key{tenantId, utf8FoldCase(string{name}), key_class_t::APIKEY_NAME};
+    string hash;
+    if (!trx->read(name_key, hash, ResourceIf::Category::ACCOUNT, false)) {
+        return false;
+    }
+    trx->remove(name_key, false, ResourceIf::Category::ACCOUNT);
+    trx->remove({hash, key_class_t::APIKEY}, false, ResourceIf::Category::ACCOUNT);
+    trx->remove({tenantId, hash, key_class_t::TAPIKEY}, false, ResourceIf::Category::ACCOUNT);
+    trx->commit();
+    LOG_INFO << "Deleted API key for tenant " << tenantId;
+    return true;
+}
+
+yahat::Auth AuthMgr::apiKeyAuth(std::string_view token, pb::Permission perm)
+{
+    if (token.size() != 68 || !token.starts_with("nsb_")
+        || !ranges::all_of(token.substr(4), [](unsigned char ch) {
+            return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
+                || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+        })) {
+        LOG_DEBUG << "Rejected malformed API key";
+        return {};
+    }
+    const auto hash = sha256(token);
+    auto trx = server_.resource().transaction();
+    string tenant_id;
+    if (!trx->read({hash, key_class_t::APIKEY}, tenant_id, ResourceIf::Category::ACCOUNT, false)) {
+        LOG_DEBUG << "Rejected unknown API key";
+        return {};
+    }
+    auto tenant = get<pb::Tenant>(*trx, {tenant_id, key_class_t::TENANT});
+    auto key = get<pb::ApiKey>(*trx, {tenant_id, hash, key_class_t::TAPIKEY});
+    if (!tenant || !PB_GET(tenant.value(), active, true) || !key || key->hash() != hash) {
+        LOG_DEBUG << "Rejected API key with missing key or inactive/missing tenant";
+        return {};
+    }
+    auto session = make_shared<Session>(*this, *tenant, "apikey:" + key->name(), key->roles());
+    session->setPrincipal("apikey:" + hash);
+    LOG_TRACE << "Authenticated API key for tenant " << tenant_id;
+    return session->getAuth(perm);
+}
+
+std::shared_ptr<Session> AuthMgr::resumePrincipal(std::string_view tenantId, std::string_view principal)
+{
+    auto trx = server_.resource().transaction();
+    auto tenant = get<pb::Tenant>(*trx, {tenantId, key_class_t::TENANT});
+    if (!tenant || !PB_GET(tenant.value(), active, true)) return {};
+    if (principal.starts_with("apikey:")) {
+        const auto hash = principal.substr(7);
+        auto key = get<pb::ApiKey>(*trx, {tenantId, hash, key_class_t::TAPIKEY});
+        if (!key || key->hash() != hash) return {};
+        auto session = std::make_shared<Session>(*this, *tenant, "apikey:" + key->name(), key->roles());
+        session->setPrincipal(std::string{principal});
+        return session;
+    }
+    if (principal.starts_with("user:")) {
+        for (const auto& user : tenant->users()) {
+            if (user.id() == principal.substr(5) && PB_GET(user, active, true)) {
+                auto session = std::make_shared<Session>(*this, *tenant, user.name(), user.roles());
+                session->setPrincipal(std::string{principal});
+                return session;
+            }
+        }
+    }
+    return {};
 }
 
 string AuthMgr::createTenant(pb::Tenant &tenant)
@@ -280,6 +434,7 @@ commit:
 
 void AuthMgr::deleteTenant(std::string_view tenantId)
 {
+    std::lock_guard lock{api_keys_mutex_};
     auto trx = server_.resource().transaction();
     ResourceIf::RealKey key{toLower(tenantId), ResourceIf::RealKey::Class::TENANT};
 
@@ -297,6 +452,25 @@ void AuthMgr::deleteTenant(std::string_view tenantId)
         deleteTenantIndexes(*trx, *tenant);
     }
 
+    vector<ResourceIf::RealKey> api_keys;
+    const ResourceIf::RealKey prefix{tenantId, "", key_class_t::TAPIKEY};
+    trx->iterate(prefix, [&](trx_t::key_t key, span_t raw) {
+        const auto [owner, hash] = key.getFirstAndSecondStr();
+        if (owner != tenantId) {
+            return false;
+        }
+        api_keys.emplace_back(hash, key_class_t::APIKEY);
+        api_keys.emplace_back(key);
+        pb::ApiKey stored;
+        if (!stored.ParseFromArray(raw.data(), static_cast<int>(raw.size()))) {
+            throw InternalErrorException{"Failed to deserialize API key during tenant deletion"};
+        }
+        api_keys.emplace_back(tenantId, utf8FoldCase(stored.name()), key_class_t::APIKEY_NAME);
+        return true;
+    }, ResourceIf::Category::ACCOUNT);
+    for (const auto& key : api_keys) {
+        trx->remove(key, false, ResourceIf::Category::ACCOUNT);
+    }
     trx->remove(key, true, ResourceIf::Category::ACCOUNT);
 
     LOG_INFO << "Deleting tenant " << tenantId;
@@ -437,6 +611,56 @@ void AuthMgr::migrateStorage()
         case 2:
             migrateToV2AddDynip(*trx);
             break;
+        case 3:
+            // APIKEY/TAPIKEY/APIKEY_NAME are appended classes; existing data needs no backfill.
+            break;
+        case 4: {
+            // Backfill MX references and publish current authorization state to the
+            // replication log in bounded, restartable batches. The version marker
+            // commits last, so interruption safely replays this idempotent upgrade.
+            auto batch = server_.resource().transaction();
+            size_t count = 0;
+            auto flush = [&] {
+                batch->commit();
+                batch = server_.resource().transaction();
+                count = 0;
+            };
+            auto reader = server_.resource().transaction();
+            // Repair the historical zone-prefix calculation while rebuilding the
+            // owner index from authoritative ENTRY data (never from old ZRR keys).
+            reader->iterate({"", key_class_t::ZRR}, [&](const auto& key, auto) {
+                batch->remove(key, false, ResourceIf::Category::ACCOUNT);
+                if (++count >= 256) flush();
+                return true;
+            }, ResourceIf::Category::ACCOUNT);
+            flush();
+            reader->iterate({"", key_class_t::ENTRY}, [&](const auto& key, auto raw) {
+                Entry entry{raw};
+                const auto owner = key.dataAsString();
+                auto authoritative = reader->lookupEntryAndSoa(owner);
+                if (authoritative.hasSoa() && owner != toLower(authoritative.soa().getSoa().labels().string())) {
+                    const auto zone = toLower(authoritative.soa().getSoa().labels().string());
+                    batch->write({zone, owner, key_class_t::ZRR}, "", false, ResourceIf::Category::ACCOUNT);
+                    if (++count >= 256) flush();
+                }
+                for (const auto& [host, kind] : dnsHostReferences(entry)) {
+                    batch->write({host, owner, key_class_t::DNS_REF}, kind, false, ResourceIf::Category::ACCOUNT);
+                    if (++count >= 256) flush();
+                }
+                return true;
+            });
+            for (auto cls : {key_class_t::TENANT, key_class_t::USER, key_class_t::TENANT_NAME,
+                             key_class_t::APIKEY, key_class_t::TAPIKEY, key_class_t::APIKEY_NAME,
+                             key_class_t::ZONE, key_class_t::TZONE, key_class_t::ZRR}) {
+                reader->iterate({"", cls}, [&](const auto& key, auto raw) {
+                    batch->write(key, raw, false, ResourceIf::Category::ACCOUNT);
+                    if (++count >= 256) flush();
+                    return true;
+                }, ResourceIf::Category::ACCOUNT);
+            }
+            batch->commit();
+            break;
+        }
         default:
             throw runtime_error{format("No migration function for schema version {}", to_version)};
         }
@@ -696,7 +920,7 @@ void AuthMgr::resetTokensForTenant(std::string_view tenantId)
 void AuthMgr::updateZoneRrIx(ResourceIf::TransactionIf &trx, std::string_view fqdn, size_t zoneLen, bool update)
 {
     assert(zoneLen < fqdn.size());
-    string_view zone = fqdn.substr(0, zoneLen ? zoneLen : fqdn.size());
+    string_view zone = fqdn.substr(zoneLen ? fqdn.size() - zoneLen : 0);
     ResourceIf::RealKey key{zone, fqdn, key_class_t::ZRR};
 
     if (update) {
@@ -813,6 +1037,7 @@ yahat::Auth AuthMgr::basicAuth(std::string hash,
                         role_names.push_back(name);
                     }
                     auto session = make_shared<Session>(*this, *tenant, userName, role_names);
+                    session->setPrincipal("user:" + user.id());
                     keys_.emplace(hash, session);
                     LOG_DEBUG << " AuthMgr::basicAuth Added session key "
                               << Base64Encode(hash) << " for user " << userName
@@ -1134,6 +1359,37 @@ yahat::Auth Session::getAuth(pb::Permission perm) noexcept
     a.extra = shared_from_this();
     a.account = format("{}/{}", tenant(), who_);
     return a;
+}
+
+bool Session::canDelegate(const pb::Role& target) const
+{
+    if (!AuthMgr::hasAuth()) {
+        return true;
+    }
+    const auto target_fqdn = target.has_filter() ? toLower(target.filter().fqdn()) : string{};
+    const auto target_regex = target.has_filter() ? target.filter().regex() : string{};
+    const bool target_all = target_fqdn.empty() && target_regex.empty();
+    for (const auto perm : target.permissions()) {
+        if (!pb::Permission_IsValid(perm)) {
+            return false;
+        }
+        const auto bit = detail::getBit(perm);
+        if (!ranges::any_of(roles_, [&](const auto& source) {
+                if (!(source.permissions_ & bit)) {
+                    return false;
+                }
+                if (source.appliesToAll()) {
+                    return true;
+                }
+                return !target_all && source.filters_
+                    && toLower(source.filters_->fqdn_) == target_fqdn
+                    && source.filters_->regex_ == target_regex
+                    && source.filters_->recursive_ == PB_GET(target.filter(), recursive, true);
+            })) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void Session::init(const pb::Tenant& tenant)

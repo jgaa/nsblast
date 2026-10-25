@@ -16,6 +16,28 @@ std::ostream& operator << (std::ostream& o, const nsblast::lib::ResourceIf::Real
 
 namespace nsblast::lib {
 
+std::map<std::string, std::string> dnsHostReferences(const Entry& entry) {
+    std::map<std::string, std::string> result;
+    for (const auto& rr : entry) {
+        std::string target;
+        switch (rr.type()) {
+        case TYPE_MX: target = RrMx{rr.span(), rr.offset()}.host().string(); break;
+        case TYPE_NS: target = RrNs{rr.span(), rr.offset()}.ns().string(); break;
+        case TYPE_CNAME: target = RrCname{rr.span(), rr.offset()}.cname().string(); break;
+        case TYPE_PTR: target = RrPtr{rr.span(), rr.offset()}.ptrdname().string(); break;
+        case TYPE_SRV: target = RrSrv{rr.span(), rr.offset()}.target().string(); break;
+        case TYPE_SOA: target = RrSoa{rr.span(), rr.offset()}.mname().string(); break;
+        default: continue;
+        }
+        target = toLower(target);
+        if (target.empty() || target.find('/') != std::string::npos) continue;
+        auto [it, inserted] = result.emplace(target, rr.type() == TYPE_MX ? "mx" : "other");
+        if (!inserted && rr.type() != TYPE_MX) it->second = "other";
+    }
+    return result;
+}
+
+
 namespace {
     auto concat(span_t left, span_t right) {
         std::string value;
@@ -185,7 +207,8 @@ bool ResourceIf::RealKey::isInZone(std::string_view zoneFqdn) const noexcept
 std::tuple<string_view, string_view> ResourceIf::RealKey::getFirstAndSecondStr() const
 {
     assert(kClass() == key_class_t::TZONE
-           || kClass() == key_class_t::ZRR);
+           || kClass() == key_class_t::ZRR
+           || kClass() == key_class_t::TAPIKEY);
 
     if (auto p = bytes_.find('/', 1); p != std::string::npos) {
       string_view t {bytes_.data() + 1, p - 1};
@@ -257,10 +280,12 @@ string_view toName(const ResourceIf::Category &cat)
 
 string_view toName(const ResourceIf::RealKey::Class &kclass)
 {
-    static constexpr array<string_view, 15> names = { "ENTRY", "DIFF", "TENANT", "USER",
+    static constexpr array<string_view, 23> names = { "ENTRY", "DIFF", "TENANT", "USER",
                                                     "ROLE", "ZONE", "TZONE", "TRXID", "ZRR",
                                                     "TENANT_NAME", "META", "DYNIP_ROOT",
-                                                    "DYNIP_TROOT", "DYNIP_HOST", "DYNIP_TOKEN"  };
+                                                    "DYNIP_TROOT", "DYNIP_HOST", "DYNIP_TOKEN",
+                                                    "APIKEY", "TAPIKEY", "APIKEY_NAME",
+                                                    "MAIL_POLICY", "TIMED_TASK", "TASK_DUE", "MAIL_HOST", "DNS_REF" };
 
     return names.at(static_cast<size_t>(kclass));
 }

@@ -1,0 +1,3 @@
+interface:
+  display_name: "nsblast Mail Provisioning"
+  short_description: "Integrate mail DNS provisioning with nsblast"

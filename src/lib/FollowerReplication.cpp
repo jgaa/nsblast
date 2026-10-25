@@ -5,6 +5,7 @@
 #include "FollowerReplication.h"
 #include "RocksDbResource.h"
 #include "Metrics.h"
+#include "AuthMgr.h"
 
 #include "nsblast/logging.h"
 #include "proto_util.h"
@@ -77,6 +78,9 @@ void FollowerReplication::Agent::init()
             LOG_ERROR_N << "Failed to apply transaction #"
                       << (update.has_trx() ? std::to_string(update.trx().id()) : "n/a")
                       << ": " << ex.what();
+            parent_.is_in_sync_ = false;
+            if (parent_.server().haveMetrics()) parent_.server().metrics().cluster_replication_in_sync().set(0);
+            throw; // The transport must reconnect from the last committed ID.
         }
     });
 }
@@ -106,6 +110,7 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
             LOG_WARN_N << "Failed to " << op << ' ' << key << " of transaction "
                        << value.uuid() << " replid: #"  << trxid
                        << ": " << ex.what();
+            throw; // Never commit a partially applied replicated transaction.
         }
     }
 
@@ -115,6 +120,12 @@ void FollowerReplication::Agent::onTrx(const pb::Transaction &value)
     const ResourceIf::RealKey key{trxid, ResourceIf::RealKey::Class::TRXID};
     trx->write(key, val, false, ResourceIf::Category::TRXLOG);
     trx->commit();
+    for (const auto& part : value.parts()) {
+        const ResourceIf::RealKey applied{ResourceIf::RealKey::Binary{part.key()}};
+        if (applied.kClass() == ResourceIf::RealKey::Class::TENANT) {
+            parent_.server().auth().resetTokensForTenant(applied.dataAsString());
+        }
+    }
 }
 
 

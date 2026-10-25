@@ -209,7 +209,14 @@ void GrpcFollow::SyncFromServer::OnReadDone(bool ok) {
     }
 
     grpc_.last_contact_ = chrono::steady_clock::now();
-    callOnUpdate(update_);
+    try {
+        callOnUpdate(update_);
+    } catch (const std::exception& ex) {
+        LOG_ERROR_N << "Replication apply failed; reconnecting without acknowledging: " << ex.what();
+        done_ = true;
+        ctx_.TryCancel();
+        return;
+    }
     update_.Clear();
     StartRead(&update_);
     startAckTimer();

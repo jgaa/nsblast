@@ -12,6 +12,8 @@ info:
 #host: "petstore.swagger.io"
 basePath: "/api/v1"
 tags:
+- name: mail
+  description: Atomic mail DNS provisioning and durable MTA-STS retirement.
 - name: version
   description: Version information
 - name: "zone"
@@ -30,6 +32,8 @@ tags:
   description: "Local server configuration (admin access)"
 - name: role
   description: RBAC roles. RBAC are supported for users and api keys.
+- name: apikey
+  description: Tenant API keys authenticated with Authorization Bearer credentials.
 - name: vars
   description: Permanent server variables.
 
@@ -37,7 +41,288 @@ schemes:
  - "https"
  - "http"
 
+securityDefinitions:
+  basicAuth:
+    type: basic
+  apiKeyAuth:
+    type: apiKey
+    in: header
+    name: Authorization
+    description: 'Enter Bearer followed by a space and the API key, for example: Bearer nsb_...'
+
+security:
+  - basicAuth: []
+  - apiKeyAuth: []
+
 paths:
+  /provision/mail/{domain}:
+    parameters:
+      - name: domain
+        in: path
+        required: true
+        type: string
+        description: Mail domain in an existing authoritative zone. Names are case insensitive; a trailing dot is accepted.
+    post:
+      tags: [mail]
+      summary: Create mail DNS configuration atomically
+      description: >-
+        Requires CREATE_MAIL for the domain and every affected DNS name, with matching
+        tenant ownership. No generic RR permissions are required. Validate the complete
+        request and proposed final state before committing; any failure leaves DNS,
+        policies, tasks, and zone serials unchanged. Conflicts with any requested existing
+        mail record, including an identical value; unrelated TXT values are preserved. New TXT policies must
+        have the same TTL as unrelated TXT at that owner, or return 409.
+        Local MX targets must have proposed A/AAAA records and cannot be CNAME aliases.
+        External MX targets are not resolved by this API. Address fields explicitly request
+        address provisioning; omitted fields leave existing addresses unchanged.
+        Maximum body 128 KiB, 16 unique MX hosts, 32 DKIM selectors, 16 addresses per
+        family per host, SPF 4096 bytes, and eight reporting destinations / 2048 bytes
+        per reporting field. SPF supports literal domain names, standard mechanisms and
+        redirect/exp modifiers; SPF macros and unknown modifiers are rejected. Direct DNS
+        terms are limited to ten; external include/redirect runtime lookup counts cannot
+        be guaranteed. RSA DKIM uses canonical Base64 DER RSAPublicKey, 2048..8192 bits,
+        at most 2048 encoded bytes; PEM and private keys are rejected. Selectors may be dotted.
+        MTA-STS requires trusted HTTPS on port 443 for mta-sts.DOMAIN; configure certificates
+        or a reverse proxy before enabling it. The anonymous policy URL is
+        https://mta-sts.DOMAIN/.well-known/mta-sts.txt, outside this API base path.
+        No UI, certificate issuance, PTR, DNSSEC, or mailboxes are provisioned.
+      consumes: [application/json]
+      produces: [application/json]
+      parameters:
+        - in: body
+          name: configuration
+          required: true
+          schema:
+            $ref: '#/definitions/MailConfiguration'
+      responses:
+        '201':
+          description: All requested records and policy committed.
+          schema:
+            $ref: '#/definitions/MailChangeResponse'
+        '400': {description: Invalid or oversized input.}
+        '401': {description: Authentication required.}
+        '403': {description: Mail permission or tenant ownership denied; mutations require the primary.}
+        '404': {description: No authoritative zone for an affected name.}
+        '409': {description: Existing mail record, CNAME, delegation, unknown policy history, or unsafe ownership conflict.}
+        '413': {description: Atomic IXFR change exceeds the current 60000-byte per-zone storage limit.}
+    put:
+      tags: [mail]
+      summary: Replace mail configuration in one atomic transaction
+      description: >-
+        Logically DELETE followed by POST in one transaction, after complete validation.
+        Requires UPDATE_MAIL when recognized mail configuration exists, otherwise
+        CREATE_MAIL. Does not require DELETE_MAIL or generic RR permissions. The zone's
+        existence alone does not make a configuration an update. Permissions and ownership
+        are checked on every affected name. Omitted policy sections use creation defaults;
+        omitted/empty DKIM removes obsolete recognized selectors. Keep old selectors in the
+        request during key rotation while signed messages remain in transit. CNAME and
+        delegated DKIM subtrees are preserved; unsafe replacements conflict. Unrelated RRs
+        always survive. Omitted address fields preserve addresses of retained MX hosts;
+        obsolete dedicated addresses are removed only with validated exclusive ownership.
+        Addresses created by provisioning can be updated while exclusive; manually created,
+        modified, or shared addresses require the generic RR API for changes. Identical PUT
+        makes no DNS writes, serial increments, notifications, or retry-budget resets.
+        MTA-STS downgrades, removal, or incompatible enforced MX changes follow RFC 8461
+        retirement: atomically publish mode none and a new TXT ID, retain the current mail
+        configuration, and schedule final replacement after all possibly cached policies
+        expire, including older policies with longer max_age. Return status pending,
+        transition ID, applied policy and earliest_completion (UTC Unix seconds). Poll
+        GET /provision/mail/{domain}/status. A newer request atomically supersedes pending
+        work; repeated identical requests reuse it, including terminal failures. Deferred
+        work rechecks the initiating principal, ownership and DNS; unsafe manual edits fail
+        without deleting them. Persisted retries default to five after the first attempt;
+        timed_task_max_retries and timed_task_concurrency (default 8) are server variables.
+        Limits and validation are the same as POST. Tenant impersonation is unsupported.
+      consumes: [application/json]
+      produces: [application/json]
+      parameters:
+        - in: body
+          name: configuration
+          required: true
+          schema:
+            $ref: '#/definitions/MailConfiguration'
+      responses:
+        '200':
+          description: Provisioned, unchanged, or pending retirement; inspect value.status and warnings.
+          schema:
+            $ref: '#/definitions/MailChangeResponse'
+        '400': {description: Invalid input; previous configuration remains intact.}
+        '401': {description: Authentication required.}
+        '403': {description: Mail permission, tenant ownership or write authority denied.}
+        '404': {description: Unknown authoritative zone.}
+        '409': {description: Unsafe DNS conflict, delegation, ambiguous address ownership or unknown policy history.}
+        '413': {description: Atomic IXFR change exceeds 60000 bytes per zone.}
+    delete:
+      tags: [mail]
+      summary: Delete recognized email records; preserve the zone and unrelated RRs
+      description: >-
+        Requires DELETE_MAIL for the domain and all affected names. Never deletes the DNS
+        zone, SOA, NS, unrelated TXT values, or unrelated RRs. Discovers manually created MX,
+        SPF, DMARC, DKIM (including records without an optional v=DKIM1 tag), MTA-STS and
+        TLS-RPT records. Preserve CNAME delegations and delegated DKIM subtrees.
+        IMPORTANT: when moving mail service to a domain or mail host not handled by this
+        DNS server, populate replacement MX records AFTER this DELETE has completed.
+        DELETE removes current MX records and installs no replacement. If value.status is
+        pending, wait for completion before publishing replacement MX records, so deferred
+        cleanup cannot remove them. Manual DNS edits during retirement cause a safe terminal
+        failure and require operator reconciliation. MTA-STS retirement follows the same
+        procedure and persistent bounded retry rules as PUT. Existing DNS TXT without known
+        stored policy history returns 409 because a safe retirement deadline is unknown.
+        By default remove only exclusively owned provisioning-created A/AAAA records for
+        obsolete MX hosts inside this domain. External, shared, manually changed, or
+        ambiguously owned addresses survive with warnings. Known sharing is limited to
+        DNS data visible to this server; DNS alone is not proof of exclusive ownership.
+        preserve_ip=true preserves all host addresses. Idempotent deletion returns 200,
+        including no-op, with a change report and warnings. No request body is accepted.
+      produces: [application/json]
+      parameters:
+        - name: preserve_ip
+          in: query
+          type: boolean
+          default: false
+          description: Keep all mail host A/AAAA records.
+      responses:
+        '200':
+          description: Deleted, unchanged, or pending retirement; inspect status and warnings.
+          schema:
+            $ref: '#/definitions/MailChangeResponse'
+        '400': {description: Invalid domain, query argument, or unexpected body.}
+        '401': {description: Authentication required.}
+        '403': {description: Mail permission, ownership or write authority denied.}
+        '404': {description: Unknown authoritative zone.}
+        '409': {description: Unknown policy history, concurrent zone change or unsafe conflict.}
+        '413': {description: Atomic IXFR change exceeds 60000 bytes per zone.}
+  /provision/mail/{domain}/status:
+    get:
+      tags: [mail]
+      summary: Read the current mail transition and retry state
+      description: >-
+        Requires an applicable CREATE_MAIL, UPDATE_MAIL or DELETE_MAIL grant and tenant
+        ownership. Returns complete when no transition is pending; otherwise returns
+        transition, status (pending/running/failed), earliest_completion, applied_policy,
+        attempts, max_retries, next eligible/lease time and failure diagnostic. Does not
+        expose credentials, desired task payloads, other tenants or arbitrary scheduler data.
+      produces: [application/json]
+      parameters:
+        - name: domain
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: Current transition state.
+          schema:
+            $ref: '#/definitions/MailChangeResponse'
+        '401': {description: Authentication required.}
+        '403': {description: Mail permission or tenant ownership denied.}
+        '404': {description: Unknown authoritative zone.}
+  /apikey:
+    post:
+      tags:
+        - apikey
+      summary: Create an API key
+      description: >-
+        Requires CREATE_APIKEY. Creates an independent tenant-owned key with the specified
+        tenant roles. Every delegated permission must be held by the caller through an
+        unfiltered role or a role with the same DNS filter; arbitrary regex containment is
+        not inferred. An unfiltered administrator can delegate scoped roles.
+        The 68-character token contains 384 random bits generated by OpenSSL and is
+        returned once; only its SHA-256 hash is stored. Save it from this response.
+        Authenticate subsequent API requests with Authorization: Bearer <key>.
+        Basic authentication remains supported. Role changes take effect on the next
+        key-authenticated request. Names are unique within a tenant, ignoring case.
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - name: tenant
+          in: query
+          type: string
+          description: Target tenant id. Requires IMPERSONATE_TENANT.
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/CreateApiKey'
+      responses:
+        '201':
+          description: Key created. The plaintext key is returned only in this response.
+          headers:
+            Cache-Control:
+              type: string
+              description: no-store
+          schema:
+            $ref: '#/definitions/CreatedApiKey'
+        '400':
+          description: Invalid JSON, missing name or roles, unknown role, or supplied hash.
+        '401':
+          description: Authentication required or invalid credentials.
+        '403':
+          description: Missing CREATE_APIKEY or an attempt to delegate broader access.
+        '404':
+          description: Target tenant not found.
+        '409':
+          description: An API key with this name already exists in the tenant.
+        '405':
+          description: Method not supported.
+    get:
+      tags:
+        - apikey
+      summary: List API keys
+      description: Requires LIST_APIKEYS. Returns names and roles for keys in the current tenant, without secrets or hashes.
+      produces:
+        - application/json
+      parameters:
+        - name: tenant
+          in: query
+          type: string
+          description: Target tenant id. Requires IMPERSONATE_TENANT.
+      responses:
+        '200':
+          description: API key metadata, sorted by name.
+          schema:
+            type: object
+            properties:
+              error:
+                type: boolean
+              status:
+                type: integer
+              value:
+                type: array
+                items:
+                  $ref: '#/definitions/ApiKeyMetadata'
+        '401':
+          description: Authentication required.
+        '403':
+          description: Missing LIST_APIKEYS.
+
+  /apikey/{name}:
+    delete:
+      tags:
+        - apikey
+      summary: Delete an API key by name
+      description: Requires DELETE_APIKEY. Names are matched ignoring case within the target tenant. Deleted keys fail authentication on subsequent requests. Already authorized requests may finish.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          type: string
+          description: API key name, URL encoded.
+        - name: tenant
+          in: query
+          type: string
+          description: Target tenant id. Requires IMPERSONATE_TENANT.
+      responses:
+        '200':
+          description: Key deleted.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Missing DELETE_APIKEY.
+        '404':
+          description: API key not found in the target tenant.
+
   /nic/update:
     get:
       tags:
@@ -2039,6 +2324,186 @@ paths:
                 $ref: "#/definitions/Returns"
 
 definitions:
+  MailConfiguration:
+    type: object
+    additionalProperties: false
+    required: [mail_servers]
+    properties:
+      mail_servers:
+        type: array
+        minItems: 1
+        maxItems: 16
+        items:
+          $ref: '#/definitions/MailServer'
+      ttl:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+        description: Defaults to this server's configured default TTL.
+      spf:
+        type: object
+        additionalProperties: false
+        properties:
+          enabled: {type: boolean, default: true}
+          policy: {type: string, default: 'v=spf1 mx -all', maxLength: 4096}
+      dkim:
+        type: array
+        maxItems: 32
+        items:
+          type: object
+          additionalProperties: false
+          required: [selector, public_key]
+          properties:
+            selector: {type: string, description: DNS selector; dotted selectors are accepted.}
+            algorithm: {type: string, enum: [rsa], default: rsa}
+            public_key: {type: string, maxLength: 2048, description: Canonical Base64 DER RSAPublicKey (2048..8192 bits).}
+      dmarc:
+        type: object
+        additionalProperties: false
+        properties:
+          enabled: {type: boolean, default: true}
+          policy: {type: string, enum: [none, quarantine, reject], default: none}
+          rua: {type: string, maxLength: 2048, description: Up to eight comma-separated mailto URIs; no default mailbox.}
+          ruf: {type: string, maxLength: 2048, description: Up to eight comma-separated mailto URIs.}
+      mta_sts:
+        type: object
+        additionalProperties: false
+        properties:
+          enabled: {type: boolean, default: false}
+          mode: {type: string, enum: [none, testing, enforce], default: testing}
+          max_age: {type: integer, minimum: 0, maximum: 31557600, default: 604800}
+          ipv4:
+            type: array
+            minItems: 1
+            maxItems: 16
+            items: {type: string, format: ipv4}
+            description: Explicit HTTPS policy-host addresses; never inferred from MX addresses.
+          ipv6:
+            type: array
+            minItems: 1
+            maxItems: 16
+            items: {type: string, format: ipv6}
+      tls_reporting:
+        type: object
+        additionalProperties: false
+        properties:
+          enabled: {type: boolean, default: false}
+          rua: {type: string, maxLength: 2048, description: Required when enabled; up to eight comma-separated mailto or https URIs.}
+    example:
+      mail_servers:
+        - hostname: mail.example.com
+          priority: 10
+          ipv4: [192.0.2.10]
+          ipv6: ['2001:db8::10']
+      spf: {enabled: true, policy: 'v=spf1 mx -all'}
+      dmarc: {enabled: true, policy: none, rua: 'mailto:dmarc@example.com'}
+      mta_sts: {enabled: false}
+      tls_reporting: {enabled: false}
+      ttl: 3600
+  MailServer:
+    type: object
+    additionalProperties: false
+    required: [hostname]
+    properties:
+      hostname: {type: string, description: MX hostname; shared/external hosts need no address fields.}
+      priority: {type: integer, minimum: 0, maximum: 65535, default: 10}
+      ipv4:
+        type: array
+        minItems: 1
+        maxItems: 16
+        items: {type: string, format: ipv4}
+      ipv6:
+        type: array
+        minItems: 1
+        maxItems: 16
+        items: {type: string, format: ipv6}
+  MailChangeResponse:
+    type: object
+    properties:
+      error: {type: boolean}
+      status: {type: integer, description: HTTP status code.}
+      value:
+        type: object
+        properties:
+          domain: {type: string}
+          status: {type: string}
+          transition: {type: string}
+          earliest_completion: {type: integer, format: int64, description: UTC Unix seconds; earliest safe completion, not a guaranteed execution time.}
+          attempts: {type: integer}
+          max_retries: {type: integer}
+          next: {type: integer, format: int64}
+          failure: {type: string}
+          applied_policy: {type: object}
+          created:
+            type: array
+            items: {$ref: '#/definitions/MailRecordChange'}
+          updated:
+            type: array
+            items: {$ref: '#/definitions/MailRecordChange'}
+          deleted:
+            type: array
+            items: {$ref: '#/definitions/MailRecordChange'}
+          warnings:
+            type: array
+            items: {type: string}
+  MailRecordChange:
+    type: object
+    properties:
+      name: {type: string}
+      type: {type: string}
+      purpose: {type: string}
+  CreateApiKey:
+    type: object
+    required:
+      - name
+      - roles
+    properties:
+      name:
+        type: string
+        minLength: 1
+        description: Tenant-unique name, ignoring case. At most 128 UTF-8 bytes; slashes and control characters are forbidden.
+      roles:
+        type: array
+        minItems: 1
+        items:
+          type: string
+        description: Names of existing roles in the target tenant.
+
+  ApiKeyMetadata:
+    type: object
+    properties:
+      name:
+        type: string
+      roles:
+        type: array
+        items:
+          type: string
+
+  CreatedApiKey:
+    type: object
+    properties:
+      error:
+        type: boolean
+        example: false
+      status:
+        type: integer
+        example: 201
+      value:
+        type: object
+        properties:
+          name:
+            type: string
+          roles:
+            type: array
+            items:
+              type: string
+          key:
+            type: string
+            minLength: 68
+            maxLength: 68
+            pattern: '^nsb_[A-Za-z0-9_-]{64}$'
+            description: Plaintext secret. Returned once; store securely.
+
 
   Master:
     type: object

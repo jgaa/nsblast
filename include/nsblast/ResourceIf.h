@@ -3,12 +3,17 @@
 #include <format>
 
 #include <sstream>
+#include <map>
 
 #include "nsblast/nsblast.h"
 #include "nsblast/DnsMessages.h"
 #include "nsblast/util.h"
 
 namespace nsblast::lib {
+
+// Host targets referenced by MX/NS/CNAME/PTR/SRV/SOA. Value is "mx" only
+// when every reference from this owner is MX; otherwise it is "other".
+std::map<std::string, std::string> dnsHostReferences(const Entry& entry);
 
 /*! Interface for resource lookups and manipulation
  *
@@ -54,6 +59,14 @@ public:
             DYNIP_TROOT,// dynip root index by tenant/root
             DYNIP_HOST, // dynip host metadata by root/host
             DYNIP_TOKEN,// dynip token->host lookup
+            APIKEY,     // API key hash -> tenant id
+            TAPIKEY,    // tenant id / API key hash -> pb::ApiKey
+            APIKEY_NAME,// tenant id / folded name -> API key hash
+            MAIL_POLICY,// domain -> versioned policy and pending transition
+            TIMED_TASK, // UUID -> versioned durable task
+            TASK_DUE,   // zero-padded UTC seconds / UUID -> UUID
+            MAIL_HOST,  // hostname -> exclusive provisioned address ownership
+            DNS_REF,     // hostname / RR owner -> mx or other
             UNKNOWN_    // Not used as a Class
         };
 
@@ -313,6 +326,9 @@ public:
          *          already exists.
          *  \throws std::runtime_error on errors
          */
+        // Hold a database write-intent lock until commit/rollback, including absent keys.
+        virtual void lock(key_t key, Category category = Category::ENTRY) = 0;
+
         virtual void write(key_t key, data_t data, bool isNew, Category category = Category::ENTRY) = 0;
 
         /*! Delete an entry

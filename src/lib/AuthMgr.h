@@ -254,6 +254,12 @@ public:
 
     yahat::Auth getAuth(pb::Permission perm = pb::Permission::USE_API) noexcept;
 
+    // Conservative delegation: each permission needs an unfiltered grant or the same filter.
+    bool canDelegate(const pb::Role& role) const;
+
+    const std::string& principal() const noexcept { return principal_; }
+    void setPrincipal(std::string value) { principal_ = std::move(value); }
+
     const std::string& who() const noexcept {
         return who_;
     }
@@ -299,6 +305,7 @@ private:
     AuthMgr& mgr_;
     const std::string tenant_;
     const std::string who_;
+    std::string principal_;
     boost::uuids::uuid tenant_id_;
 };
 
@@ -309,6 +316,8 @@ public:
     yahat::Auth authorize(const yahat::AuthReq& ar);
 
     /*! Internal method to log in. Primarily ment for unit tests */
+    std::shared_ptr<Session> resumePrincipal(std::string_view tenant, std::string_view principal);
+
     yahat::Auth login(std::string_view name, std::string_view password);
 
     // Methods to support the REST api
@@ -323,6 +332,12 @@ public:
     std::optional<pb::Tenant> getTenant(std::string_view tenantId) const;
 
     std::string createTenant(pb::Tenant& tenant);
+
+    // Returns the plaintext token once; only its hash is persisted in key.
+    std::string createApiKey(std::string_view tenantId, pb::ApiKey& key);
+    // Listing deliberately excludes hashes as well as plaintext secrets.
+    std::vector<pb::ApiKey> listApiKeys(std::string_view tenantId) const;
+    bool deleteApiKey(std::string_view tenantId, std::string_view name);
 
     // Returns true if a tenant was created
     bool upsertTenant(std::string_view tenantId, const pb::Tenant& tenant,
@@ -383,6 +398,7 @@ public:
     }
 
 private:
+    yahat::Auth apiKeyAuth(std::string_view token, pb::Permission perm);
     yahat::Auth basicAuth(std::string hash, std::string_view authString,
                           const boost::uuids::uuid reqUuid, pb::Permission perm = pb::Permission::USE_API);
     void processUsers(pb::Tenant& tenant, const std::optional<pb::Tenant>& existingTenant);
@@ -398,6 +414,8 @@ private:
     void migrateToV2AddDynip(trx_t& trx) const;
 
     Server& server_;
+    // Serialize key lifecycle mutations, including name uniqueness checks.
+    std::mutex api_keys_mutex_;
     detail::Lru<std::shared_ptr<Session>> keys_;
     std::atomic<uint32_t> data_schema_version_{0};
     static bool has_auth_;

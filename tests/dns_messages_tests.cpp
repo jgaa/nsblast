@@ -1652,3 +1652,20 @@ int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+TEST(StorageBuilderRegression, SerializesSegmentedAndEmptyIndexes) {
+    nsblast::lib::StorageBuilder builder;
+    for (size_t i = 0; i < 300; ++i) builder.createTxt("many.example.com", 300, std::to_string(i));
+    builder.finish();
+    nsblast::lib::Entry entry{builder.buffer()};
+    ASSERT_EQ(entry.count(), 300);
+    std::set<std::string> values;
+    for (const auto& rr : entry) values.insert(nsblast::lib::RrTxt{rr.span(), rr.offset()}.string());
+    EXPECT_EQ(values.size(), 300);
+    EXPECT_TRUE(values.contains("299"));
+    nsblast::lib::StorageBuilder empty;
+    empty.finish();
+    nsblast::lib::Entry empty_entry{empty.buffer()};
+    EXPECT_EQ(empty_entry.count(), 0);
+    EXPECT_EQ(empty_entry.begin(), empty_entry.end());
+}

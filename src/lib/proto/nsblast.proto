@@ -107,6 +107,9 @@ enum Permission {
     DYNIP_CREATE = 55; // Create DynIP hosts under roots
     DYNIP_DELETE = 56; // Delete DynIP hosts
     DYNIP_LIST = 57; // List DynIP roots/hosts
+    CREATE_MAIL = 58;
+    UPDATE_MAIL = 59;
+    DELETE_MAIL = 60;
 }
 
 message VarsSnapshot {
@@ -131,6 +134,9 @@ message VarsSnapshot {
     uint32 dynip_max_hosts_per_request = 123;
     bool dynip_require_user_agent = 124;
     bool dynip_allow_private_ips = 125;
+
+    optional uint32 timed_task_concurrency = 140; // Default 8, queued plus running
+    optional uint32 timed_task_max_retries = 141; // Default 5 after initial attempt
 }
 
 message DynipRoot {
@@ -202,7 +208,7 @@ message Role {
  *
  * Indexes:
  *  - APIKEY hash / ACCOUNT             --> tenantid
- *  - TAPIKEY tenantid + hash / ACCOUNT --> tenantid
+ *  - TAPIKEY tenantid + hash / ACCOUNT --> serialized ApiKey
  */
 message ApiKey {
     optional string hash = 1;

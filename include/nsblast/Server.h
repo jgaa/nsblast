@@ -26,6 +26,8 @@ namespace lib {
     class RocksDbResource;
     class BackupMgr;
     class Metrics;
+    class MailProvisioner;
+    class TimedTasks;
     class Vars;
     class VarsViewIf;
 
@@ -164,6 +166,10 @@ public:
         return *auth_;
     }
 
+    void wakeTimedTasks();
+    lib::MailProvisioner& mail() { assert(mail_); return *mail_; }
+    lib::TimedTasks& timedTasks() { assert(timed_tasks_); return *timed_tasks_; }
+
     lib::Vars& vars();
     const lib::Vars& vars() const;
     virtual lib::VarsViewIf& varsView();
@@ -247,6 +253,8 @@ protected:
     std::shared_ptr<lib::Notifications> notifications_;
     std::shared_ptr<yahat::HttpServer> http_;
     std::shared_ptr<lib::RestApi> api_;
+    std::shared_ptr<lib::MailProvisioner> mail_;
+    std::shared_ptr<lib::TimedTasks> timed_tasks_;
     std::shared_ptr<lib::SlaveMgr> slave_;
     std::shared_ptr<lib::DnsEngine> dns_;
     std::shared_ptr<lib::AuthMgr> auth_;
