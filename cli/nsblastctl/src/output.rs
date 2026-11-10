@@ -12,7 +12,7 @@ pub fn print_serialized<T: Serialize>(format: &OutputFormat, value: &T) -> Resul
 pub fn print_value(format: &OutputFormat, value: &Value) -> Result<()> {
     match format {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(value)?),
-        OutputFormat::Yaml => println!("{}", serde_yaml::to_string(value)?),
+        OutputFormat::Yaml => println!("{}", serde_saphyr::to_string(value)?),
         OutputFormat::Table => print_table(value),
     }
     Ok(())

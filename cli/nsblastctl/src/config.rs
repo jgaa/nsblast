@@ -65,7 +65,7 @@ pub fn load_config(path: &Path, allow_insecure: bool) -> Result<ConfigFile> {
     validate_permissions(path, allow_insecure)?;
     let data = fs::read_to_string(path)
         .with_context(|| format!("failed to read config {}", path.display()))?;
-    let cfg = serde_yaml::from_str(&data)
+    let cfg = serde_saphyr::from_str(&data)
         .with_context(|| format!("failed to parse config {}", path.display()))?;
     Ok(cfg)
 }
@@ -79,7 +79,7 @@ pub fn save_config(path: &Path, cfg: &ConfigFile) -> Result<()> {
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
             .with_context(|| format!("failed to secure {}", parent.display()))?;
     }
-    let body = serde_yaml::to_string(cfg).context("failed to serialize config")?;
+    let body = serde_saphyr::to_string(cfg).context("failed to serialize config")?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -225,7 +225,52 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{canonicalize_server_url, validate_permissions};
+    use super::{canonicalize_server_url, load_config, save_config, validate_permissions};
+    use crate::cli::OutputFormat;
+
+    #[test]
+    fn yaml_config_profiles_survive_load_save_load() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("config.yaml");
+        fs::write(
+            &path,
+            r#"server: https://dns.example.com
+username: admin
+password: "012345"
+timeout: 30
+output: Yaml
+profile: production
+profiles:
+  production:
+    server: https://prod.example.com
+    password_source: keyring
+    password_key_id: "io.nsblast/example"
+    output: Json
+"#,
+        )
+        .expect("write legacy YAML config");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("chmod");
+
+        let cfg = load_config(&path, false).expect("load legacy YAML config");
+        assert_eq!(cfg.server.as_deref(), Some("https://dns.example.com"));
+        assert_eq!(cfg.password.as_deref(), Some("012345"));
+        assert!(matches!(cfg.output, Some(OutputFormat::Yaml)));
+        assert!(matches!(
+            cfg.profiles["production"].output,
+            Some(OutputFormat::Json)
+        ));
+
+        save_config(&path, &cfg).expect("save YAML config");
+        let reloaded = load_config(&path, false).expect("reload YAML config");
+        assert_eq!(
+            serde_json::to_value(&reloaded).expect("reloaded config"),
+            serde_json::to_value(&cfg).expect("original config")
+        );
+        assert_eq!(
+            fs::metadata(&path).expect("stat").permissions().mode() & 0o777,
+            0o600
+        );
+    }
 
     #[test]
     fn canonicalize_server_url_normalizes_host_and_trailing_slash() {

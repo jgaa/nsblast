@@ -230,7 +230,7 @@ fn load_config(cli: Cli) -> std::result::Result<AppConfig, ExitCode> {
         ExitCode::OtherError
     })?;
 
-    let file_cfg: FileConfig = serde_yaml::from_str(&data).map_err(|err| {
+    let file_cfg: FileConfig = serde_saphyr::from_str(&data).map_err(|err| {
         error!(path = %config_path.display(), "failed to parse YAML config: {err}");
         ExitCode::OtherError
     })?;
@@ -716,6 +716,42 @@ impl Drop for LockGuard {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn test_load_yaml_config_with_token_and_legacy_password() {
+        for credential in ["token", "password"] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("config.yaml");
+            std::fs::write(
+                &path,
+                format!(
+                    "# Existing DynIP configuration\n\
+                     url: https://dns.example.com\n\
+                     {credential}: \"012345\"\n\
+                     fqdn: office.example.com\n\
+                     ips: [\"203.0.113.10\"]\n\
+                     repeat_minutes: 5\n\
+                     timeout_seconds: 20\n\
+                     tls_ca_file: /etc/ssl/custom-ca.pem\n"
+                ),
+            )
+            .expect("write config");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+
+            let cli = Cli::parse_from(["nsblast-dynip", "--config", path.to_str().expect("path")]);
+            let cfg = load_config(cli).expect("load YAML config");
+            assert_eq!(cfg.url, "https://dns.example.com");
+            assert_eq!(cfg.token, "012345");
+            assert_eq!(cfg.fqdn, "office.example.com");
+            assert_eq!(cfg.ips, ["203.0.113.10"]);
+            assert_eq!(cfg.repeat_minutes, 5);
+            assert_eq!(cfg.timeout_seconds, 20);
+            assert_eq!(
+                cfg.tls_ca_file,
+                Some(PathBuf::from("/etc/ssl/custom-ca.pem"))
+            );
+        }
+    }
 
     #[test]
     fn test_map_http_status() {
