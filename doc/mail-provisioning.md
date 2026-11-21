@@ -5,11 +5,60 @@ or an API key in `Authorization: Bearer KEY`. The zone must already exist and be
 to the authenticated tenant. Mutations run on the primary (or a standalone server).
 There are no UI changes.
 
-Create a role with `USE_API`, `CREATE_MAIL`, `UPDATE_MAIL`, and `DELETE_MAIL` and a
-recursive DNS filter for the domains it manages. Generic RR, zone, user, role, and
-key-management permissions are unnecessary. An API-key issuer can delegate only its
-own permissions and scope. Tenant administrators must include the mail permissions
-in the tenant's allowed-permissions list before assigning them to roles.
+## Create an API key for all tenant-owned zones
+
+In Swagger UI, authenticate as an administrator in the intended user's tenant.
+Ownership is per tenant: the key below can provision mail DNS for every zone owned
+by that tenant, including zones added later. It is an independent tenant-owned key;
+it does not inherit the issuing user's roles or DNS filters.
+
+First, use `POST /api/v1/role` (`POST /role` in Swagger) to create this role:
+
+```json
+{
+  "name": "mail-provisioner",
+  "permissions": [
+    "USE_API",
+    "CREATE_MAIL",
+    "UPDATE_MAIL"
+  ]
+}
+```
+
+Omit `filter` to cover all tenant-owned zones. For access limited to particular
+domains, use a recursive DNS filter covering those domains and all affected DNS
+names instead. Add `DELETE_MAIL` if the key should also remove mail configurations.
+The key needs no generic RR, zone, user, role, or key-management permissions.
+
+The administrator creating the role needs `CREATE_ROLE`. The tenant's
+`allowedPermissions` must include the permissions assigned to the role. The caller
+creating the key needs `CREATE_APIKEY` and must hold every delegated permission
+through an unfiltered role or a role with the same DNS filter. An unfiltered role
+is required to delegate the unfiltered mail role above.
+
+Then use `POST /api/v1/apikey` (`POST /apikey` in Swagger):
+
+```json
+{
+  "name": "email-server-provisioning",
+  "roles": ["mail-provisioner"]
+}
+```
+
+The role must already exist in the same tenant. Save `value.key` from the `201`
+response; the plaintext key is returned only once. In Swagger's API key
+authorization field, enter the complete value `Bearer nsb_...`. Other clients
+send the same value in the header:
+
+```http
+Authorization: Bearer nsb_...
+```
+
+Use the key with `POST /api/v1/provision/mail/{domain}` to create mail DNS
+configurations, or `PUT` to create or replace them. These operations provision DNS
+records and policies, not mailboxes or mail server software.
+
+## Provision a mail configuration
 
 For a dedicated server:
 
