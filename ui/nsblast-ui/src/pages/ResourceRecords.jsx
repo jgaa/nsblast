@@ -718,7 +718,7 @@ function AddRr({args}) {
       }
 
       // What is the original type?
-      let orgType = null
+      let orgType
       if (Array.isArray(orig)) {
         orgType = typeof orig[0][name]
       } else {

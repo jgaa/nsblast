@@ -6,7 +6,7 @@ It start 3 instances of nsblast, where one act as a primary server
 and the other two as slaves, using the gRPC based RocksDB replication
 between the primary and the followers.
 
-The test requires docker-compose, Python 3 and pythons virtual environment.
+The test requires docker-compose, Python 3.11 or newer and Python's virtual environment.
 
 ```bash
 bash setup.sh

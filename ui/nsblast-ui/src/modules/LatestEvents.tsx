@@ -1,7 +1,6 @@
 import * as React from 'react';
 
-export interface ILatestEventsProps {
-}
+export type ILatestEventsProps = Record<string, never>;
 
 export default function LatestEvents (props: ILatestEventsProps) {
   return (

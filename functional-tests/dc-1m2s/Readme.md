@@ -5,7 +5,7 @@ This test assumes that the nsblast docker container is built.
 It start 3 instances of nsblast, where one act as a master server
 and the other two as slaves.
 
-The test requires Python 3 and pythons virtual environment.
+The test requires Python 3.11 or newer and Python's virtual environment.
 
 ```bash
 bash setup.sh

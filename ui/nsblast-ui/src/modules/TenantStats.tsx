@@ -1,7 +1,6 @@
 import * as React from 'react';
 
-export interface ITenantStatsProps {
-}
+export type ITenantStatsProps = Record<string, never>;
 
 export default function TenantStats (props: ITenantStatsProps) {
   return (

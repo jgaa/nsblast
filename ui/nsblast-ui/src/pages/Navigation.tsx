@@ -20,8 +20,7 @@ import { detectDynIpAccess } from '../modules/dynip';
 import { detectBackupAccess } from '../modules/backup';
 import { detectVarsAccess } from '../modules/vars';
 
-export interface INavigationProps {
-}
+export type INavigationProps = Record<string, never>;
 
 export function Navigation(props: INavigationProps) {
   const { state, api } = useAppState();

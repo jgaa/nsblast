@@ -3,8 +3,7 @@ import TenantStats from '../modules/TenantStats';
 import LatestEvents from '../modules/LatestEvents';
 import { Zones } from '../modules/Zones';
 
-export interface IDashboardProps {
-}
+export type IDashboardProps = Record<string, never>;
 
 export default function Dashboard (props: IDashboardProps) {
   return (

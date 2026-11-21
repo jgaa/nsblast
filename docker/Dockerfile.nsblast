@@ -2,6 +2,8 @@
 
 ARG UBUNTU_VERSION=24.04
 
+FROM node:22-bookworm-slim AS ui-toolchain
+
 FROM ubuntu:${UBUNTU_VERSION} AS boost-builder
 LABEL maintainer="jgaa@jgaa.com"
 
@@ -57,12 +59,10 @@ RUN apt-get -q update && \
         libicu-dev libbz2-dev libsnappy-dev libgflags-dev libgtest-dev \
         librocksdb-dev liblz4-dev libgrpc-dev libgrpc++-dev \
         language-pack-en locales && \
-    if [ "${NSBLAST_WITH_UI}" = "ON" ]; then \
-        apt-get -y -q --no-install-recommends install npm; \
-    fi && \
     locale-gen en_US.UTF-8 && \
     rm -rf /var/lib/apt/lists/*
 
+COPY --from=ui-toolchain /usr/local/ /usr/local/
 COPY --from=boost-builder /opt/boost /opt/boost
 
 ENV BOOST_ROOT=/opt/boost

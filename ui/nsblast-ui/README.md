@@ -2,6 +2,8 @@
 
 React + TypeScript UI built with Vite.
 
+Use Node.js 22.13 or newer in the 22.x series, Node.js 24.x, or Node.js 26 or newer.
+
 ## Phase 2 Hosting Config
 
 The UI supports build-time and runtime configuration for base path and API URL.
